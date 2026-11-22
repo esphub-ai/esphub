@@ -7,6 +7,7 @@ void okou_ble_start(void);
 unsigned okou_ble_generation(void);
 esp_err_t okou_ble_install(unsigned generation, const char *hex, bool usb);
 bool okou_ble_busy(void);
+bool okou_ble_host_owned(void);
 bool okou_wifi_join(const char *ssid, const char *pass, bool hidden);
 const char *okou_wifi_join_state(void);
 #endif

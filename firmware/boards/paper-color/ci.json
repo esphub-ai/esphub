@@ -2,9 +2,9 @@
   "launcher": {
     "container": "espressif/idf:v5.4.1",
     "inputs": [
-      "firmware/partitions/16mb.csv", "firmware/boards/paper-color/ble.defaults"
+      "firmware/partitions/16mb.csv"
     ]
   },
-  "micropython": {"inputs": ["firmware/boards/paper-color/ble.defaults"]},
+  "micropython": {},
   "setup": {}
 }

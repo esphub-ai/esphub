@@ -16,7 +16,7 @@ runs:
         source "$IDF_PATH/export.sh"
         dir="../boards/$BOARD/launcher"
         defaults="../sdkconfig.common;sdkconfig.defaults;$dir/sdkconfig.defaults"
-        if [[ -f "$dir/../ble.defaults" ]]; then defaults+=";$dir/../ble.defaults"; fi
+        defaults+=";../ble.defaults"
         args=()
         package=()
         if [[ "$FRESH_LAYOUT" == true ]]; then
@@ -29,5 +29,6 @@ runs:
         config=sdkconfig
         if [[ "$FRESH_LAYOUT" == true ]]; then config=sdkconfig.setup; fi
         grep -Fx "CONFIG_PM_ENABLE=y" "$config"
+        grep -Fx "CONFIG_OKOU_BLE_WIFI=y" "$config"
         grep -Fx "CONFIG_FREERTOS_USE_TICKLESS_IDLE=y" "$config"
         python ../../scripts/package-launcher.py "$BOARD" "$VERSION" "${package[@]}"

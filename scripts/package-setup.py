@@ -39,8 +39,7 @@ with ZipFile(args.launcher) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
     dest.writestr("flash_args", base.read("flash_args").rstrip() + f"\n{offset:#x} micropython.bin\n".encode())
     erase = "--erase-all " if os.environ.get("ERASE_ALL") == "true" else ""
     setup_note = ("Write the token and ble_secret from devices.create with OKL-PROVISION over USB at 115200.\n"
-                  "Run the macOS BLE Wi-Fi tool as described in the registration prompt." if args.board == "paper-color"
-                  else "Open the launcher's USB console at 115200 baud and send: wifi scan")
+                  "Run the macOS BLE Wi-Fi tool and restart the board after Beacon ready.")
     dest.writestr("INSTALL.txt", f"""First installation for {args.board} only. Includes the launcher and MicroPython.
 This replaces the partition table and application. Back up existing device data first.
 From this directory, use the correct local USB port:

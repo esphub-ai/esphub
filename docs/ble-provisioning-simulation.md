@@ -2,7 +2,7 @@
 
 Run `node --test tests/ble-provisioning.test.js` on Node.js 24 or later. This prototype models the computer, device and hub in one process. It exercises Node/OpenSSL TLS 1.3 between two endpoints on an ordered stream with 20-byte fragments. The computer is the TLS client. Only the simulated device scans or joins Wi-Fi.
 
-For the Paper Color implementation, including the macOS UUID format and recovery when rotation is interrupted, see the [host and firmware protocol](../tools/ble-wifi/README.md).
+For the shared firmware implementation, including the macOS UUID format and recovery when rotation is interrupted, see the [host and firmware protocol](../tools/ble-wifi/README.md).
 
 ## Protocol
 

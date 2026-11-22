@@ -49,7 +49,7 @@ const defs = [
   [
     "devices.reissue",
     destructive,
-    "Issue a replacement USB token and close the previous connection.",
+    "Issue a replacement device token and BLE bootstrap key for USB setup and close the previous connection.",
     id,
   ],
   [
@@ -73,7 +73,7 @@ const defs = [
   [
     "wifi.ble_credential",
     additive,
-    "Issue a private BLE provisioning credential for the registered Paper Color. Pass privately to the local host tool. Wait for Beacon ready, then restart the board.",
+    "Issue a private BLE provisioning credential for the registered device. Pass privately to the local host tool. Wait for Beacon ready, then restart the board.",
     id,
   ],
   [
@@ -316,13 +316,13 @@ export async function operate(c, owner, name, a) {
   if (name === "devices.create_virtual") return createVirtual(db, owner);
   if (name === "devices.create") {
     const secret = token("okl_dev_");
-    const bleSecret = a.board === "paper-color" ? newBleSecret() : null;
+    const bleSecret = newBleSecret();
     const [d] =
       await db`INSERT INTO esphub.devices(owner,name,board,token_hash,ble_secret) VALUES(${owner},${a.name.trim()},${a.board},${await digest(secret)},${bleSecret}) RETURNING id,name,board,kind`;
     return {
       ...d,
       token: secret,
-      ...(bleSecret ? { ble_secret: bleSecret } : {}),
+      ble_secret: bleSecret,
       hub: "api.esphub.ai",
       ...provisioning(d.board),
       ...updateSources(d.board),
@@ -384,11 +384,11 @@ export async function operate(c, owner, name, a) {
   }
   if (name === "devices.reissue") {
     const secret = token("okl_dev_");
-    const bleSecret = d.board === "paper-color" ? newBleSecret() : null;
+    const bleSecret = newBleSecret();
     await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,transport='websocket',boot_id=NULL,boot_info=NULL,ble_generation=1,
       ble_secret=${bleSecret}, ble_pending=NULL, ble_pending_issued=false, ble_issued=false WHERE owner=${owner} AND id=${d.id}`;
     await internal(c, d.id, "revoke", { device: d.id });
-    return { token: secret, ...(bleSecret ? { ble_secret: bleSecret } : {}) };
+    return { token: secret, ble_secret: bleSecret };
   }
   if (name === "ota.prepare_upload")
     return withSources(await internal(c, d.id, "prepare-upload", a));

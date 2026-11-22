@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Paper Color provisioning on macOS. Requires Python >=3.13 and bleak."""
+"""ESP Hub Wi-Fi provisioning on macOS. Requires Python >=3.13 and bleak."""
 
 import argparse
 import asyncio
@@ -131,7 +131,7 @@ async def provision(credential):
             if delegate.failed:
                 raise RuntimeError("macOS declined Bluetooth advertising")
             if attempt == 0:
-                print("Beacon ready. Restart the Paper Color now.", file=sys.stderr, flush=True)
+                print("Beacon ready. Restart the board now.", file=sys.stderr, flush=True)
             attempt += 1
             device = await BleakScanner.find_device_by_filter(
                 lambda _, adv: reply in adv.service_uuids,

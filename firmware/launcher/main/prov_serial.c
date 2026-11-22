@@ -1,6 +1,6 @@
 /*
  * USB-serial provisioning: a local console line `OKL-PROVISION <json>` stores the
- * device token and Wi-Fi credentials after the first USB flash. The line is never echoed or logged. Physical USB access already implies
+ * device token and BLE bootstrap key after the first USB flash. The line is never echoed or logged. Physical USB access already implies
  * full control of the device (esptool can rewrite flash), so this adds no new exposure.
  *
  * SPDX-License-Identifier: MIT
@@ -27,7 +27,7 @@ static const char *TAG = "prov_serial";
 #define PROV_LINE_MAX 640
 
 /* Complete lines from USB and remote RX have separate buffers. Provisioning is USB-only. */
-static void console_line(char *line)
+static void console_line(char *line, bool usb)
 {
     char *save = NULL;
     char *name = strtok_r(line, " \t\r\n", &save);
@@ -36,6 +36,12 @@ static void console_line(char *line)
     if (!args) return;
     char *arg;
     while ((arg = strtok_r(NULL, " \t\r\n", &save))) cJSON_AddItemToArray(args, cJSON_CreateString(arg));
+    const cJSON *op = cJSON_GetArrayItem(args, 0);
+    if (usb && !strcmp(name, "wifi") && cJSON_IsString(op) && !strcmp(op->valuestring, "add")) {
+        puts("Use BLE for Wi-Fi setup.");
+        cJSON_Delete(args);
+        return;
+    }
     char *output = NULL;
     int rc = okou_cmd_run(name, args, &output);
     const char *message = output ? output : (rc == 0 ? "OK" : "Unknown command. Type help.");
@@ -50,7 +56,7 @@ static esp_err_t remote_line(const cJSON *args, cJSON *reply, char *err, size_t 
     if (!cJSON_IsString(v)) return ESP_ERR_INVALID_ARG;
     char *copy = strdup(v->valuestring);
     if (!copy) return ESP_ERR_NO_MEM;
-    console_line(copy); free(copy); return ESP_OK;
+    console_line(copy, false); free(copy); return ESP_OK;
 }
 
 static void serial_task(void *arg)
@@ -90,7 +96,7 @@ static void serial_task(void *arg)
                 printf("OKL-PROVISION-ERR %s\n", err);
             }
         } else if (!overflow) {
-            console_line(line);
+            console_line(line, true);
         }
         memset(line, 0, sizeof(line));
         len = 0;

@@ -113,6 +113,13 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
     Array(3).fill(["launcher", "micropython", "setup"]),
   );
   before = after;
+  put("firmware/ble.defaults", "CONFIG_BT_ENABLED=y");
+  after = snapshot();
+  assert.deepEqual(
+    Object.values(select(before, after)),
+    Array(3).fill(["launcher", "micropython", "setup"]),
+  );
+  before = after;
   put("services/web/src/app.js", "website");
   put("firmware/boards/stopwatch/README.md", "guide");
   after = snapshot();

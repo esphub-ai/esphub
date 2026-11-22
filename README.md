@@ -13,15 +13,15 @@ ESP Hub provisions ESP32 devices over USB and manages them through the web and M
 
 All supported models use ESP32-S3. Paper Color, PaperDIY, StackChan and StopWatch have 16 MB flash. Cardputer-Adv has 8 MB flash and its own partition layout. Its MicroPython runtime includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for the TCA8418 keyboard. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the launcher, MicroPython runtime, partition table, flash arguments and a SHA-256 manifest. This kit replaces the partition table and app. The separate StopWatch launcher-only kit preserves its legacy partition layout.
 
-Connect the board over USB and call `devices.create`. Its response includes the device token, setup instructions, release manifest link and a board-specific display verification program. Download the matching kit over HTTPS, flash it, open the launcher USB console at 115200 baud and run `wifi scan`. Select a network or enter a hidden SSID, then submit one newline-terminated JSON record:
+Connect the board over USB and call `devices.create`. Download and flash the matching setup kit. Send the returned token and BLE bootstrap key to the launcher at 115200 baud:
 
 ```text
-OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","wifi":{"ssid":"<network>","pass":"<password>","hidden":false}}
+OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret>"}
 ```
 
-After `OKL-PROVISION-OK`, wait for the online MicroPython app and use the OTA procedure to install the returned verification program. Check the new boot for its board-specific hello message.
+After `OKL-PROVISION-OK`, start the Mac BLE tool, wait for **Beacon ready**, restart the board, and choose a network or enter a hidden SSID and password locally. Then wait for the online MicroPython app and use the OTA procedure to install the returned verification program. Check the new boot for its board-specific hello message.
 
-Paper Color can also use Bluetooth for the first Wi-Fi connection and subsequent network changes after a one-time USB credential write. [Mac setup and BLE protocol](tools/ble-wifi/README.md).
+[Mac setup and BLE protocol](tools/ble-wifi/README.md).
 
 ## Try a virtual ESP32
 

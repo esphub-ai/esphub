@@ -83,7 +83,7 @@ menu "okou agent (esp-launcher SDK)"
         default n
 
     config OKOU_BLE_WIFI
-        bool "Native BLE Wi-Fi provisioning"
-        default n
+        bool
+        default y if BT_NIMBLE_ENABLED && !OKOU_NET_OPENETH
 
 endmenu

@@ -33,13 +33,16 @@ bool prov_apply(const char *line, char *err, size_t n)
         snprintf(err, n, "invalid JSON");
         return false;
     }
-    const cJSON *wifi = cJSON_GetObjectItemCaseSensitive(j, "wifi");
+    if (cJSON_GetObjectItemCaseSensitive(j, "wifi")) {
+        cJSON_Delete(j);
+        snprintf(err, n, "use BLE for Wi-Fi setup");
+        return false;
+    }
     const cJSON *tok = cJSON_GetObjectItemCaseSensitive(j, "token");
-    const char *ssid = NULL, *pass = NULL, *hub = NULL, *cid = NULL, *csec = NULL, *name = NULL, *dtok = NULL;
+    const char *hub = NULL, *cid = NULL, *csec = NULL, *name = NULL, *dtok = NULL;
     /* "token": "okl_dev_..." is a hub device token; {"id","secret"} the legacy Access credentials */
     const cJSON *tokobj = cJSON_IsObject(tok) ? tok : NULL;
-    bool ok = str_field(wifi, "ssid", 32, &ssid, err, n) && str_field(wifi, "pass", 64, &pass, err, n) &&
-              str_field(j, "hub", 99, &hub, err, n) && str_field(tokobj, "id", 95, &cid, err, n) &&
+    bool ok = str_field(j, "hub", 99, &hub, err, n) && str_field(tokobj, "id", 95, &cid, err, n) &&
               str_field(tokobj, "secret", 99, &csec, err, n) && str_field(j, "name", 32, &name, err, n);
     if (ok && cJSON_IsString(tok)) {
         if (strncmp(tok->valuestring, "okl_dev_", 8) != 0 || strlen(tok->valuestring) > 95) {
@@ -65,13 +68,6 @@ bool prov_apply(const char *line, char *err, size_t n)
     }
 #endif
     if (ok && dtok && !hub) hub = "api.esphub.ai";
-    if (ok && ssid && ssid[0]) { /* adds to the saved networks (up to OKOU_WIFI_MAX), never replaces them */
-        bool hidden = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(wifi, "hidden"));
-        if (okou_wifi_add(ssid, pass ? pass : "", hidden) != ESP_OK) {
-            snprintf(err, n, "saving Wi-Fi network failed");
-            ok = false;
-        }
-    }
     if (ok) {
         const char *keys[] = {"hub", "cid", "csec", "name", OKOU_KEY_TOKEN};
         const char *vals[] = {hub, cid, csec, name, dtok};

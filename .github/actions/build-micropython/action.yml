@@ -64,6 +64,7 @@ runs:
         python3 -c 'import sys; assert open(sys.argv[1], "rb").read(340)[288:].startswith(("ESPHUB1/micropython/" + sys.argv[2] + "\0").encode())' "$image" "$BOARD"
         test "$(stat -c %s "$image")" -le 4194304
         grep -Fx "CONFIG_PM_ENABLE=y" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"
+        grep -Fx "CONFIG_OKOU_BLE_WIFI=y" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"
         grep -Fx "CONFIG_FREERTOS_USE_TICKLESS_IDLE=y" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"
         grep -Fx "CONFIG_OKOU_BOARD_PROFILE=\"$BOARD\"" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"
         mkdir -p dist

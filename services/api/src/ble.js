@@ -38,12 +38,12 @@ export async function credential(
 export async function issueBle(sql, owner, id) {
   const [d] = await sql`UPDATE esphub.devices SET ble_issued=true,
     ble_pending_issued=(ble_pending IS NOT NULL) WHERE id=${id}
-    AND owner=${owner} AND board='paper-color' AND ble_secret IS NOT NULL
+    AND owner=${owner} AND kind='physical' AND ble_secret IS NOT NULL
     RETURNING ble_secret, ble_pending`;
   if (!d)
     fail(
       409,
-      "Initialize this Paper Color registration for BLE over USB first",
+      "For this older registration, use devices.reissue and write the new token and ble_secret over USB",
     );
   const current = await credential(d.ble_secret);
   if (d.ble_pending) current.alternate = await credential(d.ble_pending);

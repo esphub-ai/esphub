@@ -1,9 +1,10 @@
-// Paper Color: recognize a host's rotating service UUID, then serve TLS over GATT.
+// Recognize a host's rotating service UUID, then serve TLS over GATT.
 // Only the BLE worker reads/writes TLS state. NimBLE callbacks move bounded chunks.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "okou_ble.h"
+#include <stdatomic.h>
 #include "okou_agent_ext.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -37,6 +38,8 @@ static uint8_t address_type, root_key[32], session_key[32];
 static ble_uuid128_t reply_uuid;
 static volatile uint16_t connection = NO_CONN;
 static volatile bool matched, synced;
+static atomic_bool host_owned;
+bool okou_ble_host_owned(void) { return atomic_load(&host_owned); }
 static unsigned scan_generation;
 static int64_t io_deadline;
 
@@ -313,6 +316,7 @@ static void radio(void *unused)
     if (nimble_port_stop() == 0 && nimble_port_deinit() == ESP_OK) {
         vStreamBufferDelete(rx);
         vStreamBufferDelete(tx);
+        atomic_store(&host_owned, false);
     }
     matched = false;
     mbedtls_platform_zeroize(session_key, sizeof(session_key));
@@ -360,6 +364,9 @@ void okou_ble_start(void)
 {
     key_lock = xSemaphoreCreateMutex();
     if (!okou_ble_generation()) return;
-    if (!key_lock || xTaskCreate(launch_nimble, "ble_init", 4096, NULL, 3, NULL) != pdPASS)
+    atomic_store(&host_owned, true);
+    if (!key_lock || xTaskCreate(launch_nimble, "ble_init", 4096, NULL, 3, NULL) != pdPASS) {
+        atomic_store(&host_owned, false);
         ESP_LOGE("ble_wifi", "cannot start BLE initialization");
+    }
 }
