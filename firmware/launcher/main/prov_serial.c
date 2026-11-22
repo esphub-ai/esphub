@@ -27,7 +27,7 @@ static const char *TAG = "prov_serial";
 #define PROV_LINE_MAX 640
 
 /* Complete lines from USB and remote RX have separate buffers. Provisioning is USB-only. */
-static void console_line(char *line, bool usb)
+static void console_line(char *line)
 {
     char *save = NULL;
     char *name = strtok_r(line, " \t\r\n", &save);
@@ -37,8 +37,8 @@ static void console_line(char *line, bool usb)
     char *arg;
     while ((arg = strtok_r(NULL, " \t\r\n", &save))) cJSON_AddItemToArray(args, cJSON_CreateString(arg));
     const cJSON *op = cJSON_GetArrayItem(args, 0);
-    if (usb && !strcmp(name, "wifi") && cJSON_IsString(op) && !strcmp(op->valuestring, "add")) {
-        puts("Use BLE for Wi-Fi setup.");
+    if (!strcmp(name, "wifi") && cJSON_IsString(op) && !strcmp(op->valuestring, "add")) {
+        puts("Use cloud wifi.add or local BLE to save a Wi-Fi network.");
         cJSON_Delete(args);
         return;
     }
@@ -56,7 +56,7 @@ static esp_err_t remote_line(const cJSON *args, cJSON *reply, char *err, size_t 
     if (!cJSON_IsString(v)) return ESP_ERR_INVALID_ARG;
     char *copy = strdup(v->valuestring);
     if (!copy) return ESP_ERR_NO_MEM;
-    console_line(copy, false); free(copy); return ESP_OK;
+    console_line(copy); free(copy); return ESP_OK;
 }
 
 static void serial_task(void *arg)
@@ -96,7 +96,7 @@ static void serial_task(void *arg)
                 printf("OKL-PROVISION-ERR %s\n", err);
             }
         } else if (!overflow) {
-            console_line(line, true);
+            console_line(line);
         }
         memset(line, 0, sizeof(line));
         len = 0;

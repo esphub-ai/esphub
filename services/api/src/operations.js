@@ -295,7 +295,7 @@ async function summary(c, d) {
       serial_input: false,
     };
   const [online, broker] = await Promise.all([
-    d.cert_ready && connected(c.env, d.id),
+    d.cert_ready && d.boot_id === d.enrolled_boot && connected(c.env, d.id),
     internal(c, d.id, "summary"),
   ]);
   return {
@@ -328,7 +328,7 @@ export async function operate(c, owner, name, a) {
     };
   }
   const ds =
-    await db`SELECT d.id,d.name,d.board,d.kind,d.created_at,d.cert_ready,d.boot_info,
+    await db`SELECT d.id,d.name,d.board,d.kind,d.created_at,d.cert_ready,d.enrolled_boot,d.boot_info,
       CASE WHEN d.kind='virtual' THEN (
         SELECT process_id FROM esphub.virtual_boots WHERE device_id=d.id ORDER BY sequence DESC LIMIT 1
       ) ELSE d.boot_id END AS boot_id
@@ -402,50 +402,48 @@ export async function operate(c, owner, name, a) {
       fail(409, "Log recall requires MQTT firmware that supports logs.flush");
     return queue("logs.flush", {}, a.process_id);
   }
-  {
-    const info = d.boot_info;
-    if (name === "uart.write")
-      return queue("term.write", { data: a.text }, a.process_id);
-    if (name === "launcher.enter")
-      return info?.role === "launcher"
-        ? { mode: "launcher", process_id: d.boot_id }
-        : queue("reboot", { target: "launcher" }, d.boot_id);
-    if (name === "ota.install") {
-      if (
-        info?.role !== "launcher" ||
-        info.board !== d.board ||
-        info.image_profile !== "ESPHUB1/launcher/" + d.board
-      )
-        fail(409, "Start a compatible launcher first");
-      if (!a.url) {
-        const manifest = await launcherManifest(d.board);
-        if (info.chip !== manifest.chip) fail(409, "Release target mismatch");
-        return queue(
-          "install",
-          {
-            kind: "launcher",
-            board: d.board,
-            transfer_id: key,
-            url:
-              "https://api.esphub.ai/releases/" +
-              d.board +
-              "/ota?tag=" +
-              manifest.tag,
-            sha256: manifest.ota.sha256,
-            size: manifest.ota.size,
-            version: manifest.version,
-          },
-          d.boot_id,
-        );
-      }
-      if (a.url.startsWith(artifactBase))
-        await internal(c, d.id, "check-upload", { url: a.url, kind: a.kind });
+  const info = d.boot_info;
+  if (name === "uart.write")
+    return queue("term.write", { data: a.text }, a.process_id);
+  if (name === "launcher.enter")
+    return info?.role === "launcher"
+      ? { mode: "launcher", process_id: d.boot_id }
+      : queue("reboot", { target: "launcher" }, d.boot_id);
+  if (name === "ota.install") {
+    if (
+      info?.role !== "launcher" ||
+      info.board !== d.board ||
+      info.image_profile !== "ESPHUB1/launcher/" + d.board
+    )
+      fail(409, "Start a compatible launcher first");
+    if (!a.url) {
+      const manifest = await launcherManifest(d.board);
+      if (info.chip !== manifest.chip) fail(409, "Release target mismatch");
       return queue(
         "install",
-        { board: d.board, url: a.url, kind: a.kind, transfer_id: key },
+        {
+          kind: "launcher",
+          board: d.board,
+          transfer_id: key,
+          url:
+            "https://api.esphub.ai/releases/" +
+            d.board +
+            "/ota?tag=" +
+            manifest.tag,
+          sha256: manifest.ota.sha256,
+          size: manifest.ota.size,
+          version: manifest.version,
+        },
         d.boot_id,
       );
     }
+    if (a.url.startsWith(artifactBase))
+      await internal(c, d.id, "check-upload", { url: a.url, kind: a.kind });
+    return queue(
+      "install",
+      { board: d.board, url: a.url, kind: a.kind, transfer_id: key },
+      d.boot_id,
+    );
   }
   if (name === "uart.sessions") return internal(c, d.id, "sessions");
   if (name === "uart.read")

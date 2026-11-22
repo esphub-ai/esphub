@@ -80,7 +80,7 @@ void okou_http_apply_auth(esp_http_client_handle_t client);
 /* Graceful reboot from the agent task after `delay_ms` (flushes logs, closes the socket). */
 void okou_schedule_reboot(uint32_t delay_ms);
 
-/* Re-read okl/{hub,cid,csec,ssid,pass,name} and reconnect (used by USB provisioning). */
+/* Re-read the USB registration and reconnect (used by USB provisioning). */
 void okou_agent_reload_config(void);
 bool okou_net_has_ip(void);
 void okou_net_reconfigure(void); /* re-read saved Wi-Fi networks and reconnect */

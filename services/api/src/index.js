@@ -105,7 +105,7 @@ async function authenticatedDevice(c) {
   const hash = await digest(t);
   const sql = c.get("sql"),
     [d] =
-      await sql`SELECT id,boot_id FROM esphub.devices WHERE token_hash=${hash}`;
+      await sql`SELECT id,boot_id,enrolled_boot FROM esphub.devices WHERE token_hash=${hash}`;
   if (!d) fail(401, "Invalid device token");
   return { ...d, hash, stub: c.env.DEVICE.get(c.env.DEVICE.idFromName(d.id)) };
 }
@@ -148,7 +148,8 @@ api.post("/api/device/iot/enroll", async (c) => {
   if (!validBoot(boot_id)) fail(400, "Invalid boot ID");
   const result = await enroll(c.env, db, d.id, d.hash, csr);
   const rows =
-    await db`UPDATE esphub.devices SET enrolled_boot=${boot_id} WHERE id=${d.id} AND token_hash=${d.hash} AND cert_ready RETURNING id`;
+    await db`UPDATE esphub.devices SET enrolled_boot=${boot_id} WHERE id=${d.id} AND token_hash=${d.hash} AND cert_ready
+      AND (enrolled_boot IS NOT DISTINCT FROM ${d.enrolled_boot}::text OR enrolled_boot=${boot_id}) RETURNING id`;
   if (!rows.length) fail(409, "Enrollment changed");
   return c.json(result);
 });

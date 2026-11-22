@@ -35,7 +35,7 @@ export async function operateVirtual(db, device, name, args) {
     return { kind: "virtual", process_id: boot.process_id };
   }
   if (name === "uart.sessions")
-    return db`SELECT process_id,started_at,0 AS rx_cursor FROM esphub.virtual_boots
+    return db`SELECT process_id,started_at FROM esphub.virtual_boots
       WHERE device_id=${device.id} ORDER BY sequence DESC`;
   if (name === "uart.read") {
     const [boot] = await db`SELECT started_at,messages FROM esphub.virtual_boots

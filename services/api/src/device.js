@@ -10,7 +10,7 @@ export class Device extends DurableObject {
     this.uploads = new Uploads(ctx, env.UART);
     this.db = ctx.storage.sql;
     this.db.exec(
-      "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,started TEXT,info TEXT,rx_cursor INTEGER DEFAULT 0); CREATE INDEX IF NOT EXISTS boots_software ON boots(json_extract(info,'$.role'), json_extract(info,'$.mac'), json_extract(info,'$.board')); CREATE TABLE IF NOT EXISTS current_device(id TEXT, pid TEXT); CREATE TABLE IF NOT EXISTS uplink_events(mid INTEGER PRIMARY KEY); CREATE TABLE IF NOT EXISTS programs(id TEXT PRIMARY KEY, source TEXT NOT NULL, expires INTEGER NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,started TEXT,info TEXT); CREATE INDEX IF NOT EXISTS boots_software ON boots(json_extract(info,'$.role'), json_extract(info,'$.mac'), json_extract(info,'$.board')); CREATE TABLE IF NOT EXISTS current_device(id TEXT, pid TEXT); CREATE TABLE IF NOT EXISTS uplink_events(mid INTEGER PRIMARY KEY); CREATE TABLE IF NOT EXISTS programs(id TEXT PRIMARY KEY, source TEXT NOT NULL, expires INTEGER NOT NULL)",
     );
   }
   software(info) {
@@ -184,27 +184,7 @@ export class Device extends DurableObject {
       return this.ctx.blockConcurrencyWhile(() => this.uplink(args));
     }
     if (path === "/prepare-upload") return this.uploads.prepare(args);
-    if (path === "/publish") {
-      const bytes = new TextEncoder().encode(args.source);
-      const grant = await (
-        await this.uploads.prepare({
-          device_id: args.device_id,
-          kind: "python",
-          size: bytes.length,
-        })
-      ).json();
-      const id = new URL(grant.upload_url).pathname.split("/").pop();
-      const headers = {
-        ...grant.headers,
-        "Content-Length": String(bytes.length),
-      };
-      const uploaded = await this.uploads.put(
-        id,
-        new Request(grant.upload_url, { method: "PUT", headers, body: bytes }),
-      );
-      if (!uploaded.ok) return uploaded;
-      return Response.json({ url: grant.url, expires_at: grant.expires_at });
-    }
+    if (path === "/publish") return this.uploads.publish(args);
     if (path === "/read") {
       if (
         !this.db

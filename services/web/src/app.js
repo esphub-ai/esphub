@@ -187,7 +187,7 @@ const devicePrompt = `Connect to ${mcpEndpoint} with CIMD OAuth and the devices:
 
 For a new board, identify it over USB. Ask me if the model is unclear, then call devices.create and follow its setup instructions.
 
-For a program update, confirm the target and what I want it to do. Use an existing HTTPS download URL, upload a local file with ota.prepare_upload, or stage generated main.py with programs.publish. Call launcher.enter, wait for launcher mode, then use ota.install with the matching kind and download URL. Check the next boot’s output before reporting success.`;
+For a program update, confirm the target and what I want it to do. Use an existing HTTPS download URL, upload a local firmware binary with ota.prepare_upload, or stage main.py with programs.publish. Call launcher.enter, wait for launcher mode, then use ota.install with the matching kind and download URL. Check the next boot’s output before reporting success.`;
 function devicePromptPanel() {
   return `<section class="mcp-setup" aria-labelledby="mcp-title"><h2 id="mcp-title">Use EspHub with your assistant</h2>
     <div class="mcp-grid"><div class="panel"><blockquote id="mcp-prompt">${esc(devicePrompt)}</blockquote>${button("copy-prompt", "Copy prompt")}</div></div></section>`;
@@ -633,7 +633,7 @@ async function explorer() {
     board: Object.keys(boardName)[0],
     ssid: "",
     url: "",
-    kind: "python",
+    kind: "launcher",
   };
   const select = () => {
     const t = tools.find((t) => t.name === $("#tool").value);
@@ -687,7 +687,7 @@ async function start() {
   if (path[0] === "streams") {
     docs(
       "UART streams",
-      '<p class="lead">Every boot has its own input and output streams. Record numbers start at one.</p><pre>devices/{DEVICE-UUID}/{PROCESS-ID}/uart/rx\ndevices/{DEVICE-UUID}/{PROCESS-ID}/uart/tx</pre><h2>RX · device stdin</h2><p class="doccopy">Web and MCP queue input against an active boot. The launcher handles command lines. MicroPython programs can read application messages with okou.read_input(). The board polls after its local cursor. Reconnects resume that cursor; rebooting creates a different process. Reuse the request ID to safely retry an enqueue.</p><h2>TX · device stdout</h2><p class="doccopy">The board sends numbered logs. Each client polls after its last delivered sequence. Archived boots are read-only. R2 stores bounded record pages and a committed cursor manifest for each direction.</p>',
+      '<p class="lead">Each boot has its own process ID and serial output.</p><h2>Device input</h2><p class="doccopy">Use uart.write with the current process ID. The board pulls the command and reports the result over MQTT. Reuse the request ID when retrying a write.</p><h2>Device output</h2><p class="doccopy">Use uart.read after the last delivered record. The same cursor reads stored logs and events from an archived boot. Use logs.flush on the current boot to fetch buffered output immediately.</p>',
     );
     return;
   }

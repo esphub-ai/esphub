@@ -38,10 +38,11 @@ export async function enqueue(
 export async function pull(db, device, boot) {
   // One delivery, even when two callers pull concurrently or the HTTP response is lost.
   // The conditional UPDATE also rechecks state after waiting for a competing update.
-  return db`WITH first AS (
-    SELECT q.id,q.args FROM esphub.device_commands q JOIN esphub.devices d ON d.id=q.device_id
-    WHERE d.id=${device} AND d.boot_id=${boot} AND d.enrolled_boot=${boot}
-      AND (q.state='dispatched' OR (q.state='queued' AND q.expires_at>now() AND (q.boot_id IS NULL OR q.boot_id=${boot})))
+  return db`WITH current_device AS (
+    SELECT id FROM esphub.devices WHERE id=${device} AND boot_id=${boot} AND enrolled_boot=${boot} FOR UPDATE
+  ), first AS (
+    SELECT q.id,q.args FROM esphub.device_commands q JOIN current_device d ON d.id=q.device_id
+    WHERE q.state='dispatched' OR (q.state='queued' AND q.expires_at>now() AND (q.boot_id IS NULL OR q.boot_id=${boot}))
     ORDER BY q.seq LIMIT 1
   ) UPDATE esphub.device_commands q SET state='dispatched',args=CASE WHEN operation='reboot' THEN q.args ELSE '{}'::jsonb END,dispatched_boot=${boot},
     next_wake=now()+CASE WHEN operation='install' THEN interval '10 minutes' ELSE interval '90 seconds' END
@@ -64,8 +65,7 @@ export async function receipt(db, device, boot, frame) {
   if (row) return row;
   const [existing] =
     await db`SELECT state FROM esphub.device_commands WHERE device_id=${device}
-    AND id=${frame.id} AND dispatched_boot=${boot} AND (receipt_hash=${ack} OR
-      (operation='install' AND receipt_hash IS NULL AND state IN ('failed','succeeded')))`;
+    AND id=${frame.id} AND dispatched_boot=${boot} AND receipt_hash=${ack}`;
   if (!existing) fail(409, "Unknown or conflicting receipt");
   return existing;
 }

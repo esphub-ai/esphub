@@ -17,32 +17,52 @@ export class Uploads {
     );
   }
 
-  async prepare({ device_id, kind, size }) {
-    const id = crypto.randomUUID();
-    const credential = token("esh_upload_");
-    const now = Date.now(),
-      writeUntil = now + 15 * 60000,
-      expires = now + 24 * 3600000;
-    const hash = await digest(credential);
+  async allocate(device, kind, size, hash, writeUntil) {
+    const id = crypto.randomUUID(),
+      expires = Date.now() + 24 * 3600000;
     const alarm = await this.storage.getAlarm();
     if (alarm === null || alarm > expires) await this.storage.setAlarm(expires);
     this.db.exec(
       "INSERT INTO uploads VALUES(?,?,?,?,?,?,?)",
       id,
-      device_id,
+      device,
       kind,
       size,
       hash,
       writeUntil,
       expires,
     );
+    return { id, device, expires };
+  }
+
+  async prepare({ device_id, kind, size }) {
+    const credential = token("esh_upload_"),
+      writeUntil = Date.now() + 15 * 60000;
+    const row = await this.allocate(
+      device_id,
+      kind,
+      size,
+      await digest(credential),
+      writeUntil,
+    );
     return Response.json({
       method: "PUT",
-      upload_url: `https://api.esphub.ai/uploads/${device_id}/${id}`,
+      upload_url: `https://api.esphub.ai/uploads/${device_id}/${row.id}`,
       headers: { Authorization: "Bearer " + credential },
       upload_expires_at: new Date(writeUntil).toISOString(),
-      url: artifactBase + id,
-      expires_at: new Date(expires).toISOString(),
+      url: artifactBase + row.id,
+      expires_at: new Date(row.expires).toISOString(),
+    });
+  }
+
+  async publish({ device_id, source }) {
+    const bytes = new TextEncoder().encode(source);
+    const row = await this.allocate(device_id, "python", bytes.length, "", 0);
+    const saved = await this.save(row, bytes);
+    if (!saved.ok) return saved;
+    return Response.json({
+      url: artifactBase + row.id,
+      expires_at: new Date(row.expires).toISOString(),
     });
   }
 
@@ -69,7 +89,12 @@ export class Uploads {
       request.headers.get("Content-Length") !== String(row.size)
     )
       return error(400, "Send the file bytes with the declared Content-Length");
-    const saved = await this.bucket.put(objectKey(row), request.body, {
+    return this.save(row, request.body);
+  }
+
+  async save(row, body) {
+    const id = row.id;
+    const saved = await this.bucket.put(objectKey(row), body, {
       onlyIf: new Headers({ "If-None-Match": "*" }),
     });
     if (!saved) return error(409, "This artifact has already been uploaded");
