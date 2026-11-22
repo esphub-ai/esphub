@@ -22,7 +22,14 @@ export default {
       u.hostname = "app.esphub.ai";
       return Response.redirect(u, 302);
     }
-    let res = await env.ASSETS.fetch(req);
+    if (["/mcp", "/mcp/"].includes(u.pathname))
+      return Response.redirect(new URL("/", u), 302);
+    if (u.pathname === "/" && u.hostname === "app.esphub.ai")
+      return Response.redirect(new URL("/devices", u), 302);
+    const assetRequest = u.pathname === "/"
+      ? new Request(new URL("/home/", u), req)
+      : req;
+    let res = await env.ASSETS.fetch(assetRequest);
     if (
       res.status === 404 &&
       req.method === "GET" &&

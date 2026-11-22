@@ -118,26 +118,6 @@ function dialog(title, body, submit, fn) {
   };
   d.showModal();
 }
-function hero() {
-  main.innerHTML =
-    '<section class="hero"><div><div class="kicker">ESP32 device operations</div><h1>Your boards.<br><span class="accent">Within reach.</span></h1><p class="lead">Provision over USB, manage firmware and open a remote serial console from your browser or an MCP client.</p><div class="actions">' +
-    link("/devices", "Open the console ↗", true) +
-    '<span id="account-link">' +
-    link(hostedPage("/sign-up", application + "/devices"), "Create account") +
-    "</span>" +
-    '</div></div><div class="art"><div class="halo"></div><img src="/esp32s3-e926c2315ec8.webp" alt="Espressif ESP32-S3 development board"><div class="meta"><span>HARDWARE PROFILE</span><span>ESPRESSIF</span></div><span class="caption">ESP32-S3 / DEVKITC-1</span><span class="cross">+</span></div></section><div class="strip"><a href="/setup">↳ USB provisioning</a><a href="/devices">↳ Device console</a><a href="/streams">↳ Boot-scoped UART</a><a href="/mcp">↳ MCP endpoint</a></div><section class="dash"><div class="kicker">Launcher firmware</div><h2>Supported devices</h2><div class="board">' +
-    Object.entries(boardName)
-      .map(
-        ([k, n]) =>
-          '<a class="device" href="/setup?board=' +
-          k +
-          '"><span class="icon">▦</span><span class="desc"><b>' +
-          n +
-          `</b><small>ESP32-S3 · ${k === "cardputer-adv" ? 8 : 16} MB flash</small></span><span>USB setup ↗</span></a>`,
-      )
-      .join("") +
-    "</div></section>";
-}
 function docs(title, body) {
   main.innerHTML =
     '<section class="app docs"><a class="crumb" href="/">← Overview</a><div class="kicker">Platform reference</div><h1>' +
@@ -168,54 +148,9 @@ const devicePrompt = `Connect to ${mcpEndpoint} with CIMD OAuth and the devices:
 For a new board, identify it over USB. Ask me if the model is unclear, then call devices.create and follow its setup instructions.
 
 For a program update, confirm the target and what I want it to do. Stage main.py with programs.publish, call launcher.enter, wait for launcher mode, then use ota.install with kind python and the returned URL. Check the next boot’s output before reporting success.`;
-const workflows = [
-  {
-    key: "initialize",
-    title: "Initialize a device",
-    detail: "Plug the board into your computer by USB. Your assistant will flash it, help you choose Wi-Fi and verify the display.",
-    prompt: "Identify my USB board. Ask me if the model is unclear. Call devices.create and follow its setup prompt.",
-  },
-  {
-    key: "update",
-    title: "Update a program",
-    detail: "Once your board is online, send a new MicroPython program over Wi-Fi.",
-    prompt: "Ask what I want to build and which board to use if unclear. Use programs.publish, launcher.enter and ota.install. Verify the new boot and report the result.",
-  },
-];
-function workflowCards() {
-  return `<section class="mcp-setup" aria-labelledby="workflows-title"><h2 id="workflows-title">Device workflows</h2><div class="mcp-grid">${workflows.map(({ key, title, detail, prompt }) =>
-    `<article class="panel"><h3>${title}</h3><p>${detail}</p><blockquote id="prompt-${key}">${esc(prompt)}</blockquote>${button("copy-" + key, "Copy prompt")}</article>`
-  ).join("")}</div></section>`;
-}
-const mcpClients = {
-  codex: {
-    instruction: "Use a Codex version with CIMD support. Add the server and follow the browser prompt. If you already added it, run codex mcp login esphub --oauth-client-registration cimd.",
-    config: `codex mcp add esphub --url ${mcpEndpoint}`,
-  },
-  claude: {
-    instruction: "Merge this entry into your project’s .mcp.json file. In Claude Code, open /mcp, select esphub, and authenticate.",
-    config: JSON.stringify(
-      {
-        mcpServers: {
-          esphub: {
-            type: "http",
-            url: mcpEndpoint,
-          },
-        },
-      },
-      null,
-      2,
-    ),
-  },
-};
-function clientConfiguration() {
-  return `<section class="mcp-setup" aria-label="Client configuration"><div class="mcp-grid"><div class="panel"><div class="toolbar"><h2>Client configuration</h2><select id="mcp-client" aria-label="MCP client"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
-    <p id="mcp-instruction"></p><pre id="mcp-config"></pre>${button("copy-config", "Copy configuration")}</div></div></section>`;
-}
 function devicePromptPanel() {
-  return `<section class="mcp-setup" aria-labelledby="mcp-title"><h2 id="mcp-title">Use ESP Hub with your assistant</h2>
-    <div class="mcp-grid"><div class="panel"><blockquote id="mcp-prompt">${esc(devicePrompt)}</blockquote>${button("copy-prompt", "Copy prompt")}</div></div>
-    <p><a href="/mcp">MCP reference and client configuration ↗</a></p></section>`;
+  return `<section class="mcp-setup" aria-labelledby="mcp-title"><h2 id="mcp-title">Use EspHub with your assistant</h2>
+    <div class="mcp-grid"><div class="panel"><blockquote id="mcp-prompt">${esc(devicePrompt)}</blockquote>${button("copy-prompt", "Copy prompt")}</div></div></section>`;
 }
 async function fleet() {
   const ds = await op("devices.list");
@@ -430,17 +365,11 @@ function credential(title, value) {
   );
 }
 async function action(k) {
-  const copyTargets = {
-    "copy-config": "#mcp-config",
-    "copy-prompt": "#mcp-prompt",
-    "copy-initialize": "#prompt-initialize",
-    "copy-update": "#prompt-update",
-  };
-  if (Object.hasOwn(copyTargets, k)) {
-    const source = $(copyTargets[k]);
+  if (k === "copy-prompt") {
+    const source = $("#mcp-prompt");
     try {
       await navigator.clipboard.writeText(source.textContent);
-      notify(k === "copy-config" ? "Configuration copied" : "Prompt copied");
+      notify("Prompt copied");
     } catch {
       const selection = window.getSelection(),
         range = document.createRange();
@@ -599,7 +528,7 @@ async function explorer() {
     after: 0,
     request_id: crypto.randomUUID(),
     text: "help\n",
-    source: 'print("Hello from ESP Hub")\n',
+    source: 'print("Hello from EspHub")\n',
     name: "My board",
     board: "paper-color",
     ssid: "",
@@ -656,58 +585,6 @@ async function explorer() {
   };
 }
 async function start() {
-  if (!path.length) {
-    if (location.hostname === "app.esphub.ai") {
-      location.replace("/devices");
-      return;
-    }
-    hero();
-    // Keep public content available while Clerk checks the shared domain session.
-    try {
-      await loadClerk();
-      if (clerk.session) {
-        await api("/auth/me");
-        $("#account-link").innerHTML = link(
-          application + "/account",
-          "My account",
-        );
-      }
-    } catch (error) {
-      console.warn("Unable to check the ESP Hub session", error.name);
-    }
-    return;
-  }
-  if (path[0] === "mcp") {
-    const ref = await (await fetch("/tools.json")).json();
-    docs(
-      "MCP reference",
-      '<p class="lead">Connect your MCP client to ESP Hub with OAuth. Clients request read and write access by default. Read access covers device details, saved Wi-Fi networks, firmware information and serial output. Write access covers device management, Wi-Fi scans and changes, firmware and program installation, and serial input.</p><pre>https://api.esphub.ai/mcp</pre>' +
-        link("/devices", "Client setup →") +
-        " " +
-        link("/explorer", "Open tool explorer ↗", true) +
-        clientConfiguration() + workflowCards() + "<h2>Tools</h2><table><tr><th>Name</th><th>Capability</th></tr>" +
-        ref
-          .map(
-            (t) =>
-              "<tr><td>" +
-              esc(t.name) +
-              "</td><td>" +
-              esc(t.description) +
-              "</td></tr>",
-          )
-          .join("") +
-        "</table>",
-    );
-    const select = $("#mcp-client");
-    function showConfig() {
-      const client = mcpClients[select.value];
-      $("#mcp-instruction").textContent = client.instruction;
-      $("#mcp-config").textContent = client.config;
-    }
-    select.onchange = showConfig;
-    showConfig();
-    return;
-  }
   if (path[0] === "streams") {
     docs(
       "UART streams",
@@ -723,7 +600,7 @@ async function start() {
     );
     docs(
       "USB provisioning",
-      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install ESP Hub with MicroPython. Use the matching board kit from GitHub Releases and follow INSTALL.txt. In the USB console, run <code>wifi scan</code>, choose a network or enter a hidden SSID, then send the provisioning line below. For a hidden network set <code>hidden</code> to true.</p></div><div class="panel"><h3>3. Verify</h3><p>Wait for OKL-PROVISION-OK and check devices.get for the online MicroPython application. Stage the hello program with programs.publish. Enter launcher mode, install its URL with ota.install, then check the new boot for the hello message.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","wifi":{"ssid":"&lt;ssid&gt;","pass":"&lt;password&gt;","hidden":false}}</pre><h2>Board packages</h2><div class="flex">' +
+      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install EspHub with MicroPython. Use the matching board kit from GitHub Releases and follow INSTALL.txt. In the USB console, run <code>wifi scan</code>, choose a network or enter a hidden SSID, then send the provisioning line below. For a hidden network set <code>hidden</code> to true.</p></div><div class="panel"><h3>3. Verify</h3><p>Wait for OKL-PROVISION-OK and check devices.get for the online MicroPython application. Stage the hello program with programs.publish. Enter launcher mode, install its URL with ota.install, then check the new boot for the hello message.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","wifi":{"ssid":"&lt;ssid&gt;","pass":"&lt;password&gt;","hidden":false}}</pre><h2>Board packages</h2><div class="flex">' +
         profiles
           .map(([board, name]) => {
             const base = "https://api.esphub.ai/releases/" + board + "/";
