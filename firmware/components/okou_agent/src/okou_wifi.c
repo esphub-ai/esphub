@@ -364,7 +364,7 @@ static void wifi_task(void *arg)
         memcpy(nets, s_nets, sizeof(net_t) * count);
         unlock();
         if (count == 0) {
-            ESP_LOGW(OKOU_TAG, "no Wi-Fi credentials (provision over BLE from the launcher)");
+            ESP_LOGW(OKOU_TAG, "no Wi-Fi credentials (provision over USB from the launcher)");
             xEventGroupWaitBits(s_ev, EV_RECONF, pdTRUE, pdFALSE, portMAX_DELAY);
             continue;
         }

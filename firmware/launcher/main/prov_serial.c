@@ -1,7 +1,6 @@
 /*
- * USB-serial provisioning: a console line `OKL-PROVISION <json>` stores the same payload as
- * BLE provisioning (docs/protocol.md). Used for the first USB flash, when the operator already
- * has a cable attached. The line is never echoed or logged. Physical USB access already implies
+ * USB-serial provisioning: a local console line `OKL-PROVISION <json>` stores the
+ * device token and Wi-Fi credentials after the first USB flash. The line is never echoed or logged. Physical USB access already implies
  * full control of the device (esptool can rewrite flash), so this adds no new exposure.
  *
  * SPDX-License-Identifier: MIT

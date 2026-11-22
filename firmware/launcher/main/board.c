@@ -6,7 +6,7 @@
  * device can drop power on battery, and its watchdog/I2C-sleep defaults must be neutralised.
  * Register map from m5stack/M5PM1 1.0.6 (the version e7h4n/coffee-watch pins):
  *   0x07 HOLD_CFG bit5 = LDO hold, 0x09 I2C_CFG low nibble = sleep timeout (0 = off),
- *   0x0A WDT_CNT (0 = off), 0x49 BTN_CFG_1 bit0 = single-press reset disabled.
+ *   0x0A WDT_CNT (0 = off). Power-key behavior belongs to the PMIC.
  * The bus is released afterwards so apps can initialise the board their own way.
  *
  * SPDX-License-Identifier: MIT
@@ -57,8 +57,7 @@ void board_init(void)
             vTaskDelay(pdMS_TO_TICKS(10));
             ok = rmw(pm1, 0x07, 0, 1 << 5) &&  /* power hold (LDO) */
                  rmw(pm1, 0x09, 0x0F, 0) &&    /* I2C sleep off */
-                 rmw(pm1, 0x0A, 0xFF, 0) &&    /* PMIC watchdog off */
-                 rmw(pm1, 0x49, 0, 0x01);      /* single-press reset disabled */
+                 rmw(pm1, 0x0A, 0xFF, 0);      /* PMIC watchdog off */
             if (!ok) {
                 vTaskDelay(pdMS_TO_TICKS(attempt == 0 ? 50 : 800));
             }

@@ -60,9 +60,8 @@ menu "okou agent (esp-launcher SDK)"
         help
             A running app normally boots straight back into itself. If this button (active low)
             is held for OKOU_LAUNCHER_BUTTON_HOLD_MS while the app starts, the SDK reboots into
-            the launcher and the launcher stays there (one-shot okl/hold): BLE provisioning is
-            open (always while offline, and for 5 minutes even when online), and the hub can
-            install apps. "reboot target=app" or the next power cycle starts the app again.
+            the launcher and the launcher stays there (one-shot okl/hold) for USB provisioning
+            and remote application installation. "reboot target=app" or the next power cycle starts the app again.
             Do not use a strapping pin (GPIO0 on ESP32-S3).
 
     config OKOU_LAUNCHER_BUTTON_HOLD_MS

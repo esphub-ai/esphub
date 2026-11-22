@@ -58,7 +58,7 @@ esp_err_t okou_app_mark_valid(void);
 bool okou_connected(void);
 
 /* Hand the device to the launcher for (re-)provisioning: sets the one-shot NVS flag okl/setup
- * and reboots into the launcher, which keeps BLE / USB provisioning open and does not auto-start
+ * and reboots into the launcher, which keeps USB provisioning open and does not auto-start
  * the app until it has reached the hub again. Apps with a display call this after showing setup
  * instructions (e-paper keeps them visible). Does not return on success. */
 esp_err_t okou_enter_setup(void);

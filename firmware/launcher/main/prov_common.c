@@ -1,5 +1,5 @@
 /*
- * Provisioning payload (docs/protocol.md "Provisioning"), shared by BLE and USB serial.
+ * Parse and store the local USB serial provisioning record.
  *
  * SPDX-License-Identifier: MIT
  */
