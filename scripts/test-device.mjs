@@ -364,7 +364,9 @@ try {
     assert.equal(response.status,200,await response.clone().text());
     return response.json();
   };
-  await devicePost("frame",{t:"hello",board:"stopwatch",role:"app",boot_id:mqttBoot});
+  await devicePost("frame",{t:"hello",board:"stopwatch",role:"app",boot_id:mqttBoot,micropython_version:"1.27.0",fw:{name:"micropython",version:"test-runtime"}});
+  assert.equal((await uploadSource(mqttBoot,watch.token,"")).status,200);
+  assert.equal((await op("programs.get",{device_id:watch.id},read)).source,"");
   const queued=await op("uart.write",{device_id:watch.id,process_id:mqttBoot,request_id:randomUUID(),text:"test"});
   const body={boot_id:mqttBoot};
   const {commands}=await devicePost("pull",body);

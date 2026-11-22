@@ -46,7 +46,7 @@ typedef struct {
     const char *micropython_version;
 } okou_config_t;
 
-#define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .app_validates = false }
+#define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .app_validates = false, .micropython_version = NULL }
 
 /* One-call init: NVS, log tee, network (optional), agent task. cfg may be NULL (defaults).
  * For role=app it also implements the fail_boots safety net (may reboot into the launcher). */

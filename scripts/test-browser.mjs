@@ -178,7 +178,7 @@ try {
   }));
   send({t:"hello",role:"app",board:"paper-color",boot_id:pythonBoot,launcher_version:"1.1.17",micropython_version:"1.27.0",fw:{name:"micropython",version:"1.1.18"}});
   await ready;
-  const source = "# café <script>window.bad = true</script>\nprint(42)\n";
+  const source = "# 咖啡 café <script>window.bad = true</script>\nprint(42)\n";
   assert.equal((await fetch(origin+"/backend/api/device/program/"+pythonBoot,{
     method:"PUT",headers:{Authorization:"Bearer "+token,"X-Program-Status":"available"},body:source
   })).status,200);
