@@ -415,7 +415,15 @@ static mp_obj_t okou_safe_boot_py(void)
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(okou_safe_boot_obj, okou_safe_boot_py);
 
+static mp_obj_t okou_wifi_rssi_py(void)
+{
+    int rssi;
+    return okou_wifi_rssi(&rssi) ? mp_obj_new_int(rssi) : mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(okou_wifi_rssi_obj, okou_wifi_rssi_py);
+
 static const mp_rom_map_elem_t okou_module_globals_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_wifi_rssi), MP_ROM_PTR(&okou_wifi_rssi_obj) },
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_okou) },
     { MP_ROM_QSTR(MP_QSTR_term), MP_ROM_PTR(&okou_term_obj) },
     { MP_ROM_QSTR(MP_QSTR_connected), MP_ROM_PTR(&okou_connected_obj) },

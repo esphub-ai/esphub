@@ -22,6 +22,18 @@ static bool s_managed;
 static esp_netif_t *s_netif;
 static char s_ip[16] = "";
 
+bool okou_wifi_rssi(int *rssi)
+{
+#if !CONFIG_OKOU_NET_OPENETH
+    wifi_ap_record_t ap;
+    if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+        *rssi = ap.rssi;
+        return true;
+    }
+#endif
+    return false;
+}
+
 bool okou_net_has_ip(void)
 {
     return s_has_ip;

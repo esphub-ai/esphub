@@ -354,6 +354,8 @@ static void hello_fill(cJSON *o)
     cJSON_AddStringToObject(o, "board", "stopwatch");
 #elif CONFIG_OKL_BOARD_GENERIC && CONFIG_IDF_TARGET_ESP32S3
     cJSON_AddStringToObject(o, "board", "paper-color");
+#else
+    if (CONFIG_OKOU_BOARD_PROFILE[0]) cJSON_AddStringToObject(o, "board", CONFIG_OKOU_BOARD_PROFILE);
 #endif
     cJSON_AddStringToObject(o, "boot_id", s_boot_id);
     cJSON_AddStringToObject(o, "role", g_okou_cfg.role == OKOU_ROLE_LAUNCHER ? "launcher" : "app");

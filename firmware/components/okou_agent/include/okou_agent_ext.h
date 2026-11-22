@@ -17,6 +17,9 @@
 extern "C" {
 #endif
 
+/* Signal strength of the current station connection, in dBm. */
+bool okou_wifi_rssi(int *rssi);
+
 /* NVS namespace and keys shared between launcher and SDK (docs/protocol.md). */
 #define OKOU_NVS_NS          "okl"
 #define OKOU_KEY_PENDING     "pending"    /* str: install args JSON + "attempts" */

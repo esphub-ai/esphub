@@ -6,18 +6,19 @@ import sys
 import zipfile
 from pathlib import Path
 
-board, version = sys.argv[1:]
+board, version = sys.argv[1:3]
+setup_base = sys.argv[3:] == ["--setup-base"]
 chip = "esp32s3"
-build = Path("build")
-out = Path("../../dist")
+build = Path("build-setup" if setup_base else "build")
+out = Path("../../setup-base" if setup_base else "../../dist")
 out.mkdir(exist_ok=True)
 prefix = f"esphub-{board}-{chip}-{version}"
 parts = json.loads((build / "flasher_args.json").read_text())
-table = Path("partitions") / ("16mb.csv" if board == "paper-color" else "16mb-legacy.csv")
-offset = "0x20000" if board == "paper-color" else "0x10000"
+table = Path("partitions") / ("16mb.csv" if board == "paper-color" or setup_base else "16mb-legacy.csv")
+offset = "0x20000" if board == "paper-color" or setup_base else "0x10000"
 files = parts["flash_files"]
 assert any(int(k, 16) == int(offset, 16) and v == "esp-launcher.bin" for k,v in files.items()), files
-assert (("CONFIG_OKL_BOARD_M5_STOPWATCH=y" in Path("sdkconfig").read_text()) == (board == "stopwatch"))
+assert (("CONFIG_OKL_BOARD_M5_STOPWATCH=y" in Path("sdkconfig.setup" if setup_base else "sdkconfig").read_text()) == (board == "stopwatch"))
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 image = (build / "esp-launcher.bin").read_bytes()

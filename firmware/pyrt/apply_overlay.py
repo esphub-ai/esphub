@@ -41,7 +41,8 @@ edit("main.c", "    MICROPY_BOARD_STARTUP();\n",
 # 3. Board: our sdkconfig fragment last, our frozen manifest, no Japanese/Korean 24 px fonts.
 bdir = f"boards/{board}"
 frag = (ov / "sdkconfig.okl").read_text() + f'CONFIG_APP_PROJECT_VER="{version}"\n'
-(m5 / bdir / "sdkconfig.okl").write_text(frag)
+profile = {"M5STACK_PaperColor": "paper-color", "M5STACK_StopWatch": "stopwatch"}[board]
+(m5 / bdir / "sdkconfig.okl").write_text(frag + f'CONFIG_OKOU_BOARD_PROFILE="{profile}"\n')
 edit(f"{bdir}/mpconfigboard.cmake", f"    {bdir}/sdkconfig.board\n)",
      f"    {bdir}/sdkconfig.board\n    {bdir}/sdkconfig.okl\n)")
 edit(f"{bdir}/mpconfigboard.cmake", "set(FONT_ALIBABASANS_JA24 1)", "set(FONT_ALIBABASANS_JA24 0)")
