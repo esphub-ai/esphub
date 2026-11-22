@@ -19,7 +19,7 @@ jobs:
           launcher=$(jq -r .launcher_version shared/setup-release.json)
           runtime=$(jq -r .runtime_version shared/setup-release.json)
           mkdir dist
-          for board in stopwatch paper-color; do
+          for board in stopwatch paper-color cardputer-adv; do
             mkdir "$board"
             base="esphub-$board-esp32s3-$launcher"
             app="esphub-$board-micropython-$runtime"

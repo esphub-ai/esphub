@@ -30,7 +30,7 @@ async function resolveTag(tag) {
 
 function assetURL(board, kind, tag) {
   if (
-    !["paper-color", "stopwatch"].includes(board) ||
+    !["paper-color", "stopwatch", "cardputer-adv"].includes(board) ||
     !Object.hasOwn(extensions, kind)
   )
     fail(404, "Unknown launcher download");
@@ -70,7 +70,7 @@ export async function releaseResponse(board, kind, tag, deviceDownload) {
     const version = tag
       ? /^micropython-v(\d+\.\d+\.\d+)$/.exec(tag)?.[1]
       : setupRelease.runtime_version;
-    if (!version || !["paper-color", "stopwatch"].includes(board))
+    if (!version || !["paper-color", "stopwatch", "cardputer-adv"].includes(board))
       fail(404, "Unknown MicroPython image");
     return Response.redirect(
       `${releases}/download/micropython-v${version}/esphub-${board}-micropython-${version}.bin`,
@@ -81,7 +81,7 @@ export async function releaseResponse(board, kind, tag, deviceDownload) {
     const version = tag
       ? /^setup-v(\d+\.\d+\.\d+)$/.exec(tag)?.[1]
       : setupRelease.version;
-    if (!version || !["paper-color", "stopwatch"].includes(board))
+    if (!version || !["paper-color", "stopwatch", "cardputer-adv"].includes(board))
       fail(404, "Unknown USB setup kit");
     return Response.redirect(
       `${releases}/download/setup-v${version}/esphub-${board}-esp32s3-${version}${extensions[kind]}`,

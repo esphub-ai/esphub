@@ -21,7 +21,7 @@ test(
             },
           },
         };
-        const args = { board: "paper-color", name: "Paper Color" },
+        const args = { board: "cardputer-adv", name: "Cardputer-Adv" },
           d = await operate(c, users[0].id, "devices.create", args);
         assert.equal(
           (await tx`SELECT token_hash FROM esphub.devices WHERE id=${d.id}`)[0]

@@ -29,7 +29,7 @@ const esc = (v) =>
         x
       ],
   );
-const boardName = { "paper-color": "Paper Color", stopwatch: "StopWatch" };
+const boardName = { "paper-color": "Paper Color", stopwatch: "StopWatch", "cardputer-adv": "Cardputer-Adv" };
 const path = location.pathname.split("/").filter(Boolean),
   detail = path[0] === "device";
 let user,
@@ -133,7 +133,7 @@ function hero() {
           k +
           '"><span class="icon">▦</span><span class="desc"><b>' +
           n +
-          "</b><small>ESP32-S3 · 16 MB flash</small></span><span>USB setup ↗</span></a>",
+          `</b><small>ESP32-S3 · ${k === "cardputer-adv" ? 8 : 16} MB flash</small></span><span>USB setup ↗</span></a>`,
       )
       .join("") +
     "</div></section>";
@@ -455,7 +455,9 @@ async function action(k) {
     dialog(
       "Register a device",
       field("name", "Device name", "text", 'required maxlength="64"') +
-        '<label>Board<select class="field" name="board"><option value="paper-color">Paper Color</option><option value="stopwatch">StopWatch</option></select></label>',
+        '<label>Board<select class="field" name="board">' +
+          Object.entries(boardName).map(([board, name]) => `<option value="${board}">${name}</option>`).join("") +
+          '</select></label>',
       "Register",
       async (a) => {
         const d = await op("devices.create", a);

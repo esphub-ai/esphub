@@ -1,6 +1,41 @@
-const models = { stopwatch: "Stopwatch", "paper-color": "Paper Color" };
+const models = { stopwatch: "Stopwatch", "cardputer-adv": "Cardputer-Adv", "paper-color": "Paper Color" };
 
 function verificationSource(board) {
+  if (board === "cardputer-adv") {
+    // Draw directly to the 240x135 display on this board without PSRAM.
+    return `import M5
+import okou
+import time
+from hardware import MatrixKeyboard
+
+M5.begin()
+assert M5.getBoard() == M5.BOARD.M5CardputerADV, 'Expected Cardputer-Adv'
+lcd = M5.Lcd
+lcd.setRotation(1)
+if lcd.width() < lcd.height():
+    lcd.setRotation(0)
+lcd.setBrightness(160)
+lcd.fillScreen(0x000000)
+lcd.setTextColor(0xffffff, 0x000000)
+lcd.setTextSize(2)
+lcd.drawString('Cardputer-Adv', 8, 8)
+lcd.drawString('Powered by ESPHub.ai', 0, 36)
+lcd.setTextSize(1)
+rssi = okou.wifi_rssi()
+lcd.drawString('Wi-Fi %s  Battery %s%%' % (rssi, M5.Power.getBatteryLevel()), 8, 72)
+keyboard = MatrixKeyboard()
+lcd.drawString('Press a key', 8, 98)
+print('ESP Hub hello drawn: cardputer-adv', lcd.width(), lcd.height())
+while True:
+    M5.update()
+    if keyboard.is_pressed():
+        key = keyboard.get_key()
+        lcd.fillRect(8, 98, 218, 24, 0x000000)
+        lcd.drawString('Key: %s' % (chr(key) if 32 <= key < 127 else key), 8, 98)
+        print('Keyboard event:', key)
+    time.sleep_ms(20)
+`;
+  }
   const paper = board === "paper-color";
   return `import M5
 import okou
@@ -36,7 +71,7 @@ export function provisioning(board) {
   const base = `https://api.esphub.ai/releases/${board}/`;
   return {
     prompt: [
-      `Identify the USB board. If the port or model is ambiguous, ask the user. Both models use ESP32-S3. Proceed only with the registered M5Stack ${models[board]}.`,
+      `Identify the USB board. If the port or model is ambiguous, ask the user. All supported models use ESP32-S3. Proceed only with the registered M5Stack ${models[board]}.`,
       "Read setup_manifest and match its board to the device. Download the ZIP over HTTPS from its GitHub Releases download_url, then flash over USB using INSTALL.txt and flash_args. First-time installation replaces the partition table and app. If the board has data to keep, confirm a backup before flashing.",
       "Open the launcher USB serial port at 115200 baud and send wifi scan followed by a newline. Number the device's results. Ask which number to join, or accept a hidden SSID. Collect the password privately on the host for a secured network.",
       'Send one newline-terminated USB line using this template: OKL-PROVISION {"hub":"<hub>","token":"<token>","wifi":{"ssid":"<ssid>","pass":"<password>","hidden":false}}. JSON-encode the actual values locally. Set hidden to true for a hidden SSID and use an empty pass for an open network. Keep credentials out of chat and logs. Wait for OKL-PROVISION-OK.',

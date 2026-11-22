@@ -13,7 +13,7 @@ const defs = [
     "Identify the USB board first. Ask the user if uncertain. Register it and follow the returned provisioning prompt.",
     {
       ...strings("name"),
-      board: { enum: ["paper-color", "stopwatch"], type: "string" },
+      board: { enum: ["paper-color", "stopwatch", "cardputer-adv"], type: "string" },
     },
   ],
   ["devices.get", "Show device identity and live connection status.", id],

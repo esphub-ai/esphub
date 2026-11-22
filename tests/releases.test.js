@@ -4,7 +4,7 @@ import setup from "../shared/setup-release.json" with { type: "json" };
 import { releaseResponse } from "../services/api/src/releases.js";
 
 test("USB setup links follow the selected kit independently of launcher updates", async () => {
-  for (const board of ["paper-color", "stopwatch"]) {
+  for (const board of ["paper-color", "stopwatch", "cardputer-adv"]) {
     const result = await releaseResponse(board, "setup", undefined, false);
     assert.equal(result.status, 302);
     assert.equal(

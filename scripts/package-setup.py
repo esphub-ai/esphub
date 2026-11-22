@@ -7,7 +7,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("board", choices=["paper-color", "stopwatch"])
+parser.add_argument("board", choices=["paper-color", "stopwatch", "cardputer-adv"])
 parser.add_argument("launcher", type=Path)
 parser.add_argument("runtime", type=Path)
 parser.add_argument("output", type=Path)
@@ -24,15 +24,18 @@ with ZipFile(args.launcher) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
     offset, size = int(app[3], 0), int(app[4], 0)
     assert parts["data"][2] == "littlefs" and 0 < len(image) <= size
     assert image[0] == 0xE9 and int.from_bytes(image[12:14], "little") == 9  # ESP32-S3
+    assert image[288:].startswith(f"ESPHUB1/micropython/{args.board}\0".encode()), "Wrong runtime profile"
+    assert base.read("esp-launcher.bin")[288:].startswith(f"ESPHUB1/launcher/{args.board}\0".encode()), "Wrong launcher profile"
     for name in base.namelist():
         if name not in ("flash_args", "INSTALL.txt"):
             dest.writestr(name, base.read(name))
     dest.writestr("micropython.bin", image)
     dest.writestr("flash_args", base.read("flash_args").rstrip() + f"\n{offset:#x} micropython.bin\n".encode())
+    erase = "--erase-all " if args.board == "cardputer-adv" else ""
     dest.writestr("INSTALL.txt", f"""First installation for {args.board} only. Includes the launcher and MicroPython.
 This replaces the partition table and application. Back up existing device data first.
 From this directory, use the correct local USB port:
-esptool.py --chip esp32s3 --port PORT write_flash @flash_args
+esptool.py --chip esp32s3 --port PORT write_flash {erase}@flash_args
 Open the launcher's USB console at 115200 baud and send: wifi scan
 """)
 

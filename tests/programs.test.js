@@ -4,7 +4,7 @@ import test from "node:test";
 import { provisioning } from "../services/api/src/provisioning.js";
 import { validate } from "../services/api/src/operations.js";
 
-test("both verification programs draw the measured status and greeting in a single frame", () => {
+test("Paper Color and StopWatch verification programs draw the measured status and greeting in a single frame", () => {
   for (const [board, model] of [
     ["stopwatch", "Stopwatch"],
     ["paper-color", "Paper Color"],
@@ -41,6 +41,35 @@ print(json.dumps([c.args for c in canvas.drawString.call_args_list]))
     );
     assert.ok(lines[0][2] < lines[1][2] && lines[1][2] < lines[2][2]);
   }
+});
+
+test("Cardputer-Adv greeting checks the board and displays an official keyboard event", () => {
+  const stub = `import sys
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+lcd = MagicMock()
+lcd.width.return_value, lcd.height.return_value = 240, 135
+m5 = MagicMock(Lcd=lcd)
+m5.getBoard.return_value = m5.BOARD.M5CardputerADV
+sys.modules['M5'] = m5
+sys.modules['okou'] = SimpleNamespace(wifi_rssi=lambda: -56)
+keyboard = MagicMock()
+keyboard.is_pressed.return_value = True
+keyboard.get_key.return_value = ord('x')
+sys.modules['hardware'] = SimpleNamespace(MatrixKeyboard=lambda: keyboard)
+class End(Exception): pass
+def sleep_ms(delay): raise End()
+sys.modules['time'] = SimpleNamespace(sleep_ms=sleep_ms)
+try: exec(sys.stdin.read(), {})
+except End: pass
+lcd.drawString.assert_any_call('Key: x', 8, 98)
+`;
+  const output = execFileSync("python3", ["-I", "-c", stub], {
+    input: provisioning("cardputer-adv").verification_source,
+    encoding: "utf8",
+  });
+  assert.match(output, /ESP Hub hello drawn: cardputer-adv 240 135/);
+  assert.match(output, /Keyboard event: 120/);
 });
 
 test("publishing bounds UTF-8 byte size and OTA accepts only the three HTTPS targets", () => {
