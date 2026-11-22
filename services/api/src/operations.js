@@ -12,10 +12,19 @@ const strings = (...names) =>
 const id = strings("device_id"),
   session = { ...id, ...strings("process_id") };
 const otaKind = { type: "string", enum: ["launcher", "micropython", "python"] };
+const additive = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  openWorldHint: false,
+};
+const readOnly = { ...additive, readOnlyHint: true };
+const destructive = { ...additive, destructiveHint: true };
+
 const defs = [
-  ["devices.list", "List your registered devices.", {}],
+  ["devices.list", readOnly, "List your registered devices.", {}],
   [
     "devices.create",
+    additive,
     "Identify the USB board first. Ask the user if uncertain. Register it and follow the returned provisioning prompt.",
     {
       ...strings("name"),
@@ -24,50 +33,79 @@ const defs = [
   ],
   [
     "devices.get",
+    readOnly,
     "Show device identity, connection status and GitHub source directories for all three customizable OTA layers, even while offline.",
     id,
   ],
   [
     "devices.reissue",
+    destructive,
     "Issue a replacement USB token and close the previous connection.",
     id,
   ],
   [
     "devices.delete",
+    destructive,
     "Delete the registration and revoke the device token.",
     id,
   ],
-  ["devices.reboot", "Restart the device and create a new boot session.", id],
+  [
+    "devices.reboot",
+    destructive,
+    "Restart the device and create a new boot session.",
+    id,
+  ],
   [
     "devices.reset",
+    destructive,
     "Erase provisioning and saved networks on the device; USB setup is required again.",
     id,
   ],
-  ["wifi.list", "Read saved Wi-Fi networks and the active connection.", id],
-  ["wifi.scan", "Scan Wi-Fi networks visible to the device.", id],
+  [
+    "wifi.list",
+    readOnly,
+    "Read saved Wi-Fi networks and the active connection.",
+    id,
+  ],
+  [
+    "wifi.scan",
+    { ...readOnly, openWorldHint: true },
+    "Scan Wi-Fi networks visible to the device.",
+    id,
+  ],
   [
     "wifi.add",
+    { ...destructive, openWorldHint: true },
     "Save a network. Omit the password for an open network.",
     { ...id, ...strings("ssid", "password") },
   ],
-  ["wifi.remove", "Forget a saved network.", { ...id, ...strings("ssid") }],
+  [
+    "wifi.remove",
+    destructive,
+    "Forget a saved network.",
+    { ...id, ...strings("ssid") },
+  ],
   [
     "launcher.install",
+    { ...destructive, openWorldHint: true },
     "Install the latest board-specific launcher on a connected launcher.",
     id,
   ],
   [
     "launcher.enter",
+    destructive,
     "Enter launcher mode for OTA. Wait for devices.get to report an online launcher.",
     id,
   ],
   [
     "firmware.get",
+    readOnly,
     "Read live firmware metadata and get the official GitHub sources for customizing this board.",
     id,
   ],
   [
     "ota.prepare_upload",
+    additive,
     "Stage a local file without GitHub or a running device. Request a short-lived, single-object R2 upload credential, then PUT exactly size bytes to upload_url with the returned headers. After HTTP 201, enter launcher mode and call ota.install with the returned url and matching kind.",
     {
       ...id,
@@ -77,6 +115,7 @@ const defs = [
   ],
   [
     "ota.install",
+    { ...destructive, openWorldHint: true },
     "In launcher mode, stream an HTTPS artifact for the registered board. Use ota.prepare_upload for a local file. Supply your own board-compatible build or use https://api.esphub.ai/releases/{board}/ota for the official launcher or /releases/{board}/micropython for its runtime. For python, use a plain UTF-8 main.py URL. The receipt includes GitHub sources for all three layers. Follow install.done or install.failed in the returned UART session, then verify the next boot.",
     {
       ...id,
@@ -86,6 +125,7 @@ const defs = [
   ],
   [
     "programs.publish",
+    additive,
     "Stage main.py privately for this device for 24 hours. Pass the returned HTTPS URL to ota.install with kind python.",
     {
       ...id,
@@ -96,38 +136,49 @@ const defs = [
       },
     },
   ],
-  ["uart.sessions", "List boot sessions and consumed device RX cursors.", id],
+  [
+    "uart.sessions",
+    readOnly,
+    "List boot sessions and consumed device RX cursors.",
+    id,
+  ],
   [
     "uart.read",
+    readOnly,
     "Read serial TX records after an exclusive cursor.",
     { ...session, after: { type: "integer", minimum: 0 } },
   ],
   [
     "uart.write",
+    { ...destructive, openWorldHint: true },
     "Append a UTF-8 input record to this boot. Reuse request_id when retrying.",
     { ...session, ...strings("text", "request_id") },
   ],
   [
     "commands.get",
+    readOnly,
     "Read the state and execution receipt of a queued device command.",
     { ...id, ...strings("command_id") },
   ],
 ];
-export const tools = defs.map(([name, description, properties]) => ({
-  name,
-  description,
-  inputSchema: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      ...properties,
-      ...(queueable(name) ? strings("request_id") : {}),
+export const tools = defs.map(
+  ([name, annotations, description, properties]) => ({
+    name,
+    annotations,
+    description,
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        ...properties,
+        ...(queueable(name) ? strings("request_id") : {}),
+      },
+      required: Object.keys(properties).filter(
+        (k) => !["password", "after"].includes(k),
+      ),
     },
-    required: Object.keys(properties).filter(
-      (k) => !["password", "after"].includes(k),
-    ),
-  },
-}));
+  }),
+);
 function queueable(name) {
   return (
     name.startsWith("wifi.") ||
