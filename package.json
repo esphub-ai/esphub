@@ -17,7 +17,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "module",
   "bugs": {
     "url": "https://github.com/okou-ai/esphub/issues"
@@ -32,6 +32,8 @@
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
+    "playwright-core": "^1.65.1",
+    "prettier": "^3.10.1",
     "wrangler": "^4.166.0",
     "ws": "^8.23.0"
   }

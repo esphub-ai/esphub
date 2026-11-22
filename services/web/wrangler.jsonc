@@ -1,7 +1,18 @@
 {
- "name":"esphub-web","main":"src/worker.js","compatibility_date":"2026-10-01",
- "workers_dev":false,"preview_urls":false,
- "routes":[{"pattern":"esphub.ai","custom_domain":true},{"pattern":"www.esphub.ai","custom_domain":true},{"pattern":"app.esphub.ai","custom_domain":true}],
- "assets":{"directory":"./public","binding":"ASSETS","run_worker_first":true},
- "services":[{"binding":"API","service":"esphub-api"}]
+  "name": "esphub-web",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "esphub.ai", "custom_domain": true },
+    { "pattern": "www.esphub.ai", "custom_domain": true },
+    { "pattern": "app.esphub.ai", "custom_domain": true },
+  ],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+  },
+  "services": [{ "binding": "API", "service": "esphub-api" }],
 }

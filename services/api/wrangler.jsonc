@@ -1,10 +1,22 @@
 {
- "name":"esphub-api","main":"src/index.js","compatibility_date":"2026-10-01",
- "compatibility_flags":["nodejs_compat"],"workers_dev":false,"preview_urls":false,
- "routes":[{"pattern":"api.esphub.ai","custom_domain":true}],
- "vars":{"APP_ORIGIN":"https://app.esphub.ai"},
- "durable_objects":{"bindings":[{"name":"DEVICE","class_name":"Device"}]},
- "migrations":[{"tag":"v1","new_sqlite_classes":["Device"]}],
- "r2_buckets":[{"binding":"UART","bucket_name":"esphub-production"}],
- "ratelimits":[{"name":"AUTH_LIMIT","namespace_id":"1001","simple":{"limit":30,"period":60}}]
+  "name": "esphub-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "api.esphub.ai", "custom_domain": true }],
+  "vars": { "APP_ORIGIN": "https://app.esphub.ai" },
+  "durable_objects": {
+    "bindings": [{ "name": "DEVICE", "class_name": "Device" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Device"] }],
+  "r2_buckets": [{ "binding": "UART", "bucket_name": "esphub-production" }],
+  "ratelimits": [
+    {
+      "name": "AUTH_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 30, "period": 60 },
+    },
+  ],
 }
