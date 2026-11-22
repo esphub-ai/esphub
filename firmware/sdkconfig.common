@@ -14,7 +14,6 @@ CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
 CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
 # TLS to Cloudflare via the IDF certificate bundle.
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
-CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
 # Full ELF SHA-256 in app descriptors and core dumps, so a crash maps to exactly one released ELF.
 CONFIG_APP_RETRIEVE_LEN_ELF_SHA=64
 
