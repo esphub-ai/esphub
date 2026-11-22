@@ -58,3 +58,12 @@ void okou_agent_notify(void);
 bool okou_log_pending(void);
 cJSON *okou_hello_fields(void); /* hello object without "t" */
 extern okou_config_t g_okou_cfg;
+
+static inline bool okou_is_launcher(void)
+{
+#ifdef OKOU_LAUNCHER_BUILD
+    return true;
+#else
+    return g_okou_cfg.role == OKOU_ROLE_LAUNCHER;
+#endif
+}

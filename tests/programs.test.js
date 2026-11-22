@@ -149,7 +149,7 @@ test("publishing bounds UTF-8 byte size and OTA accepts only the three HTTPS tar
   );
 });
 
-test("runtime boot activates complete source and preserves main.py on a rejected or interrupted download", () => {
+test("runtime reports directly installed source, including broken programs and legacy OTA handoffs", () => {
   const script = `import os, sys, tempfile, types
 from pathlib import Path
 boot = compile(Path("firmware/pyrt/overlay/okl/_boot.py").read_text(), "_boot.py", "exec")
@@ -171,10 +171,10 @@ with tempfile.TemporaryDirectory() as root:
     staged.write_text("print('new')")
     exec(boot, {})
     assert main.read_text() == "print('new')" and not staged.exists()
-    staged.write_text("if (")
+    main.write_text("if (")
     exec(boot, {})
-    assert main.read_text() == "print('new')" and not staged.exists()
-    assert reports == [("available", b"print('old')"), ("available", b"print('new')"), ("available", b"print('new')")]
+    assert main.read_text() == "if (" and not staged.exists()
+    assert reports == [("available", b"print('old')"), ("available", b"print('new')"), ("available", b"if (")]
     main.unlink()
     exec(boot, {})
     assert reports[-1] == ("missing", b"")
@@ -183,11 +183,7 @@ with tempfile.TemporaryDirectory() as root:
     assert reports[-1] == ("too_large", b"")
     sys.modules["os"] = os
 `;
-  const output = execFileSync("python3", ["-I", "-c", script], {
-    encoding: "utf8",
-  });
-  assert.match(output, /program\.applied/);
-  assert.match(output, /program\.rejected/);
+  execFileSync("python3", ["-I", "-c", script]);
 });
 
 test("PaperDIY verification counts only press events from the two user buttons", () => {
