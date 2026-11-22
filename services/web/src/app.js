@@ -163,6 +163,41 @@ function row(d) {
     "</span><span>↗</span></a>"
   );
 }
+const mcpEndpoint = "https://api.esphub.ai/mcp";
+const setupPrompt = `Connect my MCP client to ESP Hub. Add a server named esphub using Streamable HTTP at ${mcpEndpoint}. Read my developer key from ESPHUB_MCP_KEY and send it as an Authorization bearer token. If the variable is missing, show me how to set it privately before starting the client. Preserve my other MCP servers. Once connected, call devices.list and show me my registered devices.`;
+const mcpClients = {
+  codex: {
+    instruction: "Run this command in your terminal.",
+    config: `codex mcp add esphub --url ${mcpEndpoint} --bearer-token-env-var ESPHUB_MCP_KEY`,
+  },
+  claude: {
+    instruction: "Merge this entry into your project’s .mcp.json file.",
+    config: JSON.stringify(
+      {
+        mcpServers: {
+          esphub: {
+            type: "http",
+            url: mcpEndpoint,
+            headers: { Authorization: "Bearer ${ESPHUB_MCP_KEY}" },
+          },
+        },
+      },
+      null,
+      2,
+    ),
+  },
+};
+function mcpSetup() {
+  return `<section class="mcp-setup" aria-labelledby="mcp-title">
+    <div class="toolbar"><h2 id="mcp-title">Connect an MCP client</h2>${button("key", "Issue MCP key")}</div>
+    <p>Set <code>ESPHUB_MCP_KEY</code> to your ESP Hub developer key in the environment where your client runs, then restart the client. <a href="/mcp">MCP reference ↗</a></p>
+    <div class="mcp-grid">
+      <div class="panel"><div class="toolbar"><h3>Client configuration</h3><select id="mcp-client" aria-label="MCP client"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
+        <p id="mcp-instruction"></p><pre id="mcp-config"></pre>${button("copy-config", "Copy configuration")}</div>
+      <div class="panel"><h3>Set up with your assistant</h3><p>Paste this prompt into the assistant that configures your client.</p>
+        <blockquote id="mcp-prompt">${esc(setupPrompt)}</blockquote>${button("copy-prompt", "Copy prompt")}</div>
+    </div></section>`;
+}
 async function fleet() {
   const ds = await op("devices.list");
   main.innerHTML =
@@ -171,7 +206,17 @@ async function fleet() {
     button("add", "+ Add device", true) +
     '</div></div><div class="board"><div class="bar"><input class="field" style="max-width:320px" id="filter" aria-label="Filter devices" placeholder="Filter devices"><span class="tag">' +
     ds.length +
-    ' REGISTERED</span></div><div id="rows"></div></div></section>';
+    ' REGISTERED</span></div><div id="rows"></div></div>' +
+    mcpSetup() +
+    "</section>";
+  const select = $("#mcp-client");
+  function showConfig() {
+    const client = mcpClients[select.value];
+    $("#mcp-instruction").textContent = client.instruction;
+    $("#mcp-config").textContent = client.config;
+  }
+  select.onchange = showConfig;
+  showConfig();
   const show = () => {
     $("#rows").innerHTML =
       ds
@@ -372,6 +417,21 @@ function credential(title, value) {
   );
 }
 async function action(k) {
+  if (k === "copy-config" || k === "copy-prompt") {
+    const source = $(k === "copy-config" ? "#mcp-config" : "#mcp-prompt");
+    try {
+      await navigator.clipboard.writeText(source.textContent);
+      notify(k === "copy-config" ? "Configuration copied" : "Prompt copied");
+    } catch {
+      const selection = window.getSelection(),
+        range = document.createRange();
+      range.selectNodeContents(source);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      notify("Text selected. Use your system copy command.");
+    }
+    return;
+  }
   if (k === "add") {
     dialog(
       "Register a device",
