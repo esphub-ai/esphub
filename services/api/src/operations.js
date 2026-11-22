@@ -151,6 +151,7 @@ const defs = [
       },
     },
   ],
+  ["logs.flush", additive, "Wake a compatible MQTT device to upload buffered logs from the selected boot. Use commands.get for the last acknowledged log sequence and the number of lines dropped this boot.", session],
   ["programs.get", readOnly, "Read the last reported main.py for the current or last-seen MicroPython boot, including offline devices.", id],
   [
     "uart.sessions",
@@ -205,6 +206,7 @@ function queueable(name) {
       "launcher.install",
       "ota.install",
       "firmware.get",
+      "logs.flush",
       "uart.write",
     ].includes(name)
   );
@@ -393,6 +395,11 @@ export async function operate(c, owner, name, a) {
   const key = a.request_id ?? crypto.randomUUID();
   const queue = (op, args, boot = null) =>
     internal(c, d.id, "enqueue", { device: d.id, op, args, boot, key });
+  if (name === "logs.flush") {
+    if (d.transport !== "mqtt" || d.boot_info?.log_flush !== true)
+      fail(409, "Log recall requires MQTT firmware that supports logs.flush");
+    return queue("logs.flush", {}, a.process_id);
+  }
   if (d.transport === "mqtt") {
     const info = d.boot_info;
     if (name === "uart.write")

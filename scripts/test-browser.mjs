@@ -217,6 +217,33 @@ try {
     .getByText(/serial echo: hello from browser/)
     .waitFor();
   await page.locator("#rx").filter({ hasText: /^1$/ }).waitFor();
+  // The integration device exercises WebSocket streaming. Switch only the
+  // browser-facing responses to a capable MQTT boot to verify the recall UI.
+  const fetchLogs = page.getByRole("button", { name: "Fetch device logs" });
+  assert.ok(await fetchLogs.isHidden());
+  const deviceRoute = "**/operations/devices.get";
+  await page.route(deviceRoute, async route => {
+    const response = await route.fetch();
+    const d = await response.json();
+    await route.fulfill({response, json:{...d, transport:"mqtt", info:{...d.info,log_flush:true}}});
+  });
+  const commandId = randomUUID();
+  let recallArgs;
+  await page.route("**/operations/logs.flush", route => {
+    recallArgs = route.request().postDataJSON();
+    return route.fulfill({json:{command_id:commandId,state:"queued"}});
+  });
+  await page.route("**/operations/commands.get", route => {
+    assert.equal(route.request().postDataJSON().command_id, commandId);
+    return route.fulfill({json:{state:"succeeded",process_id:pid,result:{last_acked_seq:17,dropped_lines:2}}});
+  });
+  await fetchLogs.click();
+  await page.getByText("Uploaded through log #17 · 2 lines dropped this boot").waitFor();
+  assert.equal(recallArgs.process_id, pid);
+  assert.ok(recallArgs.device_id && recallArgs.request_id);
+  await page.unroute(deviceRoute);
+  await page.unroute("**/operations/logs.flush");
+  await page.unroute("**/operations/commands.get");
   if (process.env.QA_SCREENSHOT)
     await page.screenshot({ path: process.env.QA_SCREENSHOT });
   await page.getByRole("button", { name: "Firmware", exact: true }).click();

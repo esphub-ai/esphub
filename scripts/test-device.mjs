@@ -243,7 +243,7 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 24);
+  assert.equal(listed.length, 25);
   assert.ok(!listed.some(t => t.name === "programs.install"));
   const readOnly = new Set([
     "commands.get",
@@ -255,7 +255,7 @@ try {
     "uart.sessions",
     "uart.read",
   ]);
-  const additiveTools = new Set(["wifi.ble_credential", "devices.create", "devices.create_virtual", "ota.prepare_upload", "programs.publish"]);
+  const additiveTools = new Set(["logs.flush", "wifi.ble_credential", "devices.create", "devices.create_virtual", "ota.prepare_upload", "programs.publish"]);
   const openWorldTools = new Set(["wifi.scan", "wifi.add", "launcher.install", "ota.install", "uart.write"]);
   for (const { name, annotations } of listed) {
     // Active Wi-Fi discovery observes nearby networks but still requires write scope.
@@ -526,6 +526,23 @@ try {
   await devicePost("frame",{t:"hello",board:"stopwatch",role:"app",boot_id:mqttBoot,micropython_version:"1.27.0",fw:{name:"micropython",version:"test-runtime"}});
   assert.equal((await uploadSource(mqttBoot,watch.token,"")).status,200);
   assert.equal((await op("programs.get",{device_id:watch.id},read)).source,"");
+  const flushArgs = { device_id: watch.id, process_id: mqttBoot, request_id: randomUUID() };
+  await assert.rejects(op("logs.flush", flushArgs), /Log recall requires/);
+  await devicePost("frame", {t:"hello", board:"stopwatch", role:"app", boot_id:mqttBoot, log_flush:true});
+  await assert.rejects(op("logs.flush", {...flushArgs,process_id:randomUUID()}), /Boot, transport or request ID conflict/);
+  const flush = await op("logs.flush", flushArgs);
+  assert.equal((await op("logs.flush", flushArgs)).command_id, flush.command_id);
+  const flushBoot = {boot_id:mqttBoot};
+  const batch = await devicePost("pull", flushBoot);
+  assert.deepEqual(batch.commands.map(c => [c.id,c.op]), [[flush.command_id,"logs.flush"]]);
+  assert.equal((await devicePost("start", {...flushBoot,id:flush.command_id})).start, true);
+  const logAck = await devicePost("frame", {...flushBoot,t:"log",seq:1,lines:[[1,"I","buffered log"]]});
+  assert.equal(logAck.seq, 1);
+  const flushData = {last_acked_seq:logAck.seq,dropped_lines:2};
+  await devicePost("frame", {...flushBoot,t:"res",ok:true,id:flush.command_id,data:flushData});
+  const flushStatus = await op("commands.get", {device_id:watch.id,command_id:flush.command_id}, read);
+  assert.equal(flushStatus.state,"succeeded");
+  assert.deepEqual(flushStatus.result,flushData);
   const queued=await op("uart.write",{device_id:watch.id,process_id:mqttBoot,request_id:randomUUID(),text:"test"});
   const body={boot_id:mqttBoot};
   const {commands}=await devicePost("pull",body);
@@ -545,7 +562,7 @@ try {
   assert.equal(archived.isError, true);
   await op("devices.delete", id);
   console.log(
-    "PASS Clerk OAuth discovery, 24 MCP tools, persistent virtual devices and idempotent reboots, BLE credential issuance and acknowledged rotation, private R2 uploads, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
+    "PASS Clerk OAuth discovery, 25 MCP tools, persistent virtual devices and idempotent reboots, BLE credential issuance and acknowledged rotation, private R2 uploads, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
   );
 } finally {
   ws?.close();

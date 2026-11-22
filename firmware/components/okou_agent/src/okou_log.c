@@ -155,6 +155,10 @@ static void capture(char *line, size_t n)
             p = q + 2;
         }
     }
+    // The HTTPS log upload itself emits this info line; keep it on local serial only.
+    static const char tls_success[] = "esp-x509-crt-bundle: Certificate validated";
+    if (level == 'I' && (size_t)(end - p) == sizeof(tls_success) - 1 &&
+        !memcmp(p, tls_success, sizeof(tls_success) - 1)) return;
     log_push(level, p, (size_t)(end - p));
 }
 
@@ -216,7 +220,7 @@ bool okou_log_pending(void)
     return pending;
 }
 
-size_t okou_log_build_frame(char *buf, size_t cap)
+size_t okou_log_build_frame(char *buf, size_t cap, uint32_t through)
 {
     portENTER_CRITICAL(&s_mux);
     uint32_t w = s_w;
@@ -228,7 +232,7 @@ size_t okou_log_build_frame(char *buf, size_t cap)
     size_t pos = (size_t)n;
     int count = 0;
     char text[CONFIG_OKOU_LOG_LINE_MAX];
-    while (s_s != w && count < 64) {
+    while (s_s != w && s_seq_s <= through && count < 64) {
         rec_hdr_t h;
         ring_get(s_s, &h, HDR_SZ);
         size_t len = h.len;
@@ -279,15 +283,13 @@ void okou_log_rewind(void)
     s_seq_s = s_seq_a;
 }
 
-void okou_log_stats(uint32_t *next_seq, uint32_t *sent_seq, uint32_t *acked_seq, uint32_t *dropped,
-                    size_t *used, size_t *cap)
+okou_log_stats_t okou_log_stats(void)
 {
     portENTER_CRITICAL(&s_mux);
-    *next_seq = s_seq_w;
-    *sent_seq = s_seq_s;
-    *acked_seq = s_seq_a;
-    *dropped = s_dropped_total;
-    *used = s_w - s_a;
-    *cap = s_cap;
+    okou_log_stats_t stats = {
+        .last_written = s_seq_w - 1, .last_sent = s_seq_s - 1, .last_acked = s_seq_a - 1,
+        .dropped = s_dropped_total, .used = s_w - s_a, .capacity = s_cap,
+    };
     portEXIT_CRITICAL(&s_mux);
+    return stats;
 }
