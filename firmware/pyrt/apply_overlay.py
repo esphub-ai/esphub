@@ -40,6 +40,11 @@ edit("main.c", "    MICROPY_BOARD_STARTUP();\n",
 
 # 3. Board: our sdkconfig fragment last, our frozen manifest, no Japanese/Korean 24 px fonts.
 bdir = f"boards/{board}"
+if board == "M5STACK_StopWatch":
+    # Match the Paper Color runtime's compact M5/Widgets display bindings.
+    # UIFlow's separate LVGL Python bindings reference fonts omitted from this image.
+    edit(f"{bdir}/mpconfigboard.cmake", "set(MICROPY_PY_LVGL 1)", "set(MICROPY_PY_LVGL 0)")
+    edit(f"{bdir}/mpconfigboard.cmake", "set(ADF_MODULE_ENABLE TRUE)", "set(ADF_MODULE_ENABLE FALSE)")
 frag = (ov / "sdkconfig.okl").read_text() + f'CONFIG_APP_PROJECT_VER="{version}"\n'
 profile = {"M5STACK_PaperColor": "paper-color", "M5STACK_StopWatch": "stopwatch"}[board]
 (m5 / bdir / "sdkconfig.okl").write_text(frag + f'CONFIG_OKOU_BOARD_PROFILE="{profile}"\n')
