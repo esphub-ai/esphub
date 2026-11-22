@@ -648,7 +648,7 @@ async function start() {
             );
           })
           .join("") +
-        '</div><p class="notice" style="margin-top:16px">Unzip and follow INSTALL.txt. The StopWatch and Paper Color use different partition tables and board bring-up.</p>',
+        '</div><p class="notice" style="margin-top:16px">Browse all versions on <a href="https://github.com/okou-ai/esphub/releases">GitHub Releases</a>. Unzip and follow INSTALL.txt. The StopWatch and Paper Color use different partition tables and board bring-up.</p>',
     );
     return;
   }

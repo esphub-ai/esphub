@@ -29,13 +29,6 @@ try {
 } finally {
   await probe.end();
 }
-await writeFile(
-  process.argv[2],
-  JSON.stringify({
-    DATABASE_URL: uri.href,
-    GITHUB_RELEASES_TOKEN: process.env.GITHUB_RELEASES_TOKEN,
-  }),
-  {
-    mode: 0o600,
-  },
-);
+await writeFile(process.argv[2], JSON.stringify({ DATABASE_URL: uri.href }), {
+  mode: 0o600,
+});

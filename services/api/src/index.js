@@ -18,10 +18,10 @@ api.onError((e, c) =>
 api.get("/health", (c) => c.json({ service: "esphub-api", ok: true }));
 api.get("/releases/:board/:asset", (c) =>
   releaseResponse(
-    c.env,
     c.req.param("board"),
     c.req.param("asset"),
     c.req.query("tag"),
+    c.req.query("tag") !== undefined,
   ),
 );
 api.use(

@@ -1,4 +1,4 @@
-import { releaseAsset } from "./releases.js";
+import { launcherManifest } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
 const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
@@ -211,20 +211,21 @@ export async function operate(c, owner, name, a) {
         409,
         "Start a launcher reporting the registered board profile first",
       );
-    const { asset, tag, version } = await releaseAsset(c.env, d.board, "ota");
-    if (
-      status.info.chip !== "esp32s3" ||
-      !/^sha256:[a-f0-9]{64}$/.test(asset.digest)
-    )
-      fail(409, "Release target or digest unavailable");
+    const manifest = await launcherManifest(d.board);
+    if (status.info.chip !== manifest.chip)
+      fail(409, "Release target mismatch");
     op = "install";
     args = {
       kind: "launcher",
       board: d.board,
-      url: "https://api.esphub.ai/releases/" + d.board + "/ota?tag=" + tag,
-      sha256: asset.digest.slice(7),
-      size: asset.size,
-      version,
+      url:
+        "https://api.esphub.ai/releases/" +
+        d.board +
+        "/ota?tag=launcher-v" +
+        manifest.version,
+      sha256: manifest.ota.sha256,
+      size: manifest.ota.size,
+      version: manifest.version,
     };
   }
   if (name === "firmware.install") {

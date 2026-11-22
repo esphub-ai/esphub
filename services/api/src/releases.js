@@ -1,74 +1,68 @@
 import { fail } from "./auth.js";
 
-const repository = "https://api.github.com/repos/okou-ai/esphub";
-const boards = ["paper-color", "stopwatch"];
-function headers(env, accept) {
-  const value = { Accept: accept, "User-Agent": "esphub-release-downloads" };
-  if (env.GITHUB_RELEASES_TOKEN)
-    value.Authorization = "Bearer " + env.GITHUB_RELEASES_TOKEN;
-  return value;
+const releases = "https://github.com/okou-ai/esphub/releases";
+const tagPattern = /^launcher-v(\d+\.\d+\.\d+)$/;
+const extensions = { manifest: ".json", usb: "-usb.zip", ota: "-ota.bin" };
+
+async function resolveTag(tag) {
+  if (!tag) {
+    const response = await fetch(releases + "/latest", {
+      method: "HEAD",
+      redirect: "manual",
+      cf: { cacheTtl: 60, cacheEverything: true },
+    });
+    const location = response.headers.get("Location") || "";
+    const prefix = releases + "/tag/";
+    if (response.status !== 302 || !location.startsWith(prefix))
+      fail(503, "Latest GitHub release unavailable");
+    tag = location.slice(prefix.length);
+  }
+  if (!tagPattern.test(tag)) fail(404, "Unknown launcher release");
+  return tag;
 }
-export async function releaseAsset(env, board, kind, tag = "latest") {
+
+function assetURL(board, kind, tag) {
   if (
-    !boards.includes(board) ||
-    !["manifest", "usb", "ota"].includes(kind) ||
-    (tag !== "latest" && !/^launcher-v\d+\.\d+\.\d+$/.test(tag))
+    !["paper-color", "stopwatch"].includes(board) ||
+    !Object.hasOwn(extensions, kind)
   )
     fail(404, "Unknown launcher download");
-  const route = tag === "latest" ? tag : "tags/" + tag;
-  const r = await fetch(repository + "/releases/" + route, {
-    headers: headers(env, "application/vnd.github+json"),
-    cf: { cacheEverything: true, cacheTtl: 60 },
-  });
-  if (!r.ok) fail(503, "GitHub release metadata is unavailable");
-  const release = await r.json();
-  const version = release.tag_name.match(/^launcher-v(\d+\.\d+\.\d+)$/)?.[1];
-  if (!version || release.draft || release.prerelease)
-    fail(503, "Invalid launcher release");
-  const ext = { manifest: ".json", usb: "-usb.zip", ota: "-ota.bin" }[kind];
-  const filename = "esphub-" + board + "-esp32s3-" + version + ext;
-  const asset = release.assets.find(
-    (a) => a.name === filename && a.state === "uploaded",
+  return (
+    releases +
+    "/download/" +
+    tag +
+    "/esphub-" +
+    board +
+    "-esp32s3-" +
+    tag.slice("launcher-v".length) +
+    extensions[kind]
   );
-  if (!asset || !Number.isSafeInteger(asset.id))
-    fail(404, "Release asset unavailable");
-  return { asset, tag: release.tag_name, version };
 }
 
-export async function download(env, asset) {
-  const r = await fetch(repository + "/releases/assets/" + asset.id, {
-    headers: headers(env, "application/octet-stream"),
-    redirect: "manual",
-    cache: "no-store",
+export async function launcherManifest(board) {
+  const tag = await resolveTag();
+  const r = await fetch(assetURL(board, "manifest", tag), {
+    redirect: "follow",
   });
-  if (r.status === 200) return r;
-  if (r.status !== 302) fail(503, "GitHub download unavailable");
-  const url = new URL(r.headers.get("Location"));
+  if (!r.ok) fail(503, "GitHub launcher manifest unavailable");
+  const m = await r.json();
   if (
-    url.protocol !== "https:" ||
-    !url.hostname.endsWith(".githubusercontent.com")
+    m.board !== board ||
+    m.chip !== "esp32s3" ||
+    "launcher-v" + m.version !== tag ||
+    !/^[a-f0-9]{64}$/.test(m.ota?.sha256) ||
+    !Number.isSafeInteger(m.ota.size) ||
+    m.ota.size <= 0
   )
-    fail(503, "Invalid GitHub download location");
-  return Response.redirect(url.href, 302);
+    fail(503, "Invalid launcher manifest");
+  return m;
 }
 
-export async function releaseResponse(env, board, kind, tag) {
-  const { asset } = await releaseAsset(env, board, kind, tag);
-  const source = await download(env, asset);
-  if (source.status === 302 && kind !== "ota") return source;
-  // ESP-IDF's streaming installer expects a 200 with a content length.
-  const r =
-    source.status === 302
-      ? await fetch(source.headers.get("Location"))
-      : source;
-  if (!r.ok) fail(503, "GitHub download unavailable");
-  return new Response(r.body, {
-    headers: {
-      "Content-Type":
-        kind === "manifest" ? "application/json" : "application/octet-stream",
-      "Content-Length": String(asset.size),
-      "Content-Disposition": 'attachment; filename="' + asset.name + '"',
-      "Cache-Control": "no-store",
-    },
-  });
+export async function releaseResponse(board, kind, tag, deviceDownload) {
+  const url = assetURL(board, kind, await resolveTag(tag));
+  if (!deviceDownload || kind !== "ota") return Response.redirect(url, 302);
+  // The deployed ESP-IDF installer expects a direct 200 response to a pinned download.
+  const r = await fetch(url, { redirect: "follow" });
+  if (r.status !== 200) fail(503, "GitHub launcher image unavailable");
+  return new Response(r.body, r);
 }
