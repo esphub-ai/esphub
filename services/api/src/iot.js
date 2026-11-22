@@ -18,7 +18,6 @@ async function request(env, host, path, method, body, service, headers = {}) {
   const client = new AwsClient({
     accessKeyId: env.IOT_ACCESS_KEY_ID,
     secretAccessKey: env.IOT_SECRET_ACCESS_KEY,
-    sessionToken: env.IOT_SESSION_TOKEN,
     region,
     service,
     retries: 0,

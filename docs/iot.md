@@ -30,7 +30,7 @@ Hello, command receipts, install outcomes and log batches request an application
 ## Deployment
 
 1. Apply `deploy/iot.yaml` in us-west-2. Set the stack’s `RelaySecret` and the GitHub production environment’s `IOT_RELAY_SECRET` to the same high-entropy secret. The stack uses IAM resources and outputs the managed policy to attach to the Worker AWS principal. Set `UplinkUrl` to the Worker endpoint for that environment.
-2. Configure `IOT_ACCOUNT_ID`, `IOT_DATA_ENDPOINT`, `IOT_ACCESS_KEY_ID` and `IOT_SECRET_ACCESS_KEY`. The data endpoint is the regional `iot:Data-ATS` hostname. Temporary AWS credentials also require `IOT_SESSION_TOKEN`.
+2. Configure `IOT_ACCOUNT_ID`, `IOT_DATA_ENDPOINT`, `IOT_ACCESS_KEY_ID` and `IOT_SECRET_ACCESS_KEY`. The data endpoint is the regional `iot:Data-ATS` hostname. Use an IAM access key pair for the API Worker.
 3. Test the stack, migration, Worker, launcher and MicroPython together in a separate environment. Enroll two devices, check isolation across topics, verify a cloud Wi-Fi save and a BLE rotation, then install an image and observe the next boot.
 4. Coordinate the production cutover. Existing firmware depends on removed endpoints; firmware for both boot roles and the new backend must be available together. Stage both images using the old control plane or arrange local USB recovery before switching the production Worker. Carry active work through to a terminal result before migration. The migration retires ambiguous in-flight work as unknown.
 
