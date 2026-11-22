@@ -107,9 +107,10 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 20);
+  assert.equal(listed.length, 21);
   assert.ok(!listed.some(t => t.name === "programs.install"));
   const readOnly = new Set([
+    "commands.get",
     "devices.list",
     "devices.get",
     "wifi.list",
@@ -339,6 +340,29 @@ try {
   await op("uart.write", {...data, process_id:app,text:"application message"});
   send({t:"uart.poll",after:0});
   assert.equal((await take(f => f.t === "uart.input")).text, "application message");
+  // Exercise the new firmware protocol against a real Worker and Postgres with the
+  // broker offline. A missed wake is recovered by the pull following subscription.
+  await sql`UPDATE esphub.devices SET cert_id=${"0".repeat(64)} WHERE id=${watch.id}`;
+  const mqttBoot=randomUUID().replaceAll("-","");
+  const devicePost=async(action,body,token=watch.token)=>{
+    const response=await fetch(base+"/backend/api/device/iot/"+action,{
+      method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(body)
+    });
+    assert.equal(response.status,200,await response.clone().text());
+    return response.json();
+  };
+  await devicePost("frame",{t:"hello",board:"stopwatch",role:"app",boot_id:mqttBoot});
+  const queued=await op("uart.write",{device_id:watch.id,process_id:mqttBoot,request_id:randomUUID(),text:"test"});
+  const body={boot_id:mqttBoot};
+  const {commands}=await devicePost("pull",body);
+  assert.deepEqual(commands.map(c=>[c.id,c.op,c.args]),[[queued.command_id,"term.write",{data:"test"}]]);
+  assert.equal((await devicePost("start",{...body,id:queued.command_id})).start,true);
+  assert.equal((await devicePost("start",{...body,id:queued.command_id})).start,false);
+  const result={...body,t:"res",ok:true,id:queued.command_id,data:{written:4}};
+  await devicePost("frame",result);
+  await devicePost("frame",result);
+  const status=await op("commands.get",{device_id:watch.id,command_id:queued.command_id},read);
+  assert.equal(status.state,"succeeded"); assert.deepEqual(status.result,result.data);
   await op("devices.delete", { device_id: watch.id });
   const archived = await call("tools/call", {
     name: "uart.write",
@@ -347,7 +371,7 @@ try {
   assert.equal(archived.isError, true);
   await op("devices.delete", id);
   console.log(
-    "PASS Clerk OAuth discovery, 20 MCP tools, private R2 uploads, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
+    "PASS Clerk OAuth discovery, 21 MCP tools, private R2 uploads, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
   );
 } finally {
   ws?.close();
