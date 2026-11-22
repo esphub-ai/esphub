@@ -2,6 +2,8 @@ menu "okou agent (esp-launcher SDK)"
 
     config OKOU_BOARD_PROFILE
         string "Board profile reported by a board-specific application"
+        default "stopwatch" if OKL_BOARD_M5_STOPWATCH
+        default "paper-color" if OKL_BOARD_GENERIC && IDF_TARGET_ESP32S3
         default ""
 
     config OKOU_NET_OPENETH

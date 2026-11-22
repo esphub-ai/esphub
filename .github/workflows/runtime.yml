@@ -15,6 +15,7 @@ jobs:
       matrix:
         include:
           - {board: paper-color, target: M5STACK_PaperColor}
+          - {board: cardputer-adv, target: M5STACK_CardputerADV}
           - {board: stopwatch, target: M5STACK_StopWatch}
     steps:
       - uses: actions/checkout@v4

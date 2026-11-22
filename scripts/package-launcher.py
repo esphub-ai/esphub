@@ -14,8 +14,8 @@ out = Path("../../setup-base" if setup_base else "../../dist")
 out.mkdir(exist_ok=True)
 prefix = f"esphub-{board}-{chip}-{version}"
 parts = json.loads((build / "flasher_args.json").read_text())
-table = Path("partitions") / ("16mb.csv" if board == "paper-color" or setup_base else "16mb-legacy.csv")
-offset = "0x20000" if board == "paper-color" or setup_base else "0x10000"
+table = Path("partitions") / ("8mb-cardputer-adv.csv" if board == "cardputer-adv" else "16mb-legacy.csv" if board == "stopwatch" and not setup_base else "16mb.csv")
+offset = "0x20000" if board != "stopwatch" or setup_base else "0x10000"
 files = parts["flash_files"]
 assert any(int(k, 16) == int(offset, 16) and v == "esp-launcher.bin" for k,v in files.items()), files
 assert (("CONFIG_OKL_BOARD_M5_STOPWATCH=y" in Path("sdkconfig.setup" if setup_base else "sdkconfig").read_text()) == (board == "stopwatch"))
@@ -32,7 +32,7 @@ with zipfile.ZipFile(out / usb, "w", zipfile.ZIP_DEFLATED) as z:
     z.write(build / "flash_args", "flash_args")
     z.write(table, "partitions.csv")
     z.writestr("INSTALL.txt", f"For {board} only. Unzip, then run from this directory:\nesptool.py --chip {chip} --port PORT write_flash @flash_args\nUse the ota.bin only for a launcher update on a compatible installed layout.\n")
-manifest = {"source_commit":os.environ["GITHUB_SHA"], "board":board, "chip":chip, "version":version, "flash_mb":16,
+manifest = {"source_commit":os.environ["GITHUB_SHA"], "board":board, "chip":chip, "version":version, "flash_mb":int(parts["flash_settings"]["flash_size"].removesuffix("MB")),
             "partition_sha256":digest(table.read_bytes()), "offsets":files,
             "ota":{"file":ota,"sha256":digest(image),"size":len(image)},
             "usb":{"file":usb,"sha256":digest((out/usb).read_bytes())}}

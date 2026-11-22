@@ -24,11 +24,7 @@
 #define CANDIDATE "/flash/.esphub-next.py"
 #define MAX_ATTEMPTS 3
 #define PROFILE_OFFSET (sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) + sizeof(esp_app_desc_t))
-#if CONFIG_OKL_BOARD_M5_STOPWATCH
-#define BOARD "stopwatch"
-#else
-#define BOARD "paper-color"
-#endif
+#define BOARD CONFIG_OKOU_BOARD_PROFILE
 
 static const char *TAG = "install";
 typedef struct {

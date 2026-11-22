@@ -62,13 +62,19 @@ edit("main.c", """    for (;;) {
 
 # 3. Board: our sdkconfig fragment last, our frozen manifest, no Japanese/Korean 24 px fonts.
 bdir = f"boards/{board}"
+if board == "M5STACK_CardputerADV":
+    # Include the official Adv keyboard stack in this board's frozen firmware.
+    with (m5 / "okl/manifest.py").open("a") as manifest:
+        manifest.write('\nfreeze("$(MPY_DIR)/../m5stack/libs", '
+                       '["driver/__init__.py", "driver/tca8418.py", "hardware/__init__.py", '
+                       '"hardware/keyboard/__init__.py", "hardware/keyboard/asciimap.py"])\n')
 if board == "M5STACK_StopWatch":
     # Match the Paper Color runtime's compact M5/Widgets display bindings.
     # UIFlow's separate LVGL Python bindings reference fonts omitted from this image.
     edit(f"{bdir}/mpconfigboard.cmake", "set(MICROPY_PY_LVGL 1)", "set(MICROPY_PY_LVGL 0)")
     edit(f"{bdir}/mpconfigboard.cmake", "set(ADF_MODULE_ENABLE TRUE)", "set(ADF_MODULE_ENABLE FALSE)")
 frag = (ov / "sdkconfig.okl").read_text() + f'CONFIG_APP_PROJECT_VER="{version}"\n'
-profile = {"M5STACK_PaperColor": "paper-color", "M5STACK_StopWatch": "stopwatch"}[board]
+profile = {"M5STACK_PaperColor": "paper-color", "M5STACK_StopWatch": "stopwatch", "M5STACK_CardputerADV": "cardputer-adv"}[board]
 (m5 / bdir / "sdkconfig.okl").write_text(frag + f'CONFIG_OKOU_BOARD_PROFILE="{profile}"\n')
 edit(f"{bdir}/mpconfigboard.cmake", f"    {bdir}/sdkconfig.board\n)",
      f"    {bdir}/sdkconfig.board\n    {bdir}/sdkconfig.okl\n)")

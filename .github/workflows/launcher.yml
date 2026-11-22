@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        board: [paper-color, stopwatch]
+        board: [paper-color, stopwatch, cardputer-adv]
     runs-on: ubuntu-latest
     container: espressif/idf:v5.4.1
     steps:

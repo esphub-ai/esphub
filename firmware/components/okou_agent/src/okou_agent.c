@@ -345,11 +345,7 @@ void okou_metric(const char *name, double value)
 /* IDF places this directly after esp_app_desc_t in the first image segment.
  * The launcher can check the artifact type and board before erasing a slot. */
 #if CONFIG_OKL_URL_OTA
-#if CONFIG_OKL_BOARD_M5_STOPWATCH
-#define OKOU_IMAGE_PROFILE "ESPHUB1/launcher/stopwatch"
-#else
-#define OKOU_IMAGE_PROFILE "ESPHUB1/launcher/paper-color"
-#endif
+#define OKOU_IMAGE_PROFILE "ESPHUB1/launcher/" CONFIG_OKOU_BOARD_PROFILE
 #elif CONFIG_OKOU_MICROPYTHON_RUNTIME
 #define OKOU_IMAGE_PROFILE "ESPHUB1/micropython/" CONFIG_OKOU_BOARD_PROFILE
 #endif
@@ -368,13 +364,7 @@ static void hello_fill(cJSON *o)
 #ifdef OKOU_IMAGE_PROFILE
     cJSON_AddStringToObject(o, "image_profile", image_profile);
 #endif
-#if CONFIG_OKL_BOARD_M5_STOPWATCH
-    cJSON_AddStringToObject(o, "board", "stopwatch");
-#elif CONFIG_OKL_BOARD_GENERIC && CONFIG_IDF_TARGET_ESP32S3
-    cJSON_AddStringToObject(o, "board", "paper-color");
-#else
     if (CONFIG_OKOU_BOARD_PROFILE[0]) cJSON_AddStringToObject(o, "board", CONFIG_OKOU_BOARD_PROFILE);
-#endif
     cJSON_AddStringToObject(o, "boot_id", s_boot_id);
     cJSON_AddStringToObject(o, "role", g_okou_cfg.role == OKOU_ROLE_LAUNCHER ? "launcher" : "app");
     cJSON *fw = cJSON_AddObjectToObject(o, "fw");
