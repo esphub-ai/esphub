@@ -67,7 +67,7 @@ if board == "M5STACK_CardputerADV":
     with (m5 / "okl/manifest.py").open("a") as manifest:
         manifest.write('\nfreeze("$(MPY_DIR)/../m5stack/libs", '
                        '["driver/__init__.py", "driver/tca8418.py", "hardware/__init__.py", '
-                       '"hardware/keyboard/__init__.py", "hardware/keyboard/asciimap.py"])\n')
+                       '"hardware/matrix_keyboard.py", "hardware/keyboard/__init__.py", "hardware/keyboard/asciimap.py"])\n')
 if board == "M5STACK_StopWatch":
     # Match the Paper Color runtime's compact M5/Widgets display bindings.
     # UIFlow's separate LVGL Python bindings reference fonts omitted from this image.
