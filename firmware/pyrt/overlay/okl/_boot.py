@@ -44,6 +44,17 @@ if _p:
         except (SyntaxError, ValueError, MemoryError) as exc:
             os.remove(".esphub-next.py")
             print("program.rejected", exc)
+    # Snapshot the file selected for this boot, including locally installed files.
+    try:
+        with open("main.py", "rb") as program:
+            data = program.read(32769)
+        if len(data) > 32768:
+            okou.report_program("too_large", b"")
+        else:
+            okou.report_program("available", data)
+        del data
+    except (OSError, MemoryError) as exc:
+        okou.report_program("missing" if getattr(exc, "errno", None) == 2 else "unreadable", b"")
 del _p
 
 micropython.alloc_emergency_exception_buf(256)

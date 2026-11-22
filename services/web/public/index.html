@@ -325,6 +325,13 @@
         border-bottom: 1px solid #dde2d8;
         border-radius: 0;
       }
+      .software {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: .5rem 1.5rem;
+      }
+      .software dd { margin: 0; overflow-wrap: anywhere; }
+      .device .desc { min-width: 0; overflow-wrap: anywhere; }
       .device:last-child {
         border-bottom: 0;
       }

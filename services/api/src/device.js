@@ -3,6 +3,7 @@ import { enqueue, retryDue, nextRetry } from "./commands.js";
 import { DurableObject } from "cloudflare:workers";
 import { Uploads, artifactBase } from "./uploads.js";
 import { Stream } from "./streams.js";
+import { softwareInventory } from "./software.js";
 function legacyRepl(info) {
   return (
     info?.role === "app" &&
@@ -17,8 +18,22 @@ export class Device extends DurableObject {
     this.uploads = new Uploads(ctx, env.UART);
     this.db = ctx.storage.sql;
     this.db.exec(
-      "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,started TEXT,info TEXT,rx_cursor INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS current_device(id TEXT, pid TEXT); CREATE TABLE IF NOT EXISTS writes(pid TEXT,k TEXT,seq INTEGER,PRIMARY KEY(pid,k)); CREATE TABLE IF NOT EXISTS programs(id TEXT PRIMARY KEY, source TEXT NOT NULL, expires INTEGER NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,started TEXT,info TEXT,rx_cursor INTEGER DEFAULT 0); CREATE INDEX IF NOT EXISTS boots_software ON boots(json_extract(info,'$.role'), json_extract(info,'$.mac'), json_extract(info,'$.board')); CREATE TABLE IF NOT EXISTS current_device(id TEXT, pid TEXT); CREATE TABLE IF NOT EXISTS writes(pid TEXT,k TEXT,seq INTEGER,PRIMARY KEY(pid,k)); CREATE TABLE IF NOT EXISTS programs(id TEXT PRIMARY KEY, source TEXT NOT NULL, expires INTEGER NOT NULL)",
     );
+  }
+  software(info) {
+    const other = info?.role === "app" ? "launcher" : "app";
+    const row =
+      info?.mac &&
+      this.db
+        .exec(
+          "SELECT info FROM boots WHERE json_extract(info,'$.role')=? AND json_extract(info,'$.mac')=? AND json_extract(info,'$.board')=? ORDER BY rowid DESC LIMIT 1",
+          other,
+          info.mac,
+          info.board ?? "",
+        )
+        .toArray()[0];
+    return softwareInventory(info, row && JSON.parse(row.info));
   }
   active() {
     return this.ctx.getWebSockets("device").find((s) => s.readyState === 1);
@@ -98,6 +113,42 @@ export class Device extends DurableObject {
     }
     const boot = this.current()?.pid,
       socket = this.active();
+    if (path === "/record-program") {
+      const { pid, status, source } = await req.json();
+      const current = this.current()?.pid;
+      const row =
+        current === pid &&
+        this.db.exec("SELECT info FROM boots WHERE pid=?", pid).toArray()[0];
+      if (
+        !row ||
+        softwareInventory(JSON.parse(row.info)).application?.kind !==
+          "micropython"
+      )
+        return Response.json(
+          { error: "Not the current MicroPython boot" },
+          { status: 409 },
+        );
+      await this.ctx.storage.put("main.py", {
+        process_id: pid,
+        status,
+        source,
+      });
+      return Response.json({ saved: true });
+    }
+    if (path === "/program") {
+      const row =
+        boot &&
+        this.db.exec("SELECT info FROM boots WHERE pid=?", boot).toArray()[0];
+      const app = this.software(row && JSON.parse(row.info)).application;
+      if (app?.kind !== "micropython")
+        return Response.json({ status: app ? "not_applicable" : "unreported" });
+      const snapshot = await this.ctx.storage.get("main.py");
+      return Response.json(
+        snapshot?.process_id === app.process_id
+          ? snapshot
+          : { process_id: app.process_id, status: "unreported" },
+      );
+    }
     if (path === "/summary") {
       const row =
         boot &&
@@ -107,11 +158,13 @@ export class Device extends DurableObject {
         online: !!socket && socket.deserializeAttachment()?.pid === boot,
         process_id: boot || null,
         info,
+        software: this.software(info),
         serial_input: !legacyRepl(info),
       });
     }
     if (path === "/revoke") {
       const { device } = await req.json();
+      await this.ctx.storage.delete("main.py");
       await this.armCommands(device);
       this.db.exec("UPDATE uploads SET write_until=0 WHERE write_until>0");
       if (socket) socket.close(1008, "Registration revoked");

@@ -108,6 +108,35 @@ async function authenticatedDevice(c) {
   if (!d) fail(401, "Invalid device token");
   return { ...d, hash, stub: c.env.DEVICE.get(c.env.DEVICE.idFromName(d.id)) };
 }
+api.put("/api/device/program/:pid", async (c) => {
+  const { stub } = await authenticatedDevice(c),
+    pid = c.req.param("pid");
+  let status = c.req.header("X-Program-Status");
+  if (
+    !/^[0-9a-f-]{8,36}$/i.test(pid) ||
+    !["available", "missing", "too_large", "unreadable"].includes(status)
+  )
+    fail(400, "Invalid program snapshot");
+  const bytes = await c.req.arrayBuffer();
+  if (bytes.byteLength > 32768) fail(413, "Program too large");
+  if (status !== "available" && bytes.byteLength)
+    fail(400, "Unexpected source");
+  let source = null;
+  if (status === "available") {
+    try {
+      source = new TextDecoder("utf-8", {
+        fatal: true,
+        ignoreBOM: true,
+      }).decode(bytes);
+    } catch {
+      status = "unreadable";
+    }
+  }
+  return stub.fetch("https://device/record-program", {
+    method: "POST",
+    body: JSON.stringify({ pid, status, source }),
+  });
+});
 api.post("/api/device/iot/:action", async (c) => {
   const d = await authenticatedDevice(c),
     db = c.get("sql"),

@@ -158,7 +158,8 @@ def module(name, **methods):
 with tempfile.TemporaryDirectory() as root:
     module("vfs", mount=lambda *a: None)
     module("esp32", Partition=types.SimpleNamespace(TYPE_DATA=1, find=lambda *a, **k: [object()]))
-    module("okou", term=lambda: None, safe_boot=lambda: False)
+    reports = []
+    module("okou", term=lambda: None, safe_boot=lambda: False, report_program=lambda *args: reports.append(args))
     module("micropython", alloc_emergency_exception_buf=lambda size: None)
     module("os", chdir=lambda path: os.chdir(root), rename=os.rename, remove=os.remove, dupterm=lambda *a: None)
     main = Path(root, "main.py")
@@ -173,6 +174,13 @@ with tempfile.TemporaryDirectory() as root:
     staged.write_text("if (")
     exec(boot, {})
     assert main.read_text() == "print('new')" and not staged.exists()
+    assert reports == [("available", b"print('old')"), ("available", b"print('new')"), ("available", b"print('new')")]
+    main.unlink()
+    exec(boot, {})
+    assert reports[-1] == ("missing", b"")
+    main.write_bytes(b"x" * 32769)
+    exec(boot, {})
+    assert reports[-1] == ("too_large", b"")
     sys.modules["os"] = os
 `;
   const output = execFileSync("python3", ["-I", "-c", script], {
