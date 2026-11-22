@@ -87,3 +87,6 @@ jobs:
           curl -fsSL https://api.esphub.ai/releases/paper-color/manifest | jq -e '.board == "paper-color"'
           curl -fsSL https://api.esphub.ai/releases/stopwatch/manifest | jq -e '.board == "stopwatch"'
           test "$(curl -s -o /dev/null -w '%{http_code}' https://app.esphub.ai/backend/auth/me)" = 401
+      - name: Retire database access to the former authentication tables
+        run: |
+          psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'REVOKE ALL PRIVILEGES ON esphub.credentials, esphub.challenges, esphub.access_tokens FROM esphub_runtime'

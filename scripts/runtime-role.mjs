@@ -13,9 +13,6 @@ try {
       await tx.unsafe(
         "CREATE ROLE esphub_runtime LOGIN PASSWORD '" + password + "'",
       );
-    await tx.unsafe(
-      "REVOKE ALL PRIVILEGES ON esphub.credentials, esphub.challenges, esphub.access_tokens FROM esphub_runtime",
-    );
     await tx.unsafe("GRANT USAGE ON SCHEMA esphub TO esphub_runtime");
     await tx.unsafe(
       "GRANT SELECT,INSERT,UPDATE,DELETE ON esphub.accounts, esphub.devices TO esphub_runtime",
