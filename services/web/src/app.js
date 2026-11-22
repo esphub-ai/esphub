@@ -163,7 +163,11 @@ function row(d) {
     "</span><span>↗</span></a>"
   );
 }
-const setupPrompt = `Connect esphub at ${mcpEndpoint} using HTTP and CIMD OAuth. Request devices:read and devices:write, then list my devices.`;
+const devicePrompt = `Connect to ${mcpEndpoint} with CIMD OAuth and the devices:read and devices:write scopes if needed. List my devices and ask what I want to do.
+
+For a new board, identify it over USB. Ask me if the model is unclear, then call devices.create and follow its setup instructions.
+
+For a program update, confirm the target and what I want it to do. Deploy the MicroPython program with programs.install and report the verified result.`;
 const workflows = [
   {
     key: "initialize",
@@ -204,16 +208,14 @@ const mcpClients = {
     ),
   },
 };
-function mcpSetup() {
-  return `<section class="mcp-setup" aria-labelledby="mcp-title">
-    <div class="toolbar"><h2 id="mcp-title">Connect an MCP client</h2></div>
-    <p>Sign in with your ESP Hub account to grant device access. <a href="/mcp">MCP reference ↗</a></p>
-    <div class="mcp-grid">
-      <div class="panel"><div class="toolbar"><h3>Client configuration</h3><select id="mcp-client" aria-label="MCP client"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
-        <p id="mcp-instruction"></p><pre id="mcp-config"></pre>${button("copy-config", "Copy configuration")}</div>
-      <div class="panel"><h3>Set up with your assistant</h3><p>Paste this prompt into the assistant that configures your client.</p>
-        <blockquote id="mcp-prompt">${esc(setupPrompt)}</blockquote>${button("copy-prompt", "Copy prompt")}</div>
-    </div></section>`;
+function clientConfiguration() {
+  return `<section class="mcp-setup" aria-label="Client configuration"><div class="mcp-grid"><div class="panel"><div class="toolbar"><h2>Client configuration</h2><select id="mcp-client" aria-label="MCP client"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
+    <p id="mcp-instruction"></p><pre id="mcp-config"></pre>${button("copy-config", "Copy configuration")}</div></div></section>`;
+}
+function devicePromptPanel() {
+  return `<section class="mcp-setup" aria-labelledby="mcp-title"><h2 id="mcp-title">Use ESP Hub with your assistant</h2>
+    <div class="mcp-grid"><div class="panel"><blockquote id="mcp-prompt">${esc(devicePrompt)}</blockquote>${button("copy-prompt", "Copy prompt")}</div></div>
+    <p><a href="/mcp">MCP reference and client configuration ↗</a></p></section>`;
 }
 async function fleet() {
   const ds = await op("devices.list");
@@ -224,16 +226,8 @@ async function fleet() {
     '</div></div><div class="board"><div class="bar"><input class="field" style="max-width:320px" id="filter" aria-label="Filter devices" placeholder="Filter devices"><span class="tag">' +
     ds.length +
     ' REGISTERED</span></div><div id="rows"></div></div>' +
-    mcpSetup() + workflowCards() +
+    devicePromptPanel() +
     "</section>";
-  const select = $("#mcp-client");
-  function showConfig() {
-    const client = mcpClients[select.value];
-    $("#mcp-instruction").textContent = client.instruction;
-    $("#mcp-config").textContent = client.config;
-  }
-  select.onchange = showConfig;
-  showConfig();
   const show = () => {
     $("#rows").innerHTML =
       ds
@@ -680,7 +674,7 @@ async function start() {
         link("/devices", "Client setup →") +
         " " +
         link("/explorer", "Open tool explorer ↗", true) +
-        workflowCards() + "<h2>Tools</h2><table><tr><th>Name</th><th>Capability</th></tr>" +
+        clientConfiguration() + workflowCards() + "<h2>Tools</h2><table><tr><th>Name</th><th>Capability</th></tr>" +
         ref
           .map(
             (t) =>
@@ -693,6 +687,14 @@ async function start() {
           .join("") +
         "</table>",
     );
+    const select = $("#mcp-client");
+    function showConfig() {
+      const client = mcpClients[select.value];
+      $("#mcp-instruction").textContent = client.instruction;
+      $("#mcp-config").textContent = client.config;
+    }
+    select.onchange = showConfig;
+    showConfig();
     return;
   }
   if (path[0] === "streams") {

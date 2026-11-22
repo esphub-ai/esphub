@@ -104,7 +104,18 @@ try {
   await page
     .context()
     .grantPermissions(["clipboard-read", "clipboard-write"], { origin });
-  const setup = page.getByRole("region", { name: "Connect an MCP client" });
+  const copyPrompt = page.getByRole("button", { name: "Copy prompt", exact: true });
+  await page.getByRole("region", { name: "Use ESP Hub with your assistant" }).waitFor();
+  assert.equal(await copyPrompt.count(), 1);
+  await copyPrompt.click();
+  const prompt = await page.evaluate(() => navigator.clipboard.readText());
+  assert.equal(prompt, await page.locator("#mcp-prompt").textContent());
+  for (const required of ["https://api.esphub.ai/mcp", "CIMD OAuth", "devices:read", "devices:write", "devices.create", "programs.install"])
+    assert.ok(prompt.includes(required));
+  if (process.env.QA_MCP_SCREENSHOT)
+    await page.screenshot({path: process.env.QA_MCP_SCREENSHOT, fullPage: true});
+  await page.getByRole("link", {name: /MCP reference and client configuration/}).click();
+  const setup = page.getByRole("region", {name: "Client configuration"});
   await setup.getByRole("button", { name: "Copy configuration" }).click();
   assert.equal(
     await page.evaluate(() => navigator.clipboard.readText()),
@@ -119,16 +130,6 @@ try {
     type: "http",
     url: "https://api.esphub.ai/mcp",
   });
-  await setup.getByRole("button", { name: "Copy prompt" }).click();
-  assert.equal(
-    await page.evaluate(() => navigator.clipboard.readText()),
-    await setup.locator("blockquote").textContent(),
-  );
-  assert.equal(
-    await setup.getByRole("button", { name: /issue.*key/i }).count(),
-    0,
-  );
-  assert.match(await setup.locator("blockquote").textContent(), /OAuth/);
   const workflows = page.getByRole("region", { name: "Device workflows" });
   for (const title of ["Initialize a device", "Update a program"]) {
     const card = workflows.getByRole("article").filter({ hasText: title });
@@ -138,12 +139,7 @@ try {
       await card.locator("blockquote").textContent(),
     );
   }
-  await setup.getByLabel("MCP client").selectOption("codex");
-  if (process.env.QA_MCP_SCREENSHOT)
-    await page.screenshot({
-      path: process.env.QA_MCP_SCREENSHOT,
-      fullPage: true,
-    });
+  await page.goto(origin + "/devices");
   await page.getByText("+ Add device").click();
   await page.locator("[name=name]").fill("Paper Color · integration");
   await page.getByRole("button", { name: "Register", exact: true }).click();
