@@ -115,7 +115,7 @@ const defs = [
   [
     "ota.prepare_upload",
     additive,
-    "Stage a local launcher or MicroPython binary without GitHub or a running device. Use programs.publish for Python source. Request a short-lived, single-object R2 upload credential, then PUT exactly size bytes to upload_url with the returned headers. After HTTP 201, enter launcher mode and call ota.install with the returned url and matching kind.",
+    "Returns a short-lived PUT URL, authorization headers, and an artifact URL for one file of the specified kind and byte size. A successful upload of exactly that size returns HTTP 201. The device can be offline.",
     {
       ...id,
       kind: { type: "string", enum: ["launcher", "micropython"] },
@@ -125,7 +125,7 @@ const defs = [
   [
     "ota.install",
     { ...destructive, openWorldHint: true },
-    "In launcher mode, stream an HTTPS artifact for the registered board. Use ota.prepare_upload for a local file. Supply your own board-compatible build or use https://api.esphub.ai/releases/{board}/ota for the official launcher or /releases/{board}/micropython for its runtime. For python, use a plain UTF-8 main.py URL. Omit url for the official launcher. Use commands.get for the result, then verify the next boot.",
+    "Installs an HTTPS artifact on the registered board from launcher mode. The kind selects a launcher, MicroPython runtime, or UTF-8 main.py. Omitting the URL for a launcher selects the official board release. The command result records the transfer outcome.",
     {
       ...id,
       kind: otaKind,
@@ -148,7 +148,7 @@ const defs = [
   [
     "logs.flush",
     additive,
-    "Wake a compatible MQTT device to upload buffered logs from the selected boot. Use commands.get for the last acknowledged log sequence and the number of lines dropped this boot.",
+    "Queues a buffered log upload for the selected boot on an MQTT device with log recall support. The completed command reports the last acknowledged log sequence and the number of lines dropped during that boot.",
     session,
   ],
   [
