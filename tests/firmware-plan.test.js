@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import {
+  appendFileSync,
+  cpSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import test from "node:test";
@@ -81,10 +88,22 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   after = snapshot();
   assert.deepEqual(select(before, after), { stopwatch: ["setup"] });
   before = after;
-  addBoard("new-board");
+  const advDir = "firmware/boards/cardputer-adv";
+  cpSync(new URL("../" + advDir, import.meta.url), join(cwd, advDir), {
+    recursive: true,
+  });
   after = snapshot();
   assert.deepEqual(select(before, after), {
-    "new-board": ["launcher", "micropython", "setup"],
+    "cardputer-adv": ["launcher", "micropython", "setup"],
+  });
+  before = after;
+  appendFileSync(
+    join(cwd, advDir, "micropython/manifest.py"),
+    "\n# test keyboard driver change\n",
+  );
+  after = snapshot();
+  assert.deepEqual(select(before, after), {
+    "cardputer-adv": ["micropython", "setup"],
   });
   before = after;
   put("firmware/components/okou_agent/src/sdk.c", "shared");
