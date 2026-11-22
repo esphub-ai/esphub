@@ -1,4 +1,5 @@
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
+import { maxUploadBytes } from "./uploads.js";
 import { updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
 import { launcherManifest } from "./releases.js";
@@ -8,6 +9,7 @@ const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
 const id = strings("device_id"),
   session = { ...id, ...strings("process_id") };
+const otaKind = { type: "string", enum: ["launcher", "micropython", "python"] };
 const defs = [
   ["devices.list", "List your registered devices.", {}],
   [
@@ -63,11 +65,20 @@ const defs = [
     id,
   ],
   [
-    "ota.install",
-    "In launcher mode, stream an HTTPS artifact for the registered board. Supply your own board-compatible build or use https://api.esphub.ai/releases/{board}/ota for the official launcher or /releases/{board}/micropython for its runtime. For python, use a plain UTF-8 main.py URL. The receipt includes GitHub sources for all three layers. Follow install.done or install.failed in the returned UART session, then verify the next boot.",
+    "ota.prepare_upload",
+    "Stage a local file without GitHub or a running device. Request a short-lived, single-object R2 upload credential, then PUT exactly size bytes to upload_url with the returned headers. After HTTP 201, enter launcher mode and call ota.install with the returned url and matching kind.",
     {
       ...id,
-      kind: { type: "string", enum: ["launcher", "micropython", "python"] },
+      kind: otaKind,
+      size: { type: "integer", minimum: 1, maximum: maxUploadBytes },
+    },
+  ],
+  [
+    "ota.install",
+    "In launcher mode, stream an HTTPS artifact for the registered board. Use ota.prepare_upload for a local file. Supply your own board-compatible build or use https://api.esphub.ai/releases/{board}/ota for the official launcher or /releases/{board}/micropython for its runtime. For python, use a plain UTF-8 main.py URL. The receipt includes GitHub sources for all three layers. Follow install.done or install.failed in the returned UART session, then verify the next boot.",
+    {
+      ...id,
+      kind: otaKind,
       url: { type: "string", maxLength: 1024 },
     },
   ],
@@ -124,7 +135,10 @@ export function validate(name, a) {
           !v.length ||
           v.length > (p.maxLength ?? 4096))) ||
       (p.enum && !p.enum.includes(v)) ||
-      (p.type === "integer" && (!Number.isSafeInteger(v) || v < 0))
+      (p.type === "integer" &&
+        (!Number.isSafeInteger(v) ||
+          v < (p.minimum ?? 0) ||
+          v > (p.maximum ?? Number.MAX_SAFE_INTEGER)))
     )
       fail(400, "Invalid " + k);
   }
@@ -134,6 +148,12 @@ export function validate(name, a) {
     (a.process_id && !/^[0-9a-f-]{8,36}$/i.test(a.process_id))
   )
     fail(400, "Invalid identifier");
+  if (
+    name === "ota.prepare_upload" &&
+    a.kind === "python" &&
+    a.size > programByteLimit
+  )
+    fail(400, "Artifact exceeds the size limit for this kind");
   if (a.name?.trim().length === 0 || a.name?.length > 64)
     fail(400, "Invalid name");
   for (const [k, max] of [
@@ -217,6 +237,8 @@ export async function operate(c, owner, name, a) {
     await internal(c, d.id, "revoke");
     return { deleted: true };
   }
+  if (name === "ota.prepare_upload")
+    return withSources(await internal(c, d.id, "prepare-upload", a));
   if (name === "programs.publish")
     return withSources(
       await internal(c, d.id, "publish", { source: a.source }),

@@ -233,3 +233,18 @@ body.set_servo_power.assert_not_called()
     input: provisioning("stackchan").verification_source,
   });
 });
+
+test("local upload sizes match the launcher limits", () => {
+  const device_id = crypto.randomUUID();
+  for (const [kind, limit] of [
+    ["python", 32768],
+    ["launcher", 4194304],
+    ["micropython", 4194304],
+  ]) {
+    validate("ota.prepare_upload", { device_id, kind, size: limit });
+    for (const size of [-1, 0, 1.5, limit + 1])
+      assert.throws(() =>
+        validate("ota.prepare_upload", { device_id, kind, size }),
+      );
+  }
+});

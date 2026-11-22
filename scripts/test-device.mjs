@@ -107,7 +107,7 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 19);
+  assert.equal(listed.length, 20);
   assert.ok(!listed.some(t => t.name === "programs.install"));
   const readOnly = new Set([
     "devices.list",
@@ -169,6 +169,29 @@ try {
   });
   assert.match(watch.verification_source, /Hello, M5Stack Stopwatch/);
   assert.match(watch.verification_source, /setBrightness/);
+
+  const local = url => base + "/backend" + new URL(url).pathname;
+  const localFiles = {};
+  for (const kind of ["python", "launcher", "micropython"]) {
+    const file = kind === "python" ? Buffer.from("print('R2')") : Buffer.alloc(200000, 0xe9);
+    const grant = await op("ota.prepare_upload", { ...id, kind, size: file.length });
+    const upload = (body, headers) => fetch(local(grant.upload_url), { method: "PUT", headers, body });
+    assert.equal((await upload(file, {})).status, 403);
+    assert.equal((await upload(file.subarray(1), grant.headers)).status, 400);
+    const response = await upload(file, grant.headers);
+    assert.equal(response.status, 201, await response.clone().text());
+    assert.equal((await response.json()).url, grant.url);
+    assert.equal((await upload(Buffer.alloc(file.length, 1), grant.headers)).status, 409);
+    const get = token => fetch(local(grant.url), { headers: { Authorization: "Bearer " + token, "Accept-Encoding": "identity" } });
+    assert.equal((await get(watch.token)).status, 404);
+    assert.equal((await fetch(local(grant.url))).status, 401);
+    const downloaded = await get(d.token);
+    assert.equal(downloaded.status, 200);
+    assert.equal(downloaded.headers.get("Content-Length"), String(file.length));
+    assert.ok(Buffer.from(await downloaded.arrayBuffer()).equals(file));
+    localFiles[kind] = grant.url;
+  }
+  const pending = await op("ota.prepare_upload", { ...id, kind: "launcher", size: 100 });
 
   const other = await issue("devices:read devices:write", {
     sub: otherSubject,
@@ -281,8 +304,13 @@ try {
   const entered = await op("launcher.enter", id);
   assert.equal(entered.mode, "launcher");
   assert.deepEqual(entered.sources, d.sources);
+  for (const [kind,url] of [["launcher",pending.url], ["launcher",localFiles.python]]) {
+    const rejected = await attempt("ota.install", { ...id, kind, url });
+    assert.equal(rejected.isError, true);
+    assert.match(rejected.content[0].text, /Upload this device/);
+  }
   for (const kind of ["python","launcher","micropython"]) {
-    const url = kind === "python" ? staged.url : "https://example.org/" + kind + ".bin";
+    const url = kind === "python" ? staged.url : kind === "launcher" ? localFiles.launcher : "https://example.org/micropython.bin";
     const receipt = await op("ota.install", { ...id, kind, url });
     assert.equal(receipt.accepted, true);
     assert.deepEqual(receipt.sources, d.sources);
@@ -310,7 +338,7 @@ try {
   assert.equal(archived.isError, true);
   await op("devices.delete", id);
   console.log(
-    "PASS Clerk OAuth discovery, 19 MCP tools, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
+    "PASS Clerk OAuth discovery, 20 MCP tools, private R2 uploads, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
   );
 } finally {
   ws?.close();

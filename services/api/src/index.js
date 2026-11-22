@@ -1,3 +1,4 @@
+import { maxUploadBytes } from "./uploads.js";
 import { releaseResponse } from "./releases.js";
 import { Hono } from "hono";
 import { withDatabase } from "./database.js";
@@ -41,14 +42,7 @@ api.use(
       "Mcp-Session-Id",
     ],
     exposeHeaders: ["WWW-Authenticate"],
-    allowMethods: ["GET", "POST", "OPTIONS"],
-  }),
-);
-api.use(
-  "*",
-  bodyLimit({
-    maxSize: 65536,
-    onError: (c) => c.json({ error: "Payload too large" }, 413),
+    allowMethods: ["GET", "POST", "PUT", "OPTIONS"],
   }),
 );
 api.use("*", async (c, next) => {
@@ -57,6 +51,36 @@ api.use("*", async (c, next) => {
   await next();
   if (c.res.status !== 101) c.header("Cache-Control", "no-store");
 });
+api.put("/uploads/:device/:artifact", async (c) => {
+  const { device, artifact } = c.req.param();
+  if (
+    ![device, artifact].every((id) =>
+      /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(id),
+    )
+  )
+    fail(404, "Unknown upload");
+  if (
+    !/^Bearer esh_upload_[A-Za-z0-9_-]{43}$/.test(
+      c.req.header("Authorization") ?? "",
+    )
+  )
+    fail(403, "Upload credential required");
+  const size = Number(c.req.header("Content-Length"));
+  if (!Number.isSafeInteger(size) || size <= 0)
+    fail(411, "Content-Length required");
+  if (size > maxUploadBytes) fail(413, "Upload too large");
+  const stub = c.env.DEVICE.get(c.env.DEVICE.idFromName(device));
+  return stub.fetch(
+    new Request("https://device/uploads/" + artifact, c.req.raw),
+  );
+});
+api.use(
+  "*",
+  bodyLimit({
+    maxSize: 65536,
+    onError: (c) => c.json({ error: "Payload too large" }, 413),
+  }),
+);
 api.all("/mcp", authenticateMcp, serveMcp);
 api.use("*", (c, next) =>
   withDatabase(c.env, (sql) => {

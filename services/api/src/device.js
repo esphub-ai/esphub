@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { Uploads, artifactBase } from "./uploads.js";
 import { Stream } from "./streams.js";
 function legacyRepl(info) {
   return (
@@ -11,6 +12,7 @@ export class Device extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.pending = new Map();
+    this.uploads = new Uploads(ctx, env.UART);
     this.db = ctx.storage.sql;
     this.db.exec(
       "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,started TEXT,info TEXT,rx_cursor INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS current_device(id TEXT, pid TEXT); CREATE TABLE IF NOT EXISTS writes(pid TEXT,k TEXT,seq INTEGER,PRIMARY KEY(pid,k)); CREATE TABLE IF NOT EXISTS programs(id TEXT PRIMARY KEY, source TEXT NOT NULL, expires INTEGER NOT NULL)",
@@ -30,14 +32,21 @@ export class Device extends DurableObject {
   }
   async alarm() {
     this.db.exec("DELETE FROM programs WHERE expires<=?", Date.now());
+    await this.uploads.expire();
     const next = this.db
-      .exec("SELECT min(expires) AS expires FROM programs")
+      .exec(
+        "SELECT min(expires) AS expires FROM (SELECT min(expires) AS expires FROM programs UNION ALL SELECT min(expires) FROM uploads)",
+      )
       .one().expires;
     if (next) await this.ctx.storage.setAlarm(next);
   }
   async fetch(req) {
     const url = new URL(req.url),
       path = url.pathname;
+    if (path.startsWith("/uploads/") && req.method === "PUT")
+      return this.uploads.put(path.slice("/uploads/".length), req);
+    if (path.startsWith("/artifacts/r2-"))
+      return this.uploads.download(path.slice("/artifacts/r2-".length));
     if (path.startsWith("/artifacts/")) {
       const row = this.db
         .exec(
@@ -81,6 +90,7 @@ export class Device extends DurableObject {
       });
     }
     if (path === "/revoke") {
+      this.db.exec("UPDATE uploads SET write_until=0 WHERE write_until>0");
       if (socket) socket.close(1008, "Registration revoked");
       return Response.json({ revoked: true });
     }
@@ -93,6 +103,7 @@ export class Device extends DurableObject {
           .toArray(),
       );
     const args = await req.json();
+    if (path === "/prepare-upload") return this.uploads.prepare(args);
     if (path === "/publish") {
       const id = crypto.randomUUID(),
         expires = Date.now() + 24 * 3600000;
@@ -208,6 +219,17 @@ export class Device extends DurableObject {
       if (info.image_profile !== "ESPHUB1/launcher/" + args.board)
         return Response.json(
           { error: "Upgrade this older launcher with launcher.install first" },
+          { status: 409 },
+        );
+      if (
+        args.url.startsWith(artifactBase) &&
+        !(await this.uploads.ready(args.url, args.kind))
+      )
+        return Response.json(
+          {
+            error:
+              "Upload this device’s file first and use its matching OTA kind",
+          },
           { status: 409 },
         );
       const transfer_id = crypto.randomUUID();

@@ -23,7 +23,7 @@ After `OKL-PROVISION-OK`, wait for the online MicroPython app and use the OTA pr
 
 ## OTA
 
-1. For generated Python, call `programs.publish` with the device ID and UTF-8 source (up to 32 KiB). It returns a private HTTPS URL valid for 24 hours. An existing HTTPS URL also works.
+1. For any local OTA file, use `ota.prepare_upload` and PUT the file as described below. If you already have an HTTPS download URL, use it directly. For generated Python, call `programs.publish` with the device ID and UTF-8 source (up to 32 KiB). It returns a private HTTPS URL valid for 24 hours. An existing HTTPS URL also works.
 2. Call `launcher.enter` with the device ID. Wait for `devices.get` to report an online launcher. Older launchers can upgrade once with `launcher.install`.
 3. Call `ota.install` with `device_id`, `kind` and `url`. Use a matching official or custom-built OTA binary for `launcher` or `micropython`, or a plain UTF-8 main.py file for `python`. Boot the matching OTA-capable runtime once to initialize its data volume before installing a program.
 4. Read `uart.read` from the returned boot and cursor. Match `install.done` or `install.failed` to the transfer ID. After the reboot, verify the new firmware identity or the program's startup output. A syntax error produces `program.rejected` and preserves the previous main.py.
@@ -40,9 +40,23 @@ Call `devices.get` to get `sources.launcher`, `sources.micropython` and `sources
 | `micropython` | Runtime integration in `firmware/pyrt/`, the board's `micropython/` directory and the linked UIFlow MicroPython upstream. To build a modified upstream, set the repository and commit in `firmware/pyrt/upstream.json`. | The board's `esphub-<board>-micropython-<version>.bin` release asset |
 | `python` | Start from the linked `hello.py` or write your own UTF-8 `main.py`. | The script itself, ready to run without compilation |
 
-For either binary, fork this repository, enable GitHub Actions in the fork, and commit your changes. Run **Actions → Board firmware → Run workflow** on your fork's `main` branch and enter the board directory name (for example, `paper-color`). The workflow builds missing or changed components, checks their board and image profiles, and publishes them to your fork's Releases. A main-branch push that touches firmware also starts this workflow. The build needs permission to write repository contents. Preserve the target chip, existing partition layout and `ESPHUB1/<kind>/<board>` image descriptor. Retain the hub connection and launcher-entry protocol if you want to manage the new firmware remotely.
+To build a binary with GitHub Actions, optionally fork this repository, enable GitHub Actions in the fork, and commit your changes. Run **Actions → Board firmware → Run workflow** on your fork's `main` branch and enter the board directory name (for example, `paper-color`). The workflow builds missing or changed components, checks their board and image profiles, and publishes them to your fork's Releases. A main-branch push that touches firmware also starts this workflow. The build needs permission to write repository contents. Preserve the target chip, existing partition layout and `ESPHUB1/<kind>/<board>` image descriptor. Retain the hub connection and launcher-entry protocol if you want to manage the new firmware remotely.
 
-Copy the binary's **download URL** from the public release. If you built locally, upload the same OTA binary to your own GitHub Release. For a script, either use a direct HTTPS file URL or pass the source to `programs.publish` for private staging. Enter launcher mode, then call `ota.install` with the registered device ID, the table's `kind` and that download URL. The launcher fetches the file directly. Use the receipt's `transfer_id`, `process_id` and `after` to verify the transfer and the next boot as described above.
+### Upload a local file
+
+A local build, a downloaded release or a file supplied by the user can all be installed. The build machine needs no GitHub account. If you already have a direct HTTPS download URL accessible to the device, skip the upload step.
+
+1. Call `ota.prepare_upload` with `device_id`, `kind` and the file's exact `size` in bytes. The device can be offline. This requires `devices:write`.
+2. PUT the raw file to `upload_url` using the returned `headers.Authorization`. For example, with the response saved privately as `grant.json` and the file path in `FILE`:
+
+   ```sh
+   curl --fail-with-body --request PUT --upload-file "$FILE" \
+     --header "Authorization: $(jq -r '.headers.Authorization' grant.json)" \
+     "$(jq -r '.upload_url' grant.json)"
+   ```
+
+   HTTP 201 confirms the bytes are in private R2 storage. The write credential is valid for 15 minutes and can create one object. The device's download URL is valid for 24 hours. Python files are limited to 32 KiB and firmware uploads to 4 MiB. The binary must also fit the board's target partition.
+3. Call `launcher.enter` and wait for launcher mode. Pass the upload response's `url` (or an existing direct download URL), `kind` and `device_id` to `ota.install`. Follow the transfer receipt and next boot to verify installation.
 
 ## Console and authentication
 
