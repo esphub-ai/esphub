@@ -1,0 +1,64 @@
+name: Build ESP Hub MicroPython
+description: Apply the board overlay and compile the MicroPython image.
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: m5stack/uiflow-micropython
+        ref: a61a29409f09f1f4bebae05e15c4bd6dcc4956b6
+        path: uiflow
+    - uses: actions/setup-python@v5
+      id: python
+      with:
+        python-version: "3.11"
+    - name: System packages
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git wget flex bison gperf quilt cmake ninja-build ccache \
+          libffi-dev libssl-dev dfu-util libusb-1.0-0
+    - name: Cache ESP-IDF v5.5.5
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.espressif
+          uiflow/esp-idf
+        key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24.04-idf-v5.5.5-py${{ steps.python.outputs.python-version }}
+    - name: ESP-IDF v5.5.5
+      working-directory: uiflow
+      shell: bash
+      run: |
+        source tools/ci.sh
+        ci_esp32_idf555_setup
+    - name: UIFlow submodules and patches
+      working-directory: uiflow
+      shell: bash
+      run: |
+        source esp-idf/export.sh
+        pip install future
+        make -C m5stack submodules
+        make -C m5stack patch
+        make -C m5stack littlefs
+    - name: Apply the esp-launcher overlay
+      shell: bash
+      run: |
+        target=$(jq -er .target "firmware/boards/$BOARD/micropython/profile.json")
+        echo "MP_TARGET=$target" >> "$GITHUB_ENV"
+        python3 firmware/pyrt/apply_overlay.py uiflow firmware "$BOARD" "$VERSION"
+    - name: Build
+      working-directory: uiflow
+      shell: bash
+      run: |
+        source esp-idf/export.sh
+        make -C m5stack BOARD="$MP_TARGET" build
+    - name: Verify and package the board runtime
+      shell: bash
+      run: |
+        image="uiflow/m5stack/build-${MP_TARGET}/micropython.bin"
+        python3 -c 'import sys; assert open(sys.argv[1], "rb").read(340)[288:].startswith(("ESPHUB1/micropython/" + sys.argv[2] + "\0").encode())' "$image" "$BOARD"
+        test "$(stat -c %s "$image")" -le 4194304
+        grep -Fx "CONFIG_OKOU_BOARD_PROFILE=\"$BOARD\"" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"
+        mkdir -p dist
+        cp "$image" "dist/esphub-$BOARD-micropython-$VERSION.bin"
+        cd dist && sha256sum *.bin > "esphub-$BOARD-micropython-$VERSION.sha256"

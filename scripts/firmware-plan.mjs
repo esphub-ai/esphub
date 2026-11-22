@@ -1,0 +1,181 @@
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFileSync, appendFileSync } from "node:fs";
+import { matchesGlob, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { publishedFirmware } from "../shared/firmware-releases.js";
+
+const sharedInputs = {
+  launcher: [
+    "firmware/launcher/**",
+    "firmware/components/**",
+    "firmware/sdkconfig.common",
+    "scripts/package-launcher.py",
+    ".github/actions/build-launcher/**",
+  ],
+  micropython: [
+    "firmware/pyrt/overlay/**",
+    "firmware/pyrt/apply_overlay.py",
+    "firmware/components/okou_agent/**",
+    ".github/actions/build-micropython/**",
+  ],
+  setup: ["scripts/package-setup.py", ".github/actions/build-kit/**"],
+};
+const digest = (value) =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex");
+
+export function profiles(ref, cwd = process.cwd()) {
+  if (!ref || /^0+$/.test(ref)) return {};
+  const git = (...args) =>
+    execFileSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  const files = new Map(
+    git("ls-tree", "-r", "-z", ref)
+      .split("\0")
+      .filter(Boolean)
+      .map((row) => {
+        const sep = row.indexOf("\t");
+        return [row.slice(sep + 1), row.slice(0, sep)];
+      }),
+  );
+  const json = (file) => JSON.parse(git("show", ref + ":" + file));
+  const boards = {};
+  for (const path of files.keys()) {
+    const match =
+      /^firmware\/boards\/([a-z0-9]+(?:-[a-z0-9]+)*)\/ci\.json$/.exec(path);
+    if (!match) continue;
+    const board = match[1],
+      dir = `firmware/boards/${board}`;
+    const { chip } = json(dir + "/board.json"),
+      jobs = json(path),
+      tasks = {};
+    for (const [kind, job] of Object.entries(jobs)) {
+      if (
+        !Object.hasOwn(sharedInputs, kind) ||
+        !files.has(`${dir}/${kind}/action.yml`)
+      )
+        throw Error(`Invalid CI task ${board}/${kind}`);
+      const patterns = [
+        ...sharedInputs[kind],
+        `${dir}/${kind}/**`,
+        ...(job.inputs ?? []),
+      ];
+      const sources = [...files].filter(
+        ([file]) =>
+          !file.endsWith(".md") &&
+          patterns.some((pattern) => matchesGlob(file, pattern)),
+      );
+      tasks[kind] = {
+        kind,
+        runner: job.runner ?? "ubuntu-24.04",
+        container: job.container ?? "",
+        fingerprint: digest([board, chip, job, sources]),
+      };
+    }
+    if (tasks.setup) {
+      if (!tasks.launcher || !tasks.micropython)
+        throw Error("USB setup requires both component tasks: " + board);
+      tasks.setup.fingerprint = digest([
+        tasks.setup.fingerprint,
+        tasks.launcher.fingerprint,
+        tasks.micropython.fingerprint,
+      ]);
+    }
+    boards[board] = { chip, tasks };
+  }
+  return boards;
+}
+
+export function boardPlans(
+  before,
+  after,
+  releases,
+  { version, manual = false, board: selected = "" },
+) {
+  if (selected && !Object.hasOwn(after, selected))
+    throw Error("Unknown board: " + selected);
+  const matrix = [];
+  for (const [board, { chip, tasks }] of Object.entries(after)) {
+    if (selected && selected !== board) continue;
+    const published = releases[board] ?? {},
+      changed = {};
+    for (const [kind, task] of Object.entries(tasks)) {
+      const touched =
+        manual || before[board]?.tasks[kind]?.fingerprint !== task.fingerprint;
+      changed[kind] =
+        touched && published[kind]?.fingerprint !== task.fingerprint;
+    }
+    if (!Object.values(changed).some(Boolean)) continue;
+    if (changed.setup) {
+      for (const kind of ["launcher", "micropython"]) {
+        if (published[kind]?.fingerprint !== tasks[kind].fingerprint)
+          changed[kind] = true;
+      }
+    }
+    const jobs = Object.values(tasks)
+      .filter((task) => changed[task.kind])
+      .map((task) => ({
+        ...task,
+        tag: `${task.kind}-${board}-v${version}`,
+        version,
+      }));
+    const components = jobs.filter((t) => t.kind !== "setup"),
+      kit = jobs.find((t) => t.kind === "setup");
+    const input = (kind) =>
+      components.find((t) => t.kind === kind) ?? published[kind];
+    matrix.push({
+      board,
+      chip,
+      jobs,
+      components,
+      kit: kit
+        ? {
+            ...kit,
+            launcher: input("launcher"),
+            micropython: input("micropython"),
+            local_launcher: !!changed.launcher,
+            local_micropython: !!changed.micropython,
+          }
+        : null,
+    });
+  }
+  return matrix;
+}
+
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH));
+  const manual = process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
+  const after = profiles(process.env.GITHUB_SHA),
+    before = profiles(event.pull_request?.base.sha || event.before);
+  const options = {
+    manual,
+    board: event.inputs?.board ?? "",
+    version: "1.1." + process.env.GITHUB_RUN_NUMBER,
+  };
+  let plans = boardPlans(before, after, {}, options);
+  if (plans.length) {
+    const releases = await publishedFirmware(
+      after,
+      fetch,
+      process.env.GH_TOKEN,
+    );
+    plans = boardPlans(before, after, releases, options);
+  }
+  appendFileSync(
+    process.env.GITHUB_OUTPUT,
+    `boards=${JSON.stringify(plans)}\n`,
+  );
+  console.log(
+    plans.length
+      ? plans
+          .map((p) => p.board + ": " + p.jobs.map((j) => j.kind).join(", "))
+          .join("\n")
+      : "No firmware inputs changed.",
+  );
+}

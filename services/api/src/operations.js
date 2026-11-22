@@ -1,3 +1,4 @@
+import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import { provisioning } from "./provisioning.js";
 import { launcherManifest } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
@@ -13,7 +14,7 @@ const defs = [
     "Identify the USB board first. Ask the user if uncertain. Register it and follow the returned provisioning prompt.",
     {
       ...strings("name"),
-      board: { enum: ["paper-color", "stopwatch", "cardputer-adv"], type: "string" },
+      board: { enum: Object.keys(boards), type: "string" },
     },
   ],
   ["devices.get", "Show device identity and live connection status.", id],
@@ -261,8 +262,8 @@ export async function operate(c, owner, name, a) {
       url:
         "https://api.esphub.ai/releases/" +
         d.board +
-        "/ota?tag=launcher-v" +
-        manifest.version,
+        "/ota?tag=" +
+        manifest.tag,
       sha256: manifest.ota.sha256,
       size: manifest.ota.size,
       version: manifest.version,

@@ -1,3 +1,4 @@
+import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import { issuer, portal, application, mcpEndpoint } from "../../../shared/identity.js";
 let clerk;
 async function loadClerk() {
@@ -29,7 +30,7 @@ const esc = (v) =>
         x
       ],
   );
-const boardName = { "paper-color": "Paper Color", stopwatch: "StopWatch", "cardputer-adv": "Cardputer-Adv" };
+const boardName = Object.fromEntries(Object.entries(boards).map(([id, b]) => [id, b.name]));
 const path = location.pathname.split("/").filter(Boolean),
   detail = path[0] === "device";
 let user,
@@ -384,9 +385,7 @@ async function action(k) {
     dialog(
       "Register a device",
       field("name", "Device name", "text", 'required maxlength="64"') +
-        '<label>Board<select class="field" name="board">' +
-          Object.entries(boardName).map(([board, name]) => `<option value="${board}">${name}</option>`).join("") +
-          '</select></label>',
+        '<label>Board<select class="field" name="board">' + Object.entries(boardName).map(([id, name]) => '<option value="' + esc(id) + '">' + esc(name) + '</option>').join('') + '</select></label>',
       "Register",
       async (a) => {
         const d = await op("devices.create", a);
@@ -530,7 +529,7 @@ async function explorer() {
     text: "help\n",
     source: 'print("Hello from EspHub")\n',
     name: "My board",
-    board: "paper-color",
+    board: Object.keys(boardName)[0],
     ssid: "",
     url: "",
     kind: "python",

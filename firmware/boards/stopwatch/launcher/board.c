@@ -1,7 +1,7 @@
 /*
  * Board bring-up run first in app_main.
  *
- * M5Stack StopWatch (CONFIG_OKL_BOARD_M5_STOPWATCH): the M5PM1 power manager (I2C 0x6E on
+ * M5Stack StopWatch: the M5PM1 power manager (I2C 0x6E on
  * SDA 47 / SCL 48) clears its power-hold register on every reset. Without re-asserting it the
  * device can drop power on battery, and its watchdog/I2C-sleep defaults must be neutralised.
  * Register map from m5stack/M5PM1 1.0.6 (the version e7h4n/coffee-watch pins):
@@ -14,7 +14,6 @@
 #include "sdkconfig.h"
 #include "esp_log.h"
 #include "launcher.h"
-#if CONFIG_OKL_BOARD_M5_STOPWATCH
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/i2c_master.h"
@@ -71,8 +70,3 @@ void board_init(void)
         ESP_LOGW(TAG, "stopwatch: PM1 not reachable; power hold NOT set (keep USB power attached)");
     }
 }
-#else
-void board_init(void)
-{
-}
-#endif

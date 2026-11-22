@@ -1,0 +1,6 @@
+{
+  "name": "Paper Color",
+  "model": "M5Stack Paper Color",
+  "chip": "esp32s3",
+  "flash_mb": 16
+}

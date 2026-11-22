@@ -1,4 +1,7 @@
-set(srcs "main.c" "install.c" "coredump_ops.c" "prov_common.c" "prov_serial.c" "board.c")
+set(srcs "main.c" "install.c" "coredump_ops.c" "prov_common.c" "prov_serial.c")
+if(NOT CMAKE_BUILD_EARLY_EXPANSION)
+    list(APPEND srcs "../../boards/${CONFIG_OKOU_BOARD_PROFILE}/launcher/board.c")
+endif()
 idf_component_register(SRCS ${srcs}
     INCLUDE_DIRS "."
     REQUIRES okou_agent app_update esp_http_client esp_partition mbedtls espcoredump nvs_flash json
