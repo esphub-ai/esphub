@@ -18,6 +18,7 @@
 #include "okou_agent.h"
 #include "okou_agent_ext.h"
 #include "launcher.h"
+#include "okou_ble.h"
 #include "sdkconfig.h"
 
 static const char *TAG = "launcher";
@@ -203,6 +204,9 @@ void app_main(void)
         if (autostart && (s_req_seen || s_stay)) {
             autostart = false;
         }
+#if CONFIG_OKOU_BLE_WIFI
+        if (okou_ble_busy()) continue;
+#endif
         if (autostart && !btn_since && now >= autostart_at) {
             autostart = false;
             okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);

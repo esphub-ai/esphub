@@ -76,6 +76,15 @@ for option in config.get("disable_cmake_options", []):
     assert count == 1, f"{path}: expected enabled {option}"
     path.write_text(text)
 frag = (ov / "sdkconfig.okl").read_text() + f'CONFIG_APP_PROJECT_VER="{version}"\n'
+ble_defaults = fw / "boards" / profile / "ble.defaults"
+if ble_defaults.exists():
+    frag += ble_defaults.read_text()
+    # The shared native agent owns the NimBLE host on provisioned Paper Color units.
+    # MicroPython resets the global GATT registry on .active(True); guard that call.
+    edit("../micropython/extmod/nimble/modbluetooth_nimble.c", "int mp_bluetooth_init(void) {",
+         "extern unsigned okou_ble_generation(void);\nint mp_bluetooth_init(void) {\n"
+         "    if (okou_ble_generation()) return MP_EBUSY;")
+
 (m5 / bdir / "sdkconfig.okl").write_text(frag + f'CONFIG_OKOU_BOARD_PROFILE="{profile}"\n')
 edit(f"{bdir}/mpconfigboard.cmake", f"    {bdir}/sdkconfig.board\n)",
      f"    {bdir}/sdkconfig.board\n    {bdir}/sdkconfig.okl\n)")

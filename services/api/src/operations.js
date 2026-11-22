@@ -1,3 +1,4 @@
+import { newBleSecret, issueBle } from "./ble.js";
 import { connected } from "./iot.js";
 import { artifactBase } from "./uploads.js";
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
@@ -61,6 +62,7 @@ const defs = [
     "Erase provisioning and saved networks on the device; USB setup is required again.",
     id,
   ],
+  ["wifi.ble_credential", additive, "Issue a private BLE provisioning credential for the registered Paper Color. Pass directly to the local host tool; do not display or log it.", id],
   [
     "wifi.list",
     readOnly,
@@ -181,7 +183,7 @@ export const tools = defs.map(
 );
 function queueable(name) {
   return (
-    name.startsWith("wifi.") ||
+    (name.startsWith("wifi.") && name !== "wifi.ble_credential") ||
     [
       "devices.reboot",
       "devices.reset",
@@ -288,11 +290,13 @@ export async function operate(c, owner, name, a) {
   const db = c.sql;
   if (name === "devices.create") {
     const secret = token("okl_dev_");
+    const bleSecret = a.board === "paper-color" ? newBleSecret() : null;
     const [d] =
-      await db`INSERT INTO esphub.devices(owner,name,board,token_hash) VALUES(${owner},${a.name.trim()},${a.board},${await digest(secret)}) RETURNING id,name,board`;
+      await db`INSERT INTO esphub.devices(owner,name,board,token_hash,ble_secret) VALUES(${owner},${a.name.trim()},${a.board},${await digest(secret)},${bleSecret}) RETURNING id,name,board`;
     return {
       ...d,
       token: secret,
+      ...(bleSecret ? { ble_secret: bleSecret } : {}),
       hub: "api.esphub.ai",
       ...provisioning(d.board),
       ...updateSources(d.board),
@@ -316,6 +320,7 @@ export async function operate(c, owner, name, a) {
     await db`SELECT id,name,board,transport,boot_id,boot_info FROM esphub.devices WHERE id=${a.device_id} AND owner=${owner}`;
   if (!d) fail(404, "Device not found");
   const withSources = (result) => ({ ...result, ...updateSources(d.board) });
+  if (name === "wifi.ble_credential") return issueBle(db, owner, d.id);
   if (name === "devices.get")
     return withSources({
       id: d.id,
@@ -332,9 +337,11 @@ export async function operate(c, owner, name, a) {
   }
   if (name === "devices.reissue") {
     const secret = token("okl_dev_");
-    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)},cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,transport='websocket',boot_id=NULL,boot_info=NULL WHERE owner=${owner} AND id=${d.id}`;
+    const bleSecret = d.board === "paper-color" ? newBleSecret() : null;
+    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,transport='websocket',boot_id=NULL,boot_info=NULL,ble_generation=1,
+      ble_secret=${bleSecret}, ble_pending=NULL, ble_pending_issued=false, ble_issued=false WHERE owner=${owner} AND id=${d.id}`;
     await internal(c, d.id, "revoke", { device: d.id });
-    return { token: secret };
+    return { token: secret, ...(bleSecret ? { ble_secret: bleSecret } : {}) };
   }
   if (name === "devices.delete") {
     await db`DELETE FROM esphub.devices WHERE id=${d.id} AND owner=${owner}`;

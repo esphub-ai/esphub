@@ -1,3 +1,4 @@
+import { syncBle } from "./ble.js";
 import { enroll, enabled } from "./iot.js";
 import { pull, receipt, retryDue } from "./commands.js";
 import { maxUploadBytes } from "./uploads.js";
@@ -135,6 +136,8 @@ api.post("/api/device/iot/:action", async (c) => {
   }
   if (d.transport !== "mqtt" || d.boot_id !== boot)
     fail(409, "Stale device session");
+  if (action === "frame" && m.t === "ble.installed")
+    return c.json((await syncBle(db, d.id, d.hash, m.generation)) ?? {});
   if (action === "start") {
     if (!/^[0-9a-f-]{36}$/.test(m.id ?? "")) fail(400, "Invalid command ID");
     const rows =
@@ -175,13 +178,13 @@ api.get("/api/device/programs/:artifact", async (c) => {
 api.get("/api/device/connect", async (c) => {
   if (c.req.header("Upgrade")?.toLowerCase() !== "websocket")
     fail(426, "WebSocket upgrade required");
-  const { id, stub, transport } = await authenticatedDevice(c);
+  const { id, hash: tokenHash, stub, transport } = await authenticatedDevice(c);
   if (transport === "mqtt") {
     const db = c.get("sql");
     await db`UPDATE esphub.devices SET transport='websocket',boot_id=NULL,boot_info=NULL WHERE id=${id} AND transport='mqtt'`;
   }
   return stub.fetch("https://device/connect", {
-    headers: { Upgrade: "websocket", "X-Device-ID": id },
+    headers: { Upgrade: "websocket", "X-Device-ID": id, "X-Device-Token-Hash": tokenHash },
   });
 });
 api.post("/operations/:name", async (c) => {

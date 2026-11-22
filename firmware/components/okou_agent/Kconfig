@@ -82,4 +82,8 @@ menu "okou agent (esp-launcher SDK)"
         bool "ESP Hub MicroPython runtime"
         default n
 
+    config OKOU_BLE_WIFI
+        bool "Native BLE Wi-Fi provisioning"
+        default n
+
 endmenu

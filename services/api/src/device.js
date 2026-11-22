@@ -1,4 +1,5 @@
 import { withDatabase } from "./database.js";
+import { syncBle } from "./ble.js";
 import { enqueue, retryDue, nextRetry } from "./commands.js";
 import { DurableObject } from "cloudflare:workers";
 import { Uploads, artifactBase } from "./uploads.js";
@@ -94,6 +95,7 @@ export class Device extends DurableObject {
         req.headers.get("X-Device-ID"),
       );
       this.ctx.acceptWebSocket(pair[1], ["device"]);
+      pair[1].serializeAttachment({ tokenHash: req.headers.get("X-Device-Token-Hash") });
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
     const boot = this.current()?.pid,
@@ -425,7 +427,7 @@ export class Device extends DurableObject {
           JSON.stringify(m),
         );
         this.db.exec("UPDATE current_device SET pid=?", pid);
-        ws.serializeAttachment({ pid, legacyRepl: legacyRepl(m) });
+        ws.serializeAttachment({ pid, legacyRepl: legacyRepl(m), tokenHash: ws.deserializeAttachment()?.tokenHash });
         const tx = this.stream(pid, "tx");
         await Promise.all([tx.init(), this.stream(pid, "rx").init()]);
         this.rxLast = (await this.stream(pid, "rx").head()).last;
@@ -434,6 +436,11 @@ export class Device extends DurableObject {
       }
       const pid = ws.deserializeAttachment()?.pid;
       if (!pid || pid !== this.current()?.pid) return;
+      if (m.t === "ble.installed") {
+        const offer = await withDatabase(this.env, (sql) => syncBle(sql, this.current().id, ws.deserializeAttachment()?.tokenHash, m.generation));
+        if (offer) ws.send(JSON.stringify(offer));
+        return;
+      }
       if (
         m.t === "uart.poll" &&
         Number.isSafeInteger(m.after) &&
