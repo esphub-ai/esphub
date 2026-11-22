@@ -1,3 +1,5 @@
+import { connected } from "./iot.js";
+import { artifactBase } from "./uploads.js";
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import { maxUploadBytes } from "./uploads.js";
 import { updateSources } from "./update-sources.js";
@@ -105,6 +107,11 @@ const defs = [
     "Append a UTF-8 input record to this boot. Reuse request_id when retrying.",
     { ...session, ...strings("text", "request_id") },
   ],
+  [
+    "commands.get",
+    "Read the state and execution receipt of a queued device command.",
+    { ...id, ...strings("command_id") },
+  ],
 ];
 export const tools = defs.map(([name, description, properties]) => ({
   name,
@@ -112,12 +119,29 @@ export const tools = defs.map(([name, description, properties]) => ({
   inputSchema: {
     type: "object",
     additionalProperties: false,
-    properties,
+    properties: {
+      ...properties,
+      ...(queueable(name) ? strings("request_id") : {}),
+    },
     required: Object.keys(properties).filter(
       (k) => !["password", "after"].includes(k),
     ),
   },
 }));
+function queueable(name) {
+  return (
+    name.startsWith("wifi.") ||
+    [
+      "devices.reboot",
+      "devices.reset",
+      "launcher.enter",
+      "launcher.install",
+      "ota.install",
+      "firmware.get",
+      "uart.write",
+    ].includes(name)
+  );
+}
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 export function validate(name, a) {
   const t = tools.find((t) => t.name === name);
@@ -143,6 +167,7 @@ export function validate(name, a) {
       fail(400, "Invalid " + k);
   }
   if (
+    (a.command_id && !uuid.test(a.command_id)) ||
     (a.device_id && !uuid.test(a.device_id)) ||
     (a.request_id && !uuid.test(a.request_id)) ||
     (a.process_id && !/^[0-9a-f-]{8,36}$/i.test(a.process_id))
@@ -198,6 +223,15 @@ export async function internal(c, id, path, args) {
   if (!r.ok) fail(r.status, j.error || "Device operation failed");
   return j;
 }
+async function summary(c, d) {
+  if (d.transport !== "mqtt") return internal(c, d.id, "summary");
+  return {
+    online: await connected(c.env, d.id),
+    process_id: d.boot_id,
+    info: d.boot_info,
+    serial_input: true,
+  };
+}
 export async function operate(c, owner, name, a) {
   validate(name, a);
   const db = c.sql;
@@ -215,26 +249,45 @@ export async function operate(c, owner, name, a) {
   }
   if (name === "devices.list") {
     const ds =
-      await db`SELECT id,name,board,created_at FROM esphub.devices WHERE owner=${owner} ORDER BY created_at`;
+      await db`SELECT id,name,board,created_at,transport,boot_id,boot_info FROM esphub.devices WHERE owner=${owner} ORDER BY created_at`;
     return await Promise.all(
-      ds.map(async (d) => ({ ...d, ...(await internal(c, d.id, "summary")) })),
+      ds.map(async (d) => ({
+        id: d.id,
+        name: d.name,
+        board: d.board,
+        created_at: d.created_at,
+        transport: d.transport,
+        ...(await summary(c, d)),
+      })),
     );
   }
   const [d] =
-    await db`SELECT id,name,board FROM esphub.devices WHERE id=${a.device_id} AND owner=${owner}`;
+    await db`SELECT id,name,board,transport,boot_id,boot_info FROM esphub.devices WHERE id=${a.device_id} AND owner=${owner}`;
   if (!d) fail(404, "Device not found");
   const withSources = (result) => ({ ...result, ...updateSources(d.board) });
   if (name === "devices.get")
-    return withSources({ ...d, ...(await internal(c, d.id, "summary")) });
+    return withSources({
+      id: d.id,
+      name: d.name,
+      board: d.board,
+      transport: d.transport,
+      ...(await summary(c, d)),
+    });
+  if (name === "commands.get") {
+    const [row] =
+      await db`SELECT id AS command_id,state,result,claimed_boot AS process_id FROM esphub.device_commands WHERE device_id=${d.id} AND id=${a.command_id}`;
+    if (!row) fail(404, "Unknown command");
+    return row;
+  }
   if (name === "devices.reissue") {
     const secret = token("okl_dev_");
-    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)} WHERE owner=${owner} AND id=${d.id}`;
-    await internal(c, d.id, "revoke");
+    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)},cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,transport='websocket',boot_id=NULL,boot_info=NULL WHERE owner=${owner} AND id=${d.id}`;
+    await internal(c, d.id, "revoke", { device: d.id });
     return { token: secret };
   }
   if (name === "devices.delete") {
     await db`DELETE FROM esphub.devices WHERE id=${d.id} AND owner=${owner}`;
-    await internal(c, d.id, "revoke");
+    await internal(c, d.id, "revoke", { device: d.id });
     return { deleted: true };
   }
   if (name === "ota.prepare_upload")
@@ -243,6 +296,33 @@ export async function operate(c, owner, name, a) {
     return withSources(
       await internal(c, d.id, "publish", { source: a.source }),
     );
+  const key = a.request_id ?? crypto.randomUUID();
+  const queue = (op, args, boot = null) =>
+    internal(c, d.id, "enqueue", { device: d.id, op, args, boot, key });
+  if (d.transport === "mqtt") {
+    const info = d.boot_info;
+    if (name === "uart.write")
+      return queue("term.write", { data: a.text }, a.process_id);
+    if (name === "launcher.enter")
+      return info?.role === "launcher"
+        ? { mode: "launcher", process_id: d.boot_id }
+        : queue("reboot", { target: "launcher" }, d.boot_id);
+    if (name === "ota.install") {
+      if (
+        info?.role !== "launcher" ||
+        info.board !== d.board ||
+        info.image_profile !== "ESPHUB1/launcher/" + d.board
+      )
+        fail(409, "Start a compatible launcher first");
+      if (a.url.startsWith(artifactBase))
+        await internal(c, d.id, "check-upload", { url: a.url, kind: a.kind });
+      return queue(
+        "install",
+        { board: d.board, url: a.url, kind: a.kind, transfer_id: key },
+        d.boot_id,
+      );
+    }
+  }
   if (name === "launcher.enter")
     return withSources(await internal(c, d.id, "enter", { board: d.board }));
   if (name === "ota.install")
@@ -279,7 +359,7 @@ export async function operate(c, owner, name, a) {
   if (name === "devices.reset") op = "provision.reset";
   if (name === "firmware.get") op = "status";
   if (name === "launcher.install") {
-    const status = await internal(c, d.id, "summary");
+    const status = await summary(c, d);
     if (
       !status.online ||
       status.info?.role !== "launcher" ||
@@ -301,11 +381,14 @@ export async function operate(c, owner, name, a) {
         d.board +
         "/ota?tag=" +
         manifest.tag,
+      ...(d.transport === "mqtt" ? { transfer_id: key } : {}),
       sha256: manifest.ota.sha256,
       size: manifest.ota.size,
       version: manifest.version,
     };
   }
+  if (d.transport === "mqtt")
+    return queue(op, args, op === "install" ? d.boot_id : null);
   const { data } = await internal(c, d.id, "rpc", { op, args });
   return name === "firmware.get" || name === "launcher.install"
     ? withSources(data)
