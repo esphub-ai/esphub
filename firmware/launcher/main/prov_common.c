@@ -8,6 +8,7 @@
 #include "cJSON.h"
 #include "okou_agent_ext.h"
 #include "launcher.h"
+#include "okou_ble.h"
 
 static bool str_field(const cJSON *o, const char *k, size_t max, const char **out, char *err, size_t n)
 {
@@ -66,6 +67,13 @@ bool prov_apply(const char *line, char *err, size_t n)
             }
         }
     }
+#if CONFIG_OKOU_BLE_WIFI
+    const cJSON *ble = cJSON_GetObjectItemCaseSensitive(j, "ble_secret");
+    if (ok && ble && (!dtok || !cJSON_IsString(ble) || okou_ble_install(1, ble->valuestring, true) != ESP_OK)) {
+        snprintf(err, n, "invalid BLE bootstrap or NVS write failed");
+        ok = false;
+    }
+#endif
     cJSON_Delete(j);
     return ok;
 }

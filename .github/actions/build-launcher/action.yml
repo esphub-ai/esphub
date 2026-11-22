@@ -16,6 +16,7 @@ runs:
         source "$IDF_PATH/export.sh"
         dir="../boards/$BOARD/launcher"
         defaults="../sdkconfig.common;sdkconfig.defaults;$dir/sdkconfig.defaults"
+        if [[ -f "$dir/../ble.defaults" ]]; then defaults+=";$dir/../ble.defaults"; fi
         args=()
         package=()
         if [[ "$FRESH_LAYOUT" == true ]]; then

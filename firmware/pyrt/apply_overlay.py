@@ -76,6 +76,9 @@ for option in config.get("disable_cmake_options", []):
     assert count == 1, f"{path}: expected enabled {option}"
     path.write_text(text)
 frag = (ov / "sdkconfig.okl").read_text() + f'CONFIG_APP_PROJECT_VER="{version}"\n'
+ble_defaults = fw / "boards" / profile / "ble.defaults"
+if ble_defaults.exists():
+    frag += ble_defaults.read_text()
 (m5 / bdir / "sdkconfig.okl").write_text(frag + f'CONFIG_OKOU_BOARD_PROFILE="{profile}"\n')
 edit(f"{bdir}/mpconfigboard.cmake", f"    {bdir}/sdkconfig.board\n)",
      f"    {bdir}/sdkconfig.board\n    {bdir}/sdkconfig.okl\n)")

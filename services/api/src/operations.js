@@ -1,3 +1,4 @@
+import { newBleSecret, issueBle } from "./ble.js";
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import { maxUploadBytes } from "./uploads.js";
 import { updateSources } from "./update-sources.js";
@@ -41,6 +42,7 @@ const defs = [
     "Erase provisioning and saved networks on the device; USB setup is required again.",
     id,
   ],
+  ["wifi.ble_credential", "Issue a private BLE provisioning credential for the registered Paper Color. Pass directly to the local host tool; do not display or log it.", id],
   ["wifi.list", "Read saved Wi-Fi networks and the active connection.", id],
   ["wifi.scan", "Scan Wi-Fi networks visible to the device.", id],
   [
@@ -203,11 +205,13 @@ export async function operate(c, owner, name, a) {
   const db = c.sql;
   if (name === "devices.create") {
     const secret = token("okl_dev_");
+    const bleSecret = a.board === "paper-color" ? newBleSecret() : null;
     const [d] =
-      await db`INSERT INTO esphub.devices(owner,name,board,token_hash) VALUES(${owner},${a.name.trim()},${a.board},${await digest(secret)}) RETURNING id,name,board`;
+      await db`INSERT INTO esphub.devices(owner,name,board,token_hash,ble_secret) VALUES(${owner},${a.name.trim()},${a.board},${await digest(secret)},${bleSecret}) RETURNING id,name,board`;
     return {
       ...d,
       token: secret,
+      ...(bleSecret ? { ble_secret: bleSecret } : {}),
       hub: "api.esphub.ai",
       ...provisioning(d.board),
       ...updateSources(d.board),
@@ -224,6 +228,7 @@ export async function operate(c, owner, name, a) {
     await db`SELECT id,name,board FROM esphub.devices WHERE id=${a.device_id} AND owner=${owner}`;
   if (!d) fail(404, "Device not found");
   const withSources = (result) => ({ ...result, ...updateSources(d.board) });
+  if (name === "wifi.ble_credential") return issueBle(db, owner, d.id);
   if (name === "devices.get")
     return withSources({ ...d, ...(await internal(c, d.id, "summary")) });
   if (name === "devices.reissue") {

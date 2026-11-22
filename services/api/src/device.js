@@ -1,3 +1,5 @@
+import { withDatabase } from "./database.js";
+import { syncBle } from "./ble.js";
 import { DurableObject } from "cloudflare:workers";
 import { Uploads, artifactBase } from "./uploads.js";
 import { Stream } from "./streams.js";
@@ -353,11 +355,20 @@ export class Device extends DurableObject {
         const tx = this.stream(pid, "tx");
         await Promise.all([tx.init(), this.stream(pid, "rx").init()]);
         this.rxLast = (await this.stream(pid, "rx").head()).last;
+        if (m.ble_generation) {
+          const offer = await withDatabase(this.env, (sql) => syncBle(sql, this.current().id, m.ble_generation));
+          if (offer) ws.send(JSON.stringify(offer));
+        }
         ws.send(JSON.stringify({ t: "ack", seq: (await tx.head()).source }));
         return;
       }
       const pid = ws.deserializeAttachment()?.pid;
       if (!pid || pid !== this.current()?.pid) return;
+      if (m.t === "ble.installed") {
+        const offer = await withDatabase(this.env, (sql) => syncBle(sql, this.current().id, m.generation));
+        if (offer) ws.send(JSON.stringify(offer));
+        return;
+      }
       if (
         m.t === "log" &&
         Array.isArray(m.lines) &&

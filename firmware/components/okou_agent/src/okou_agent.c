@@ -31,6 +31,7 @@
 #include "driver/gpio.h"
 #include "sdkconfig.h"
 #include "okou_priv.h"
+#include "okou_ble.h"
 
 #define TAG OKOU_TAG
 #define US_PER_MS 1000LL
@@ -557,6 +558,9 @@ static void send_hello(void)
     cJSON *o = cJSON_CreateObject();
     cJSON_AddStringToObject(o, "t", "hello");
     hello_fill(o);
+#if CONFIG_OKOU_BLE_WIFI
+    cJSON_AddNumberToObject(o, "ble_generation", okou_ble_generation());
+#endif
     char *s = cJSON_PrintUnformatted(o);
     cJSON_Delete(o);
     if (s) {
@@ -864,7 +868,7 @@ static void handle_req(const cJSON *root)
             }
         }
     } else if (strcmp(op, "provision.reset") == 0) {
-        const char *keys[] = {"ssid","pass","cid","csec","hub",OKOU_KEY_TOKEN};
+        const char *keys[] = {"ssid","pass","cid","csec","hub","ble_key",OKOU_KEY_TOKEN};
         r = okou_nvs_set_str(OKOU_KEY_WIFIS, "[]");
         for (size_t i = 0; r == ESP_OK && i < sizeof(keys)/sizeof(keys[0]); ++i) {
             r = okou_nvs_erase(keys[i]);
@@ -1063,6 +1067,17 @@ static void handle_text(char *s, size_t len)
                 s_hello_acked = true;
                 on_first_ack();
             }
+#if CONFIG_OKOU_BLE_WIFI
+        } else if (strcmp(t->valuestring, "ble.rotate") == 0) {
+            const cJSON *g = cJSON_GetObjectItemCaseSensitive(root, "generation");
+            const cJSON *key = cJSON_GetObjectItemCaseSensitive(root, "secret");
+            if (cJSON_IsNumber(g) && g->valueint > 1 && cJSON_IsString(key) &&
+                okou_ble_install((unsigned)g->valueint, key->valuestring, false) == ESP_OK) {
+                char ack[80];
+                snprintf(ack, sizeof(ack), "{\"t\":\"ble.installed\",\"generation\":%d}", g->valueint);
+                send_text(ack, strlen(ack));
+            }
+#endif
         } else if (strcmp(t->valuestring, "uart.input") == 0) {
             uart_input(root);
         } else if (strcmp(t->valuestring, "req") == 0) {
@@ -1253,6 +1268,9 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     if (e != ESP_OK) {
         ESP_LOGE(TAG, "network start: %s", esp_err_to_name(e));
     }
+#if CONFIG_OKOU_BLE_WIFI
+    okou_ble_start();
+#endif
     const esp_app_desc_t *d = esp_app_get_description();
     ESP_LOGI(TAG, "agent start: %s %s role=%s boot_id=%s", d->project_name, d->version,
              g_okou_cfg.role == OKOU_ROLE_LAUNCHER ? "launcher" : "app", s_boot_id);
