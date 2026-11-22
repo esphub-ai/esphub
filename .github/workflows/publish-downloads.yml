@@ -23,5 +23,6 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
+          node scripts/ensure-bucket.mjs
           gh release download --pattern '*' --dir "$RUNNER_TEMP/launcher"
           node scripts/publish-firmware.mjs "$RUNNER_TEMP/launcher"

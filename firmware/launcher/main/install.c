@@ -92,6 +92,18 @@ static bool parse_args(const cJSON *a, inst_t *o, char *err, size_t n)
         snprintf(err, n, "kind must be app or launcher");
         return false;
     }
+    if (strcmp(o->kind, "launcher") == 0) {
+        const cJSON *board = cJSON_GetObjectItemCaseSensitive(a, "board");
+#if CONFIG_OKL_BOARD_M5_STOPWATCH
+        const char *expected = "stopwatch";
+#else
+        const char *expected = "paper-color";
+#endif
+        if (!cJSON_IsString(board) || strcmp(board->valuestring, expected) != 0) {
+            snprintf(err, n, "launcher package must match board %s", expected);
+            return false;
+        }
+    }
     if (strlen(o->sha) != 64) {
         snprintf(err, n, "sha256 must be 64 hex chars");
         return false;

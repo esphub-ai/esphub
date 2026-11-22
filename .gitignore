@@ -9,3 +9,6 @@ managed_components/
 __pycache__/
 services/web/public/app.js
 services/web/public/tools.json
+
+wrangler.local.json
+wrangler.e2e.json

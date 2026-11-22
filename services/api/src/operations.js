@@ -13,6 +13,7 @@ const defs=[
  ['wifi.scan','Scan Wi-Fi networks visible to the device.',id],
  ['wifi.add','Save a network. Omit the password for an open network.',{...id,...strings('ssid','password')}],
  ['wifi.remove','Forget a saved network.',{...id,...strings('ssid')}],
+ ['launcher.install','Install the latest board-specific launcher on a connected launcher.',id],
  ['firmware.get','Read firmware metadata from the board.',id],
  ['firmware.install','Install an HTTPS application image with a verified SHA-256 digest.',{...id,...strings('url','version','sha256')}],
  ['uart.sessions','List boot sessions and consumed device RX cursors.',id],
@@ -56,6 +57,14 @@ export async function operate(c,owner,name,a){
  if(name==='devices.reboot'){op='reboot';args={target:'self'}}
  if(name==='devices.reset')op='provision.reset';
  if(name==='firmware.get')op='status';
+ if(name==='launcher.install'){
+   const status=await internal(c,d.id,'summary');
+   if(!status.online||status.info?.role!=='launcher'||status.info?.board!==d.board)fail(409,'Start a launcher reporting the registered board profile first');
+   const obj=await c.env.UART.get('releases/latest.json');if(!obj)fail(503,'Release catalog unavailable');
+   const release=(await obj.json())[d.board];
+   if(!release||release.chip!==status.info.chip)fail(409,'Release target mismatch');
+   op='install';args={kind:'launcher',board:d.board,url:'https://api.esphub.ai/releases/'+d.board+'/ota',sha256:release.ota.sha256,size:release.ota.size,version:release.version};
+ }
  if(name==='firmware.install'){op='install';args={kind:'app',url:a.url,sha256:a.sha256,version:a.version}}
  return (await internal(c,d.id,'rpc',{op,args})).data
 }

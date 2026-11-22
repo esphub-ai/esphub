@@ -350,6 +350,11 @@ static void hello_fill(cJSON *o)
     okou_mac_str(mac);
     const esp_partition_t *run = esp_ota_get_running_partition();
     cJSON_AddNumberToObject(o, "proto", 1);
+#if CONFIG_OKL_BOARD_M5_STOPWATCH
+    cJSON_AddStringToObject(o, "board", "stopwatch");
+#elif CONFIG_OKL_BOARD_GENERIC && CONFIG_IDF_TARGET_ESP32S3
+    cJSON_AddStringToObject(o, "board", "paper-color");
+#endif
     cJSON_AddStringToObject(o, "boot_id", s_boot_id);
     cJSON_AddStringToObject(o, "role", g_okou_cfg.role == OKOU_ROLE_LAUNCHER ? "launcher" : "app");
     cJSON *fw = cJSON_AddObjectToObject(o, "fw");
@@ -905,7 +910,14 @@ static void handle_req(const cJSON *root)
         for (size_t i = 0; r == ESP_OK && i < sizeof(keys)/sizeof(keys[0]); ++i) {
             r = okou_nvs_erase(keys[i]);
         }
-        if (r == ESP_OK) r = okou_enter_setup();
+        if (r == ESP_OK && g_okou_cfg.role == OKOU_ROLE_APP) {
+            const esp_partition_t *lp = okou_launcher_partition();
+            r = lp ? esp_ota_set_boot_partition(lp) : ESP_ERR_NOT_FOUND;
+        }
+        if (r == ESP_OK) {
+            okou_nvs_set_u8(OKOU_KEY_SETUP, 1);
+            okou_schedule_reboot(500);
+        }
         if (r != ESP_OK) snprintf(err, sizeof(err), "reset failed: %s", esp_err_to_name(r));
     } else if (strcmp(op, "reboot") == 0) {
         r = op_reboot(args, data, err, sizeof(err));
