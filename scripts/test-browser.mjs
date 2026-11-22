@@ -108,7 +108,7 @@ try {
   await setup.getByRole("button", { name: "Copy configuration" }).click();
   assert.equal(
     await page.evaluate(() => navigator.clipboard.readText()),
-    "codex mcp add esphub --url https://api.esphub.ai/mcp\ncodex mcp login esphub",
+    "codex mcp add esphub --url https://api.esphub.ai/mcp",
   );
   await setup.getByLabel("MCP client").selectOption("claude");
   await setup.getByRole("button", { name: "Copy configuration" }).click();

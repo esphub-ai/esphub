@@ -163,11 +163,11 @@ function row(d) {
     "</span><span>↗</span></a>"
   );
 }
-const setupPrompt = `Connect my MCP client to ESP Hub. Add a server named esphub using Streamable HTTP at ${mcpEndpoint}. Use browser-based OAuth and request devices:read and devices:write. Open the ESP Hub sign-in and consent page when prompted. Preserve my other MCP servers. Once connected, call devices.list and show me my registered devices.`;
+const setupPrompt = `Connect my MCP client to ESP Hub. Add a server named esphub using Streamable HTTP at ${mcpEndpoint}. Use a client that supports OAuth Client ID Metadata Documents (CIMD) and request devices:read and devices:write. Open the ESP Hub sign-in and consent page when prompted. Preserve my other MCP servers. Once connected, call devices.list and show me my registered devices.`;
 const mcpClients = {
   codex: {
-    instruction: "Run these commands in your terminal, then sign in to ESP Hub in your browser.",
-    config: `codex mcp add esphub --url ${mcpEndpoint}\ncodex mcp login esphub`,
+    instruction: "Use a Codex version with CIMD support. Add the server and follow the browser prompt. If you already added it, run codex mcp login esphub --oauth-client-registration cimd.",
+    config: `codex mcp add esphub --url ${mcpEndpoint}`,
   },
   claude: {
     instruction: "Merge this entry into your project’s .mcp.json file. In Claude Code, open /mcp, select esphub, and authenticate.",
