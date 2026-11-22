@@ -20,8 +20,7 @@ jobs:
         run: |
           tag="launcher-v1.0.${GITHUB_RUN_NUMBER}"
           ref="repos/$GITHUB_REPOSITORY/git/ref/tags/$tag"
-          existing="$(gh api "$ref" --jq .object.sha 2>/dev/null || true)"
-          if [ -n "$existing" ]; then
+          if existing="$(gh api "$ref" --jq .object.sha 2>/dev/null)"; then
             test "$existing" = "$GITHUB_SHA"
           else
             gh api "repos/$GITHUB_REPOSITORY/git/refs" -X POST -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" --silent
