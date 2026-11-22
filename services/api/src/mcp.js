@@ -24,6 +24,7 @@ const options = {
 export const authenticateMcp = mcpAuth(options);
 const writeAccess = requireAdditionalScopes("devices:write");
 const readTools = new Set([
+  "commands.get",
   "devices.list",
   "devices.get",
   "wifi.list",
@@ -52,11 +53,12 @@ export async function serveMcp(c) {
   const handler = createMcpHandler(
     () => {
       const server = new McpServer({ name: "esphub", version: "1.0.0" });
-      for (const { name, description, inputSchema } of tools) {
+      for (const { name, description, inputSchema, annotations } of tools) {
         server.registerTool(
           name,
           {
             description,
+            annotations,
             inputSchema: fromJsonSchema(inputSchema),
             scopeChallenge: readTools.has(name) ? undefined : writeAccess,
           },

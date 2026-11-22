@@ -90,7 +90,19 @@ async function api(path, data) {
     });
   return j;
 }
-const op = (name, args = {}) => api("/operations/" + name, args);
+async function op(name,args={}) {
+  let value=await api("/operations/"+name,args);
+  if(!value.command_id || name==="commands.get" || name==="uart.write") return value;
+  const command_id=value.command_id;
+  notify("Command queued");
+  for(let n=0;n<30;n++) {
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    value=await api("/operations/commands.get",{device_id:args.device_id,command_id});
+    if(["accepted","succeeded"].includes(value.state)) return {...value.result,process_id:value.process_id};
+    if(["failed","expired","unknown"].includes(value.state)) throw Error(value.result?.error || "Command "+value.state);
+  }
+  throw Error("Command "+command_id+" is "+value.state+". Check commands.get for its receipt.");
+}
 function dialog(title, body, submit, fn) {
   const d = $("#dialog");
   if (d.open) d.close();

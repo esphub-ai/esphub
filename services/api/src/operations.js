@@ -1,4 +1,6 @@
 import { newBleSecret, issueBle } from "./ble.js";
+import { connected } from "./iot.js";
+import { artifactBase } from "./uploads.js";
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import { maxUploadBytes } from "./uploads.js";
 import { updateSources } from "./update-sources.js";
@@ -11,10 +13,19 @@ const strings = (...names) =>
 const id = strings("device_id"),
   session = { ...id, ...strings("process_id") };
 const otaKind = { type: "string", enum: ["launcher", "micropython", "python"] };
+const additive = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  openWorldHint: false,
+};
+const readOnly = { ...additive, readOnlyHint: true };
+const destructive = { ...additive, destructiveHint: true };
+
 const defs = [
-  ["devices.list", "List your registered devices.", {}],
+  ["devices.list", readOnly, "List your registered devices.", {}],
   [
     "devices.create",
+    additive,
     "Identify the USB board first. Ask the user if uncertain. Register it and follow the returned provisioning prompt.",
     {
       ...strings("name"),
@@ -23,51 +34,80 @@ const defs = [
   ],
   [
     "devices.get",
+    readOnly,
     "Show device identity, connection status and GitHub source directories for all three customizable OTA layers, even while offline.",
     id,
   ],
   [
     "devices.reissue",
+    destructive,
     "Issue a replacement USB token and close the previous connection.",
     id,
   ],
   [
     "devices.delete",
+    destructive,
     "Delete the registration and revoke the device token.",
     id,
   ],
-  ["devices.reboot", "Restart the device and create a new boot session.", id],
+  [
+    "devices.reboot",
+    destructive,
+    "Restart the device and create a new boot session.",
+    id,
+  ],
   [
     "devices.reset",
+    destructive,
     "Erase provisioning and saved networks on the device; USB setup is required again.",
     id,
   ],
-  ["wifi.ble_credential", "Issue a private BLE provisioning credential for the registered Paper Color. Pass directly to the local host tool; do not display or log it.", id],
-  ["wifi.list", "Read saved Wi-Fi networks and the active connection.", id],
-  ["wifi.scan", "Scan Wi-Fi networks visible to the device.", id],
+  ["wifi.ble_credential", additive, "Issue a private BLE provisioning credential for the registered Paper Color. Pass directly to the local host tool; do not display or log it.", id],
+  [
+    "wifi.list",
+    readOnly,
+    "Read saved Wi-Fi networks and the active connection.",
+    id,
+  ],
+  [
+    "wifi.scan",
+    { ...readOnly, openWorldHint: true },
+    "Scan Wi-Fi networks visible to the device.",
+    id,
+  ],
   [
     "wifi.add",
+    { ...destructive, openWorldHint: true },
     "Save a network. Omit the password for an open network.",
     { ...id, ...strings("ssid", "password") },
   ],
-  ["wifi.remove", "Forget a saved network.", { ...id, ...strings("ssid") }],
+  [
+    "wifi.remove",
+    destructive,
+    "Forget a saved network.",
+    { ...id, ...strings("ssid") },
+  ],
   [
     "launcher.install",
+    { ...destructive, openWorldHint: true },
     "Install the latest board-specific launcher on a connected launcher.",
     id,
   ],
   [
     "launcher.enter",
+    destructive,
     "Enter launcher mode for OTA. Wait for devices.get to report an online launcher.",
     id,
   ],
   [
     "firmware.get",
+    readOnly,
     "Read live firmware metadata and get the official GitHub sources for customizing this board.",
     id,
   ],
   [
     "ota.prepare_upload",
+    additive,
     "Stage a local file without GitHub or a running device. Request a short-lived, single-object R2 upload credential, then PUT exactly size bytes to upload_url with the returned headers. After HTTP 201, enter launcher mode and call ota.install with the returned url and matching kind.",
     {
       ...id,
@@ -77,6 +117,7 @@ const defs = [
   ],
   [
     "ota.install",
+    { ...destructive, openWorldHint: true },
     "In launcher mode, stream an HTTPS artifact for the registered board. Use ota.prepare_upload for a local file. Supply your own board-compatible build or use https://api.esphub.ai/releases/{board}/ota for the official launcher or /releases/{board}/micropython for its runtime. For python, use a plain UTF-8 main.py URL. The receipt includes GitHub sources for all three layers. Follow install.done or install.failed in the returned UART session, then verify the next boot.",
     {
       ...id,
@@ -86,6 +127,7 @@ const defs = [
   ],
   [
     "programs.publish",
+    additive,
     "Stage main.py privately for this device for 24 hours. Pass the returned HTTPS URL to ota.install with kind python.",
     {
       ...id,
@@ -96,30 +138,63 @@ const defs = [
       },
     },
   ],
-  ["uart.sessions", "List boot sessions and consumed device RX cursors.", id],
+  [
+    "uart.sessions",
+    readOnly,
+    "List boot sessions and consumed device RX cursors.",
+    id,
+  ],
   [
     "uart.read",
+    readOnly,
     "Read serial TX records after an exclusive cursor.",
     { ...session, after: { type: "integer", minimum: 0 } },
   ],
   [
     "uart.write",
+    { ...destructive, openWorldHint: true },
     "Append a UTF-8 input record to this boot. Reuse request_id when retrying.",
     { ...session, ...strings("text", "request_id") },
   ],
+  [
+    "commands.get",
+    readOnly,
+    "Read the state and execution receipt of a queued device command.",
+    { ...id, ...strings("command_id") },
+  ],
 ];
-export const tools = defs.map(([name, description, properties]) => ({
-  name,
-  description,
-  inputSchema: {
-    type: "object",
-    additionalProperties: false,
-    properties,
-    required: Object.keys(properties).filter(
-      (k) => !["password", "after"].includes(k),
-    ),
-  },
-}));
+export const tools = defs.map(
+  ([name, annotations, description, properties]) => ({
+    name,
+    annotations,
+    description,
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        ...properties,
+        ...(queueable(name) ? strings("request_id") : {}),
+      },
+      required: Object.keys(properties).filter(
+        (k) => !["password", "after"].includes(k),
+      ),
+    },
+  }),
+);
+function queueable(name) {
+  return (
+    (name.startsWith("wifi.") && name !== "wifi.ble_credential") ||
+    [
+      "devices.reboot",
+      "devices.reset",
+      "launcher.enter",
+      "launcher.install",
+      "ota.install",
+      "firmware.get",
+      "uart.write",
+    ].includes(name)
+  );
+}
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 export function validate(name, a) {
   const t = tools.find((t) => t.name === name);
@@ -145,6 +220,7 @@ export function validate(name, a) {
       fail(400, "Invalid " + k);
   }
   if (
+    (a.command_id && !uuid.test(a.command_id)) ||
     (a.device_id && !uuid.test(a.device_id)) ||
     (a.request_id && !uuid.test(a.request_id)) ||
     (a.process_id && !/^[0-9a-f-]{8,36}$/i.test(a.process_id))
@@ -200,6 +276,15 @@ export async function internal(c, id, path, args) {
   if (!r.ok) fail(r.status, j.error || "Device operation failed");
   return j;
 }
+async function summary(c, d) {
+  if (d.transport !== "mqtt") return internal(c, d.id, "summary");
+  return {
+    online: await connected(c.env, d.id),
+    process_id: d.boot_id,
+    info: d.boot_info,
+    serial_input: true,
+  };
+}
 export async function operate(c, owner, name, a) {
   validate(name, a);
   const db = c.sql;
@@ -219,29 +304,48 @@ export async function operate(c, owner, name, a) {
   }
   if (name === "devices.list") {
     const ds =
-      await db`SELECT id,name,board,created_at FROM esphub.devices WHERE owner=${owner} ORDER BY created_at`;
+      await db`SELECT id,name,board,created_at,transport,boot_id,boot_info FROM esphub.devices WHERE owner=${owner} ORDER BY created_at`;
     return await Promise.all(
-      ds.map(async (d) => ({ ...d, ...(await internal(c, d.id, "summary")) })),
+      ds.map(async (d) => ({
+        id: d.id,
+        name: d.name,
+        board: d.board,
+        created_at: d.created_at,
+        transport: d.transport,
+        ...(await summary(c, d)),
+      })),
     );
   }
   const [d] =
-    await db`SELECT id,name,board FROM esphub.devices WHERE id=${a.device_id} AND owner=${owner}`;
+    await db`SELECT id,name,board,transport,boot_id,boot_info FROM esphub.devices WHERE id=${a.device_id} AND owner=${owner}`;
   if (!d) fail(404, "Device not found");
   const withSources = (result) => ({ ...result, ...updateSources(d.board) });
   if (name === "wifi.ble_credential") return issueBle(db, owner, d.id);
   if (name === "devices.get")
-    return withSources({ ...d, ...(await internal(c, d.id, "summary")) });
+    return withSources({
+      id: d.id,
+      name: d.name,
+      board: d.board,
+      transport: d.transport,
+      ...(await summary(c, d)),
+    });
+  if (name === "commands.get") {
+    const [row] =
+      await db`SELECT id AS command_id,state,result,claimed_boot AS process_id FROM esphub.device_commands WHERE device_id=${d.id} AND id=${a.command_id}`;
+    if (!row) fail(404, "Unknown command");
+    return row;
+  }
   if (name === "devices.reissue") {
     const secret = token("okl_dev_");
     const bleSecret = d.board === "paper-color" ? newBleSecret() : null;
-    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, ble_generation=1,
+    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,transport='websocket',boot_id=NULL,boot_info=NULL,ble_generation=1,
       ble_secret=${bleSecret}, ble_pending=NULL, ble_pending_issued=false, ble_issued=false WHERE owner=${owner} AND id=${d.id}`;
-    await internal(c, d.id, "revoke");
+    await internal(c, d.id, "revoke", { device: d.id });
     return { token: secret, ...(bleSecret ? { ble_secret: bleSecret } : {}) };
   }
   if (name === "devices.delete") {
     await db`DELETE FROM esphub.devices WHERE id=${d.id} AND owner=${owner}`;
-    await internal(c, d.id, "revoke");
+    await internal(c, d.id, "revoke", { device: d.id });
     return { deleted: true };
   }
   if (name === "ota.prepare_upload")
@@ -250,6 +354,33 @@ export async function operate(c, owner, name, a) {
     return withSources(
       await internal(c, d.id, "publish", { source: a.source }),
     );
+  const key = a.request_id ?? crypto.randomUUID();
+  const queue = (op, args, boot = null) =>
+    internal(c, d.id, "enqueue", { device: d.id, op, args, boot, key });
+  if (d.transport === "mqtt") {
+    const info = d.boot_info;
+    if (name === "uart.write")
+      return queue("term.write", { data: a.text }, a.process_id);
+    if (name === "launcher.enter")
+      return info?.role === "launcher"
+        ? { mode: "launcher", process_id: d.boot_id }
+        : queue("reboot", { target: "launcher" }, d.boot_id);
+    if (name === "ota.install") {
+      if (
+        info?.role !== "launcher" ||
+        info.board !== d.board ||
+        info.image_profile !== "ESPHUB1/launcher/" + d.board
+      )
+        fail(409, "Start a compatible launcher first");
+      if (a.url.startsWith(artifactBase))
+        await internal(c, d.id, "check-upload", { url: a.url, kind: a.kind });
+      return queue(
+        "install",
+        { board: d.board, url: a.url, kind: a.kind, transfer_id: key },
+        d.boot_id,
+      );
+    }
+  }
   if (name === "launcher.enter")
     return withSources(await internal(c, d.id, "enter", { board: d.board }));
   if (name === "ota.install")
@@ -286,7 +417,7 @@ export async function operate(c, owner, name, a) {
   if (name === "devices.reset") op = "provision.reset";
   if (name === "firmware.get") op = "status";
   if (name === "launcher.install") {
-    const status = await internal(c, d.id, "summary");
+    const status = await summary(c, d);
     if (
       !status.online ||
       status.info?.role !== "launcher" ||
@@ -308,11 +439,14 @@ export async function operate(c, owner, name, a) {
         d.board +
         "/ota?tag=" +
         manifest.tag,
+      ...(d.transport === "mqtt" ? { transfer_id: key } : {}),
       sha256: manifest.ota.sha256,
       size: manifest.ota.size,
       version: manifest.version,
     };
   }
+  if (d.transport === "mqtt")
+    return queue(op, args, op === "install" ? d.boot_id : null);
   const { data } = await internal(c, d.id, "rpc", { op, args });
   return name === "firmware.get" || name === "launcher.install"
     ? withSources(data)

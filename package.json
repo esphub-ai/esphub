@@ -32,6 +32,7 @@
     "@clerk/mcp-tools": "^1.0.0",
     "@modelcontextprotocol/server": "^2.4.0",
     "@neondatabase/serverless": "^1.2.1",
+    "aws4fetch": "^1.0.20",
     "hono": "^4.13.19",
     "postgres": "^4.1.1"
   },

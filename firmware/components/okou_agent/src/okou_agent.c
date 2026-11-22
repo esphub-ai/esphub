@@ -32,6 +32,7 @@
 #include "sdkconfig.h"
 #include "okou_priv.h"
 #include "okou_ble.h"
+#include "okou_iot.h"
 
 #define TAG OKOU_TAG
 #define US_PER_MS 1000LL
@@ -94,6 +95,10 @@ static bool s_rolled_back;
 static char *s_txbuf;
 static okou_hooks_t s_hooks;
 static char s_install_state[20] = "queued";
+static cJSON *s_leased_commands;
+static char s_inflight_id[37];
+static int64_t s_inflight_until;
+static bool s_iot, s_iot_started, s_transport_selected, s_pull_due;
 static bool s_started, s_cfg_ok, s_dev;
 static char s_hub[100], s_cid[96], s_csec[100], s_tok[96], s_url[180];
 static char s_headers[256];
@@ -414,6 +419,39 @@ cJSON *okou_hello_fields(void)
 
 static bool send_text(const char *s, size_t len)
 {
+    if (s_iot) {
+        cJSON *frame = cJSON_ParseWithLength(s, len);
+        if (!frame)
+            return false;
+        const char *type = cJSON_GetStringValue(cJSON_GetObjectItem(frame, "t"));
+        // The hub has no metrics sink. Avoid waking Wi-Fi for discarded samples.
+        if (type && !strcmp(type, "metric")) {
+            cJSON_Delete(frame);
+            return true;
+        }
+        if (!cJSON_GetObjectItemCaseSensitive(frame, "boot_id"))
+            cJSON_AddStringToObject(frame, "boot_id", s_boot_id);
+        bool receipt = type && !strcmp(type, "res");
+        const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(frame, "id"));
+        bool completed = receipt && id && strcmp(id, s_inflight_id) == 0;
+        cJSON *reply = okou_iot_post("frame", frame);
+        if (!reply && receipt)
+            reply = okou_iot_post("frame", frame);
+        cJSON_Delete(frame);
+        if (!reply) {
+            s_ws_broken = true;
+            return false;
+        }
+        const cJSON *seq = cJSON_GetObjectItemCaseSensitive(reply, "seq");
+        if (cJSON_IsNumber(seq))
+            okou_log_ack((int64_t)seq->valuedouble);
+        if (completed) {
+            s_inflight_id[0] = 0;
+            s_pull_due = true;
+        }
+        cJSON_Delete(reply);
+        return true;
+    }
     if (!s_ws || !s_ws_up || s_ws_broken) {
         return false;
     }
@@ -530,6 +568,13 @@ static void ws_connect(void)
 
 static void ws_teardown(const char *why)
 {
+    if (s_iot_started) {
+        cJSON_Delete(s_leased_commands);
+        s_leased_commands = NULL;
+        s_inflight_id[0] = 0;
+        okou_iot_stop();
+        s_iot_started = false;
+    }
     if (s_ws) {
         esp_websocket_client_destroy(s_ws);
         s_ws = NULL;
@@ -556,7 +601,7 @@ static void ws_teardown(const char *why)
     ESP_LOGI(TAG, "reconnect in %" PRIu32 " ms", delay);
 }
 
-static void send_hello(void)
+static bool send_hello(void)
 {
     cJSON *o = cJSON_CreateObject();
     cJSON_AddStringToObject(o, "t", "hello");
@@ -564,9 +609,11 @@ static void send_hello(void)
     char *s = cJSON_PrintUnformatted(o);
     cJSON_Delete(o);
     if (s) {
-        send_text(s, strlen(s));
+        bool ok = send_text(s, strlen(s));
         free(s);
+        return ok;
     }
+    return false;
 }
 
 /* ------------------------------------------------------------------ flushing */
@@ -868,7 +915,7 @@ static void handle_req(const cJSON *root)
             }
         }
     } else if (strcmp(op, "provision.reset") == 0) {
-        const char *keys[] = {"ssid","pass","cid","csec","hub","ble_key",OKOU_KEY_TOKEN};
+        const char *keys[] = {"mqtt_identity", "ble_key", "ssid", "pass", "cid", "csec", "hub", OKOU_KEY_TOKEN};
         r = okou_nvs_set_str(OKOU_KEY_WIFIS, "[]");
         for (size_t i = 0; r == ESP_OK && i < sizeof(keys)/sizeof(keys[0]); ++i) {
             r = okou_nvs_erase(keys[i]);
@@ -1094,9 +1141,48 @@ static void do_reboot(void)
     if (s_ws_up) {
         drain_txq();
         flush_logs();
-        esp_websocket_client_close(s_ws, pdMS_TO_TICKS(500));
+        if (s_ws)
+            esp_websocket_client_close(s_ws, pdMS_TO_TICKS(500));
     }
     esp_restart();
+}
+
+static void pull_commands(void)
+{
+    cJSON *body = cJSON_CreateObject();
+    if (!body)
+        return;
+    cJSON_AddStringToObject(body, "boot_id", s_boot_id);
+    if (!s_leased_commands || !cJSON_GetArraySize(s_leased_commands)) {
+        cJSON_Delete(s_leased_commands);
+        cJSON *batch = okou_iot_post("pull", body);
+        s_leased_commands = cJSON_DetachItemFromObjectCaseSensitive(batch, "commands");
+        if (!cJSON_IsArray(s_leased_commands))
+            s_ws_broken = true;
+        cJSON_Delete(batch);
+    }
+    // Advance only after the previous handler supplies a receipt. Handlers
+    // completing on a different task deliver their receipt through the TX queue.
+    cJSON *command = cJSON_DetachItemFromArray(s_leased_commands, 0);
+    if (command) {
+        const char *id = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(command, "id"));
+        if (id)
+            cJSON_AddStringToObject(body, "id", id);
+        cJSON *permission = id ? okou_iot_post("start", body) : NULL;
+        if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(permission, "start"))) {
+            strlcpy(s_inflight_id, id, sizeof(s_inflight_id));
+            s_inflight_until = now_us() + 90000000;
+            handle_req(command);
+        } else {
+            cJSON_Delete(s_leased_commands);
+            s_leased_commands = NULL;
+            if (!permission)
+                s_ws_broken = true;
+        }
+        cJSON_Delete(permission);
+        cJSON_Delete(command);
+    }
+    cJSON_Delete(body);
 }
 
 static void agent_task(void *arg)
@@ -1127,18 +1213,60 @@ static void agent_task(void *arg)
         if (s_reload) {
             s_reload = false;
             s_cfg_ok = load_config();
-            if (s_ws) {
+            if (s_ws || s_iot_started) {
                 ws_teardown("config reload");
             }
+            s_transport_selected = false;
+            s_iot = false;
             s_backoff_ms = 1000;
             s_next_connect_us = now;
         }
-        if (s_ws_broken && s_ws) {
+        if (s_ws_broken && (s_ws || s_iot_started)) {
             ws_teardown("send failed");
         }
-        if (!s_ws) {
+        if (s_iot_started) {
+            unsigned events = okou_iot_events();
+            if (events & IOT_OFFLINE)
+                ws_teardown("MQTT disconnected");
+            else if (events & IOT_SUBSCRIBED) {
+                s_up_since_us = now;
+                s_ws_up = true;
+                okou_log_rewind();
+                if (send_hello()) {
+                    s_hello_acked = true;
+#if CONFIG_OKOU_BLE_WIFI
+                    s_ble_sync_needed = true;
+#endif
+                    on_first_ack();
+                } else {
+                    s_ws_broken = true;
+                }
+            }
+            if (events & IOT_WAKE)
+                s_pull_due = true;
+        }
+        if (!s_ws && !s_iot_started) {
             if (s_cfg_ok && okou_net_has_ip() && now >= s_next_connect_us) {
-                ws_connect();
+                if (!s_transport_selected) {
+                    int choice = s_tok[0] && !s_dev ? okou_iot_available() : 0;
+                    if (choice < 0) {
+                        ws_teardown("transport discovery failed");
+                        continue;
+                    }
+                    s_iot = choice == 1;
+                    s_transport_selected = true;
+                }
+                if (s_iot) {
+                    s_ws_broken = false;
+                    s_conn_start_us = now;
+                    s_iot_started = okou_iot_start();
+                    if (!s_iot_started)
+                        ws_teardown("MQTT setup failed");
+                } else {
+                    if (s_tok[0] && !s_dev)
+                        s_transport_selected = false;
+                    ws_connect();
+                }
             }
         } else if (!s_ws_up) {
             if (now - s_conn_start_us > CONNECT_TIMEOUT_US) {
@@ -1152,12 +1280,30 @@ static void agent_task(void *arg)
                 unsigned generation = okou_ble_generation();
                 char report[80];
                 snprintf(report, sizeof(report), "{\"t\":\"ble.installed\",\"generation\":%u}", generation);
-                if (!generation || send_text(report, strlen(report))) s_ble_sync_needed = false;
+                if (s_iot && generation) {
+                    cJSON *frame = cJSON_Parse(report);
+                    cJSON_AddStringToObject(frame, "boot_id", s_boot_id);
+                    cJSON *reply = okou_iot_post("frame", frame);
+                    cJSON_Delete(frame);
+                    if (!reply) s_ws_broken = true;
+                    else {
+                        const cJSON *key = cJSON_GetObjectItemCaseSensitive(reply, "secret");
+                        const cJSON *next = cJSON_GetObjectItemCaseSensitive(reply, "generation");
+                        s_ble_sync_needed = cJSON_IsNumber(next) && cJSON_IsString(key) &&
+                            okou_ble_install(next->valueint, key->valuestring, false) == ESP_OK;
+                        cJSON_Delete(reply);
+                    }
+                } else if (!generation || send_text(report, strlen(report))) s_ble_sync_needed = false;
             }
 #endif
-            if (s_hello_acked && now - last_uart_poll >= 1500000) {
+            if (s_iot && s_pull_due && s_hello_acked && (!s_inflight_id[0] || now >= s_inflight_until)) {
+                s_pull_due = false;
+                pull_commands();
+            }
+            if (!s_iot && s_hello_acked && now - last_uart_poll >= 1500000) {
                 char poll[80];
-                int n = snprintf(poll, sizeof(poll), "{\"t\":\"uart.poll\",\"after\":%lu}", (unsigned long)uart_cursor);
+                int n = snprintf(poll, sizeof(poll), "{\"t\":\"uart.poll\",\"after\":%lu}",
+                                 (unsigned long)uart_cursor);
                 send_text(poll, n);
                 last_uart_poll = now;
             }
@@ -1166,11 +1312,11 @@ static void agent_task(void *arg)
                 flush_logs();
                 flush_metrics();
             }
-            if (now - s_last_ping_us >= PING_INTERVAL_US) {
+            if (!s_iot && now - s_last_ping_us >= PING_INTERVAL_US) {
                 s_last_ping_us = now;
                 send_text("ping", 4);
             }
-            if (now - s_last_rx_us >= PONG_TIMEOUT_US) {
+            if (!s_iot && now - s_last_rx_us >= PONG_TIMEOUT_US) {
                 ws_teardown("no pong for 90 s");
             } else if (!okou_net_has_ip()) {
                 ws_teardown("network down");
