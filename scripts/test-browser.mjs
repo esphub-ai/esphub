@@ -83,29 +83,23 @@ try {
     route.fulfill({ contentType: "text/html", body: "Hosted sign-in" }),
   );
   await page.goto(origin);
-  assert.equal(
-    new URL(
-      await page
-        .getByRole("link", { name: "Create account" })
-        .getAttribute("href"),
-    ).pathname,
-    "/sign-up",
-  );
-  await page.getByText("Open the console").click();
+  await page.getByRole("heading", { name: /Bring HMR to ESP32/ }).waitFor();
+  assert.equal(await page.locator('a[href="/mcp"]').count(), 0);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin });
+  await page.getByRole("button", { name: "Copy prompt" }).click();
+  const setupPrompt = await page.evaluate(() => navigator.clipboard.readText());
+  assert.equal(setupPrompt, await page.locator("#prompt").innerText());
+  assert.ok(setupPrompt.includes("https://api.esphub.ai/mcp"));
+  await page.getByRole("link", { name: "Open workspace" }).click();
   await page.waitForURL("https://accounts.esphub.ai/sign-in?**");
   assert.equal(
     new URL(page.url()).searchParams.get("redirect_url"),
     origin + "/devices",
   );
   signedIn = true;
-  await page.goto(origin);
-  await page.getByRole("link", { name: "My account" }).waitFor();
   await page.goto(origin + "/devices");
-  await page
-    .context()
-    .grantPermissions(["clipboard-read", "clipboard-write"], { origin });
   const copyPrompt = page.getByRole("button", { name: "Copy prompt", exact: true });
-  await page.getByRole("region", { name: "Use ESP Hub with your assistant" }).waitFor();
+  await page.getByRole("region", { name: "Use EspHub with your assistant" }).waitFor();
   assert.equal(await copyPrompt.count(), 1);
   await copyPrompt.click();
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
@@ -114,31 +108,9 @@ try {
     assert.ok(prompt.includes(required));
   if (process.env.QA_MCP_SCREENSHOT)
     await page.screenshot({path: process.env.QA_MCP_SCREENSHOT, fullPage: true});
-  await page.getByRole("link", {name: /MCP reference and client configuration/}).click();
-  const setup = page.getByRole("region", {name: "Client configuration"});
-  await setup.getByRole("button", { name: "Copy configuration" }).click();
-  assert.equal(
-    await page.evaluate(() => navigator.clipboard.readText()),
-    "codex mcp add esphub --url https://api.esphub.ai/mcp",
-  );
-  await setup.getByLabel("MCP client").selectOption("claude");
-  await setup.getByRole("button", { name: "Copy configuration" }).click();
-  const entry = JSON.parse(
-    await page.evaluate(() => navigator.clipboard.readText()),
-  ).mcpServers.esphub;
-  assert.deepEqual(entry, {
-    type: "http",
-    url: "https://api.esphub.ai/mcp",
-  });
-  const workflows = page.getByRole("region", { name: "Device workflows" });
-  for (const title of ["Initialize a device", "Update a program"]) {
-    const card = workflows.getByRole("article").filter({ hasText: title });
-    await card.getByRole("button", { name: "Copy prompt" }).click();
-    assert.equal(
-      await page.evaluate(() => navigator.clipboard.readText()),
-      await card.locator("blockquote").textContent(),
-    );
-  }
+  assert.equal(await page.locator('a[href="/mcp"]').count(), 0);
+  await page.goto(origin + "/mcp");
+  assert.equal(page.url(), origin + "/");
   await page.goto(origin + "/devices");
   await page.getByText("+ Add device").click();
   await page.locator("[name=name]").fill("Paper Color · integration");
