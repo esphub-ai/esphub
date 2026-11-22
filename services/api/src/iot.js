@@ -5,7 +5,7 @@ const isWestEndpoint = (host) =>
   typeof host === "string" &&
   /^[a-z0-9-]+-ats\.iot\.us-west-2\.amazonaws\.com$/.test(host);
 const policy = "ESPHubDeviceWake";
-export function enabled(env) {
+function configured(env) {
   return Boolean(
     env.IOT_ACCESS_KEY_ID &&
     env.IOT_SECRET_ACCESS_KEY &&
@@ -14,7 +14,7 @@ export function enabled(env) {
   );
 }
 async function request(env, host, path, method, body, service, headers = {}) {
-  if (!enabled(env)) fail(503, "IoT credentials unavailable");
+  if (!configured(env)) fail(503, "IoT credentials unavailable");
   const client = new AwsClient({
     accessKeyId: env.IOT_ACCESS_KEY_ID,
     secretAccessKey: env.IOT_SECRET_ACCESS_KEY,
@@ -58,13 +58,13 @@ export async function connected(env, id) {
     )?.connected === true
   );
 }
-export function publishWake(env, id) {
+export function publishWake(env, id, payload = { pending: true }) {
   return request(
     env,
     env.IOT_DATA_ENDPOINT,
     "/topics/" + encodeURIComponent("devices/" + id + "/wake") + "?qos=1",
     "POST",
-    { pending: true },
+    payload,
     "iotdata",
   );
 }
@@ -73,7 +73,7 @@ export async function revokeCertificate(env, id) {
     await control(env, "/certificates/" + id + "?newStatus=INACTIVE", "PUT");
 }
 export async function enroll(env, db, id, hash, csr) {
-  if (!enabled(env)) fail(503, "MQTT enrollment disabled");
+  if (!configured(env)) fail(503, "IoT credentials unavailable");
   if (
     typeof csr !== "string" ||
     csr.length > 4096 ||

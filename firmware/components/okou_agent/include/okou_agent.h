@@ -58,7 +58,7 @@ esp_err_t okou_agent_start(const okou_config_t *cfg);
  * entry (flashed over USB); ESP_ERR_INVALID_STATE for an image marked invalid. */
 esp_err_t okou_app_mark_valid(void);
 
-/* True while the hub WebSocket is up and our hello has been acknowledged. */
+/* True while the hub MQTT session is up and our hello has been acknowledged. */
 bool okou_connected(void);
 
 /* Hand the device to the launcher for (re-)provisioning: sets the one-shot NVS flag okl/setup

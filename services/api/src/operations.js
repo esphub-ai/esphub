@@ -101,12 +101,6 @@ const defs = [
     { ...id, ...strings("ssid") },
   ],
   [
-    "launcher.install",
-    { ...destructive, openWorldHint: true },
-    "Install the latest board-specific launcher on a connected launcher.",
-    id,
-  ],
-  [
     "launcher.enter",
     destructive,
     "Reports launcher mode if the physical device is already in the launcher. Otherwise, requests a reboot into the launcher for over-the-air updates.",
@@ -124,14 +118,14 @@ const defs = [
     "Returns a short-lived PUT URL, authorization headers, and an artifact URL for one file of the specified kind and byte size. A successful upload of exactly that size returns HTTP 201. The device can be offline.",
     {
       ...id,
-      kind: otaKind,
+      kind: { type: "string", enum: ["launcher", "micropython"] },
       size: { type: "integer", minimum: 1, maximum: maxUploadBytes },
     },
   ],
   [
     "ota.install",
     { ...destructive, openWorldHint: true },
-    "Requests installation from an HTTPS URL while the registered board is in launcher mode. The artifact is a board-compatible launcher image, a MicroPython runtime image, or a UTF-8 main.py file. The launcher reports install.done or install.failed for the transfer.",
+    "Installs an HTTPS artifact on the registered board from launcher mode. The kind selects a launcher, MicroPython runtime, or UTF-8 main.py. Omitting the URL for a launcher selects the official board release. The command result records the transfer outcome.",
     {
       ...id,
       kind: otaKind,
@@ -151,14 +145,19 @@ const defs = [
       },
     },
   ],
-  ["logs.flush", additive, "Queues a buffered log upload for the selected boot on an MQTT device with log recall support. The completed command reports the last acknowledged log sequence and the number of lines dropped during that boot.", session],
-  ["programs.get", readOnly, "Read the last reported main.py for the current or last-seen MicroPython boot, including offline devices.", id],
   [
-    "uart.sessions",
+    "logs.flush",
+    additive,
+    "Queues a buffered log upload for the selected boot on an MQTT device with log recall support. The completed command reports the last acknowledged log sequence and the number of lines dropped during that boot.",
+    session,
+  ],
+  [
+    "programs.get",
     readOnly,
-    "List boot sessions and consumed device RX cursors.",
+    "Read the last reported main.py for the current or last-seen MicroPython boot, including offline devices.",
     id,
   ],
+  ["uart.sessions", readOnly, "List boot sessions.", id],
   [
     "uart.read",
     readOnly,
@@ -191,7 +190,7 @@ export const tools = defs.map(
         ...(queueable(name) ? strings("request_id") : {}),
       },
       required: Object.keys(properties).filter(
-        (k) => !["password", "after"].includes(k),
+        (k) => !["password", "after", "url"].includes(k),
       ),
     },
   }),
@@ -203,7 +202,6 @@ function queueable(name) {
       "devices.reboot",
       "devices.reset",
       "launcher.enter",
-      "launcher.install",
       "ota.install",
       "firmware.get",
       "logs.flush",
@@ -242,12 +240,6 @@ export function validate(name, a) {
     (a.process_id && !/^[0-9a-f-]{8,36}$/i.test(a.process_id))
   )
     fail(400, "Invalid identifier");
-  if (
-    name === "ota.prepare_upload" &&
-    a.kind === "python" &&
-    a.size > programByteLimit
-  )
-    fail(400, "Artifact exceeds the size limit for this kind");
   if (a.name?.trim().length === 0 || a.name?.length > 64)
     fail(400, "Invalid name");
   for (const [k, max] of [
@@ -261,6 +253,8 @@ export function validate(name, a) {
       (new TextEncoder().encode(a[k]).length > max || a[k].includes("\0"))
     )
       fail(400, "Invalid " + k);
+  if (name === "ota.install" && !a.url && a.kind !== "launcher")
+    fail(400, "Artifact URL required");
   if (a.url) {
     let u;
     try {
@@ -300,11 +294,16 @@ async function summary(c, d) {
       info: d.boot_info,
       serial_input: false,
     };
-  if (d.transport !== "mqtt") return internal(c, d.id, "summary");
-  const [online, broker] = await Promise.all([connected(c.env, d.id), internal(c, d.id, "summary")]);
+  const [online, broker] = await Promise.all([
+    d.cert_ready && d.boot_id === d.enrolled_boot && connected(c.env, d.id),
+    internal(c, d.id, "summary"),
+  ]);
   return {
     online,
-    software: broker.process_id === d.boot_id ? broker.software : softwareInventory(d.boot_info),
+    software:
+      broker.process_id === d.boot_id
+        ? broker.software
+        : softwareInventory(d.boot_info),
     process_id: d.boot_id,
     info: d.boot_info,
     serial_input: true,
@@ -329,7 +328,7 @@ export async function operate(c, owner, name, a) {
     };
   }
   const ds =
-    await db`SELECT d.id,d.name,d.board,d.kind,d.created_at,d.transport,d.boot_info,
+    await db`SELECT d.id,d.name,d.board,d.kind,d.created_at,d.cert_ready,d.enrolled_boot,d.boot_info,
       CASE WHEN d.kind='virtual' THEN (
         SELECT process_id FROM esphub.virtual_boots WHERE device_id=d.id ORDER BY sequence DESC LIMIT 1
       ) ELSE d.boot_id END AS boot_id
@@ -343,7 +342,7 @@ export async function operate(c, owner, name, a) {
         board: d.board,
         kind: d.kind,
         created_at: d.created_at,
-        transport: d.transport,
+        transport: d.kind === "physical" ? "mqtt" : null,
         ...(await summary(c, d)),
       })),
     );
@@ -357,7 +356,7 @@ export async function operate(c, owner, name, a) {
       name: d.name,
       board: d.board,
       kind: d.kind,
-      transport: d.transport,
+      transport: d.kind === "physical" ? "mqtt" : null,
       ...(await summary(c, d)),
       ...(d.kind === "physical" ? updateSources(d.board) : {}),
     };
@@ -368,7 +367,10 @@ export async function operate(c, owner, name, a) {
     return { deleted: true };
   }
   if (name === "programs.publish") {
-    const staged = await internal(c, d.id, "publish", { source: a.source });
+    const staged = await internal(c, d.id, "publish", {
+      device_id: d.id,
+      source: a.source,
+    });
     return d.kind === "virtual"
       ? { ...staged, kind: "virtual", status: "staged", executable: false }
       : withSources(staged);
@@ -378,14 +380,14 @@ export async function operate(c, owner, name, a) {
   if (name === "programs.get") return internal(c, d.id, "program");
   if (name === "commands.get") {
     const [row] =
-      await db`SELECT id AS command_id,state,result,claimed_boot AS process_id FROM esphub.device_commands WHERE device_id=${d.id} AND id=${a.command_id}`;
+      await db`SELECT id AS command_id,state,result,dispatched_boot AS process_id FROM esphub.device_commands WHERE device_id=${d.id} AND id=${a.command_id}`;
     if (!row) fail(404, "Unknown command");
     return row;
   }
   if (name === "devices.reissue") {
     const secret = token("okl_dev_");
     const bleSecret = newBleSecret();
-    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,transport='websocket',boot_id=NULL,boot_info=NULL,ble_generation=1,
+    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,enrolled_boot=NULL,boot_id=NULL,boot_info=NULL,ble_generation=1,
       ble_secret=${bleSecret}, ble_pending=NULL, ble_pending_issued=false, ble_issued=false WHERE owner=${owner} AND id=${d.id}`;
     await internal(c, d.id, "revoke", { device: d.id });
     return { token: secret, ble_secret: bleSecret };
@@ -396,51 +398,59 @@ export async function operate(c, owner, name, a) {
   const queue = (op, args, boot = null) =>
     internal(c, d.id, "enqueue", { device: d.id, op, args, boot, key });
   if (name === "logs.flush") {
-    if (d.transport !== "mqtt" || d.boot_info?.log_flush !== true)
+    if (d.boot_info?.log_flush !== true)
       fail(409, "Log recall requires MQTT firmware that supports logs.flush");
     return queue("logs.flush", {}, a.process_id);
   }
-  if (d.transport === "mqtt") {
-    const info = d.boot_info;
-    if (name === "uart.write")
-      return queue("term.write", { data: a.text }, a.process_id);
-    if (name === "launcher.enter")
-      return info?.role === "launcher"
-        ? { mode: "launcher", process_id: d.boot_id }
-        : queue("reboot", { target: "launcher" }, d.boot_id);
-    if (name === "ota.install") {
-      if (
-        info?.role !== "launcher" ||
-        info.board !== d.board ||
-        info.image_profile !== "ESPHUB1/launcher/" + d.board
-      )
-        fail(409, "Start a compatible launcher first");
-      if (a.url.startsWith(artifactBase))
-        await internal(c, d.id, "check-upload", { url: a.url, kind: a.kind });
+  const info = d.boot_info;
+  if (name === "uart.write")
+    return queue("term.write", { data: a.text }, a.process_id);
+  if (name === "launcher.enter")
+    return info?.role === "launcher"
+      ? { mode: "launcher", process_id: d.boot_id }
+      : queue("reboot", { target: "launcher" }, d.boot_id);
+  if (name === "ota.install") {
+    if (
+      info?.role !== "launcher" ||
+      info.board !== d.board ||
+      info.image_profile !== "ESPHUB1/launcher/" + d.board
+    )
+      fail(409, "Start a compatible launcher first");
+    if (!a.url) {
+      const manifest = await launcherManifest(d.board);
+      if (info.chip !== manifest.chip) fail(409, "Release target mismatch");
       return queue(
         "install",
-        { board: d.board, url: a.url, kind: a.kind, transfer_id: key },
+        {
+          kind: "launcher",
+          board: d.board,
+          transfer_id: key,
+          url:
+            "https://api.esphub.ai/releases/" +
+            d.board +
+            "/ota?tag=" +
+            manifest.tag,
+          sha256: manifest.ota.sha256,
+          size: manifest.ota.size,
+          version: manifest.version,
+        },
         d.boot_id,
       );
     }
-  }
-  if (name === "launcher.enter")
-    return withSources(await internal(c, d.id, "enter", { board: d.board }));
-  if (name === "ota.install")
-    return withSources(
-      await internal(c, d.id, "ota", {
-        board: d.board,
-        kind: a.kind,
-        url: a.url,
-      }),
+    if (a.url.startsWith(artifactBase))
+      await internal(c, d.id, "check-upload", { url: a.url, kind: a.kind });
+    return queue(
+      "install",
+      { board: d.board, url: a.url, kind: a.kind, transfer_id: key },
+      d.boot_id,
     );
+  }
   if (name === "uart.sessions") return internal(c, d.id, "sessions");
   if (name === "uart.read")
     return internal(c, d.id, "read", {
       process_id: a.process_id,
       after: a.after ?? 0,
     });
-  if (name === "uart.write") return internal(c, d.id, "write", a);
   let op,
     args = {};
   if (name.startsWith("wifi.")) {
@@ -459,39 +469,5 @@ export async function operate(c, owner, name, a) {
   }
   if (name === "devices.reset") op = "provision.reset";
   if (name === "firmware.get") op = "status";
-  if (name === "launcher.install") {
-    const status = await summary(c, d);
-    if (
-      !status.online ||
-      status.info?.role !== "launcher" ||
-      status.info?.board !== d.board
-    )
-      fail(
-        409,
-        "Start a launcher reporting the registered board profile first",
-      );
-    const manifest = await launcherManifest(d.board);
-    if (status.info.chip !== manifest.chip)
-      fail(409, "Release target mismatch");
-    op = "install";
-    args = {
-      kind: "launcher",
-      board: d.board,
-      url:
-        "https://api.esphub.ai/releases/" +
-        d.board +
-        "/ota?tag=" +
-        manifest.tag,
-      ...(d.transport === "mqtt" ? { transfer_id: key } : {}),
-      sha256: manifest.ota.sha256,
-      size: manifest.ota.size,
-      version: manifest.version,
-    };
-  }
-  if (d.transport === "mqtt")
-    return queue(op, args, op === "install" ? d.boot_id : null);
-  const { data } = await internal(c, d.id, "rpc", { op, args });
-  return name === "firmware.get" || name === "launcher.install"
-    ? withSources(data)
-    : data;
+  return queue(op, args);
 }

@@ -39,11 +39,16 @@ bool prov_apply(const char *line, char *err, size_t n)
         return false;
     }
     const cJSON *tok = cJSON_GetObjectItemCaseSensitive(j, "token");
-    const char *hub = NULL, *cid = NULL, *csec = NULL, *name = NULL, *dtok = NULL;
-    /* "token": "okl_dev_..." is a hub device token; {"id","secret"} the legacy Access credentials */
-    const cJSON *tokobj = cJSON_IsObject(tok) ? tok : NULL;
-    bool ok = str_field(j, "hub", 99, &hub, err, n) && str_field(tokobj, "id", 95, &cid, err, n) &&
-              str_field(tokobj, "secret", 99, &csec, err, n) && str_field(j, "name", 32, &name, err, n);
+    const char *hub = NULL, *name = NULL, *dtok = NULL;
+    bool ok = str_field(j, "hub", OKOU_HUB_HOST_MAX, &hub, err, n) && str_field(j, "name", 32, &name, err, n);
+    if (ok && hub && !okou_hub_host_valid(hub)) {
+        snprintf(err, n, "hub must be a hostname such as api.esphub.ai");
+        ok = false;
+    }
+    if (ok && tok && !cJSON_IsString(tok)) {
+        snprintf(err, n, "expected a device token");
+        ok = false;
+    }
     if (ok && cJSON_IsString(tok)) {
         if (strncmp(tok->valuestring, "okl_dev_", 8) != 0 || strlen(tok->valuestring) > 95) {
             snprintf(err, n, "token must be a hub device token (okl_dev_...)");
@@ -69,9 +74,9 @@ bool prov_apply(const char *line, char *err, size_t n)
 #endif
     if (ok && dtok && !hub) hub = "api.esphub.ai";
     if (ok) {
-        const char *keys[] = {"hub", "cid", "csec", "name", OKOU_KEY_TOKEN};
-        const char *vals[] = {hub, cid, csec, name, dtok};
-        for (int i = 0; i < 5 && ok; i++) {
+        const char *keys[] = {"hub", "name", OKOU_KEY_TOKEN};
+        const char *vals[] = {hub, name, dtok};
+        for (int i = 0; i < 3 && ok; i++) {
             if (vals[i] && okou_nvs_set_str(keys[i], vals[i]) != ESP_OK) {
                 snprintf(err, n, "NVS write failed (%s)", keys[i]);
                 ok = false;
@@ -87,17 +92,3 @@ bool prov_apply(const char *line, char *err, size_t n)
     cJSON_Delete(j);
     return ok;
 }
-
-const char *prov_request_op(const char *line)
-{
-    static char op[16];
-    op[0] = '\0';
-    cJSON *j = cJSON_Parse(line);
-    const cJSON *o = cJSON_GetObjectItemCaseSensitive(j, "op");
-    if (cJSON_IsString(o)) {
-        strlcpy(op, o->valuestring, sizeof(op));
-    }
-    cJSON_Delete(j);
-    return op[0] ? op : NULL;
-}
-

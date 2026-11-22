@@ -7,8 +7,8 @@ const info = { board, role: "simulator", fw: firmware };
 export async function createVirtual(db, owner) {
   // Both a concurrent create and a later retry reuse the initial (NULL request) boot.
   const [device] = await db`WITH registered AS (
-    INSERT INTO esphub.devices(owner,name,board,kind,token_hash,transport,boot_info)
-    VALUES (${owner},'Virtual ESP32',${board},'virtual',NULL,NULL,${JSON.stringify(info)}::text::jsonb)
+    INSERT INTO esphub.devices(owner,name,board,kind,token_hash,boot_info)
+    VALUES (${owner},'Virtual ESP32',${board},'virtual',NULL,${JSON.stringify(info)}::text::jsonb)
     ON CONFLICT (owner) WHERE kind='virtual' DO UPDATE SET owner=EXCLUDED.owner
     RETURNING id,name,board,kind
   ), initial_boot AS (
@@ -35,7 +35,7 @@ export async function operateVirtual(db, device, name, args) {
     return { kind: "virtual", process_id: boot.process_id };
   }
   if (name === "uart.sessions")
-    return db`SELECT process_id,started_at,0 AS rx_cursor FROM esphub.virtual_boots
+    return db`SELECT process_id,started_at FROM esphub.virtual_boots
       WHERE device_id=${device.id} ORDER BY sequence DESC`;
   if (name === "uart.read") {
     const [boot] = await db`SELECT started_at,messages FROM esphub.virtual_boots

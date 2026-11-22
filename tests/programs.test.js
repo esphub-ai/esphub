@@ -244,8 +244,14 @@ body.set_servo_power.assert_not_called()
 
 test("local upload sizes match the launcher limits", () => {
   const device_id = crypto.randomUUID();
+  validate("programs.publish", { device_id, source: "x".repeat(32768) });
+  assert.throws(() =>
+    validate("programs.publish", { device_id, source: "é".repeat(16385) }),
+  );
+  assert.throws(() =>
+    validate("ota.prepare_upload", { device_id, kind: "python", size: 20 }),
+  );
   for (const [kind, limit] of [
-    ["python", 32768],
     ["launcher", 4194304],
     ["micropython", 4194304],
   ]) {

@@ -1,5 +1,14 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: ESPHub MQTT wake subscriptions and backend IAM permissions
+Description: ESPHub MQTT device transport and backend IAM permissions
+Parameters:
+  RelaySecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+  UplinkUrl:
+    Type: String
+    Default: https://api.esphub.ai/internal/iot/uplink
+    AllowedPattern: 'https://[^ @?#]+/internal/iot/uplink'
 Resources:
   DevicePolicy:
     Type: AWS::IoT::Policy
@@ -20,6 +29,59 @@ Resources:
           - Effect: Allow
             Action: iot:Receive
             Resource: !Join ['', [!Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topic/devices/', '${iot:Connection.Thing.Attributes[deviceId]}/wake']]
+          - Effect: Allow
+            Action: iot:Publish
+            Resource: !Join ['', [!Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topic/devices/', '${iot:Connection.Thing.Attributes[deviceId]}/up']]
+  RelayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+  Relay:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt RelayRole.Arn
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Timeout: 20
+      Environment:
+        Variables:
+          ENDPOINT: !Ref UplinkUrl
+          SECRET: !Ref RelaySecret
+      Code:
+        ZipFile: |
+          exports.handler = async (message) => {
+            const res = await fetch(process.env.ENDPOINT, {
+              method: "POST", redirect: "error", signal: AbortSignal.timeout(15000),
+              headers: {authorization: "Bearer " + process.env.SECRET, "content-type": "application/json"},
+              body: JSON.stringify(message)
+            });
+            if (!res.ok && ![400,409].includes(res.status)) throw Error("Uplink HTTP " + res.status);
+          };
+  InvokeRelay:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt Relay.Arn
+      Principal: iot.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:rule/ESPHubDeviceUplink'
+  UplinkRule:
+    Type: AWS::IoT::TopicRule
+    DependsOn: InvokeRelay
+    Properties:
+      RuleName: ESPHubDeviceUplink
+      TopicRulePayload:
+        AwsIotSqlVersion: '2016-03-23'
+        Sql: "SELECT topic(2) AS device, principal() AS principal, frame FROM 'devices/+/up'"
+        Actions:
+          - Lambda: {FunctionArn: !GetAtt Relay.Arn}
   BackendPermissions:
     Type: AWS::IAM::ManagedPolicy
     Properties:

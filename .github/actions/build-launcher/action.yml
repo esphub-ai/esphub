@@ -30,5 +30,9 @@ runs:
         if [[ "$FRESH_LAYOUT" == true ]]; then config=sdkconfig.setup; fi
         grep -Fx "CONFIG_PM_ENABLE=y" "$config"
         grep -Fx "CONFIG_OKOU_BLE_WIFI=y" "$config"
+        grep -Fx "# CONFIG_BT_NIMBLE_ROLE_CENTRAL is not set" "$config"
+        grep -Fx "# CONFIG_ESP_WIFI_SOFTAP_SUPPORT is not set" "$config"
+        grep -Fx "CONFIG_BT_NIMBLE_ROLE_OBSERVER=y" "$config"
+        grep -Fx "CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y" "$config"
         grep -Fx "CONFIG_FREERTOS_USE_TICKLESS_IDLE=y" "$config"
         python ../../scripts/package-launcher.py "$BOARD" "$VERSION" "${package[@]}"

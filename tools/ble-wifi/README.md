@@ -6,7 +6,7 @@ Use the launcher and MicroPython images from the latest USB kit for your board. 
 OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret>"}
 ```
 
-Wait for `OKL-PROVISION-OK`. The device can now receive its first Wi-Fi over Bluetooth. For an existing registration with older firmware, install both updated images and use `devices.reissue` to get new USB credentials. Reissuing disconnects the old registration token. Complete the USB write before moving the device.
+Set `hub` to the plain ESPHub hostname. Wait for `OKL-PROVISION-OK`. The device can now receive its first Wi-Fi over Bluetooth. For an existing registration with older firmware, install both updated images and use `devices.reissue` to get new USB credentials. Reissuing disconnects the old registration token. Complete the USB write before moving the device.
 
 On a Mac with Python 3.13+ (OpenSSL with PSK support), install Bleak in a virtual environment and grant Bluetooth access to the terminal. Run with a locally authorized Okou CLI:
 
@@ -24,4 +24,4 @@ CoreBluetooth can advertise a custom service UUID. The `uuid-v1` format uses one
 
 The matching device advertises the same UUID with its most significant bit toggled. The host connects and carries TLS bytes over acknowledged writes and reads on characteristic `a2eefb31-6c36-481f-ae10-7724fa912102`, up to 20 bytes at a time. TLS 1.3 uses external PSK identity `wifi`, ephemeral key exchange and AES-128-GCM/SHA-256. The TLS stream carries newline-delimited UTF-8 JSON. Seeing a beacon can trigger discovery; a command requires a completed PSK handshake.
 
-After a hub reconnect or the end of a provisioning session, the board reports its key generation over its authenticated WebSocket. The hub stages a replacement if it issued a credential at that generation. The device persists the generation and key in one NVS record before confirming. A missing confirmation is retried on reconnect. If the device goes offline during that transition, an authorized host receives session credentials for the current and staged generations and tries both beacons. The device accepts only its installed generation. No trusted device clock or replay ledger is required for BLE. While native provisioning owns NimBLE, Python BLE activation returns EBUSY. Python can activate BLE after the native service shuts down.
+After Wi-Fi reconnects or a BLE session ends, the board sends its installed generation to `POST /api/device/ble/sync` over HTTPS. The hub retries the same pending key until the board confirms its generation. A credential issued for the previous generation stops working after the device installs the new key. An online device can also save a network remotely through `wifi.add`.

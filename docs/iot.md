@@ -1,69 +1,39 @@
-# MQTT device command delivery
+# Physical device protocol
 
-The API stores commands in Neon. An authenticated device subscribes at QoS 1 to
-`devices/<device UUID>/wake` in AWS IoT Core, us-west-2. A wake contains only
-`{"pending":true}`. After SUBACK and on each notification, the device pulls over
-HTTPS using its existing ESPHub token. The launcher and MicroPython use the same
-agent and device identity. Serial output and uploaded artifacts use the existing
-R2 paths.
+The launcher and MicroPython share one device agent. Firmware keeps a single authenticated MQTT session with AWS IoT Core in us-west-2. A device needs its registration token and P-256 key to enroll. USB installs the initial registration token and BLE bootstrap key. The SDK stores a plain ASCII hostname in `okl/hub` (up to 99 bytes). It builds HTTPS request URLs internally. USB rejects a scheme, port, path, query or fragment before writing any part of the registration. Replace old URL-valued settings by sending `OKL-PROVISION {"hub":"api.esphub.ai"}` over USB. The virtual ESP32 has no device credentials or network transport.
+
+| Operation | Device path | Evidence of completion |
+| --- | --- | --- |
+| Connect to a Wi-Fi network on site | BLE scan and join using an MCP-issued credential | The board reports the join result over the encrypted BLE session |
+| Save a network remotely | Cloud `wifi.add`, delivered through the command queue | MQTT receipt after the NVS write. The password is removed from the queue upon dispatch |
+| Rotate BLE credentials | HTTPS `POST /api/device/ble/sync` | The device reports its installed generation. The hub commits the pending key after confirmation and retries the same outstanding offer |
+| Enroll or reconnect to MQTT | HTTPS `POST /api/device/iot/enroll` with CSR and boot ID | Certificate and broker endpoint. The private key stays on the board |
+| Receive a command | MQTT wake followed by HTTPS `POST /api/device/iot/pull` | The pull returns one command and records its dispatch |
+| Report device state and execution | QoS 1 MQTT publish to `devices/<uuid>/up` | The hub processes hello, receipts, logs, metrics and events, including drawing and OTA progress and completion |
+| Download an OTA artifact | Stream an HTTPS GET with board and image checks | Matching install result, then verification of the next boot |
+| Inspect resident main.py | Runtime-only authenticated HTTPS PUT of the file snapshot | `programs.get` returns the source and process ID |
+
+## Command delivery and receipts
+
+The API commits the command before publishing a wake. The device pulls on subscription or a pending-work wake. A pull carries a flag when more commands are already queued, so finishing the last command needs only its MQTT report. Pull selects the oldest eligible command and atomically changes its state from `queued` to `dispatched`. A request ID identifies one command and payload. Concurrent pulls and retries cannot dispatch that command twice.
+
+`dispatched` means the server returned the command for delivery. An interrupted pull can leave the board without the command. The server reports `unknown` after the receipt deadline and never automatically replays dispatched work. Queued commands expire after five minutes. A valid late receipt can resolve an unknown result. Reboots complete when the requested next boot is observed. Install commands complete on a matching `install.done` or `install.failed` event. Check the next boot separately to verify that the program started.
+
+A Durable Object alarm retries queued wakes. A periodic sweep also recovers interrupted alarms and certificate revocations. Reissuing a token invalidates pending commands and the previous certificate.
+
+## MQTT reports
+
+Devices subscribe to their own `devices/<uuid>/wake` topic. A pending notification carries no command or credentials. Each uplink contains a `frame` with a per-boot message ID. The AWS rule attaches the device UUID from the topic and the certificate ID from the broker principal. A Lambda relay forwards that envelope to the Worker. The Worker verifies the relay, registered certificate and enrolled boot. The device policy scopes publish and subscribe to the attached thing.
+
+Hello, command receipts, install outcomes and log batches request an application acknowledgement on the existing downlink. The ACK echoes the boot and message ID. Hello confirms the hub has recorded the boot before firmware can cancel rollback. Log acknowledgements carry the stored source sequence. Metrics and ordinary events need only MQTT QoS 1. Periodic logging captures a finite batch every ten minutes. An empty buffer produces no upload. `logs.flush` requests a batch immediately. Unacknowledged RAM logs can be lost on a power cut.
 
 ## Deployment
 
-1. Apply `deploy/iot.yaml` to the target account in us-west-2 with CloudFormation.
-   The stack creates the thing-bound device policy and outputs the managed policy
-   ARN for the Worker identity. Attach the managed policy to the dedicated backend
-   principal. The AWS enrollment principal can administer certificates in this
-   region. Use a dedicated IoT account if certificates for other workloads need
-   independent administration.
-2. Set production environment variables `IOT_ACCOUNT_ID` and `IOT_DATA_ENDPOINT`
-   in GitHub. Use the hostname reported by `aws iot describe-endpoint
-   --endpoint-type iot:Data-ATS --region us-west-2` in the target account.
-   Set environment secrets `IOT_ACCESS_KEY_ID` and `IOT_SECRET_ACCESS_KEY`
-   for that principal. Temporary credentials additionally need `IOT_SESSION_TOKEN`
-   and rotation before expiry. The production workflow deploys these as Worker
-   bindings. No device receives AWS backend credentials.
-3. Deploy the migration and Worker before rolling out firmware. The new agent
-   probes the authenticated capabilities endpoint after obtaining Wi-Fi.
-   A configured Worker advertises MQTT. Unconfigured and older backends retain
-   the WebSocket path. The device generates a P-256 private key and CSR in NVS.
-   Only the CSR is sent to the backend. IoT creates an inactive certificate,
-   binds it to the thing and its subscribe-only policy, then activates it.
-4. Test one device through USB provisioning, initial enrollment, both boot roles,
-   a temporarily disconnected network, and token replacement. Verify that
-   publishing or subscribing to another device's topic is denied. A legacy
-   firmware connecting over its authenticated WebSocket switches that device
-   back to the legacy channel.
+1. Apply `deploy/iot.yaml` in us-west-2. Set the stack’s `RelaySecret` and the GitHub production environment’s `IOT_RELAY_SECRET` to the same high-entropy secret. The stack uses IAM resources and outputs the managed policy to attach to the Worker AWS principal. Set `UplinkUrl` to the Worker endpoint for that environment.
+2. Configure `IOT_ACCOUNT_ID`, `IOT_DATA_ENDPOINT`, `IOT_ACCESS_KEY_ID` and `IOT_SECRET_ACCESS_KEY`. The data endpoint is the regional `iot:Data-ATS` hostname. Temporary AWS credentials also require `IOT_SESSION_TOKEN`.
+3. Test the stack, migration, Worker, launcher and MicroPython together in a separate environment. Enroll two devices, check isolation across topics, verify a cloud Wi-Fi save and a BLE rotation, then install an image and observe the next boot.
+4. Coordinate the production cutover. Existing firmware depends on removed endpoints; firmware for both boot roles and the new backend must be available together. Stage both images using the old control plane or arrange local USB recovery before switching the production Worker. Carry active work through to a terminal result before migration. The migration retires ambiguous in-flight work as unknown.
 
-## Receipts and recovery
+## Local verification
 
-Callers can supply a UUID `request_id` when submitting a command. Reuse the ID
-for retries of the same payload. MQTT-enabled operations return `command_id`;
-use `commands.get` with the device ID to read the outcome. Commands expire after
-five minutes in the queue. Four consecutive commands at most are leased per pull.
-Before executing each one the device exchanges its lease for a one-time start
-permission. A lost pull can be retried. Loss of contact after start yields
-`unknown` instead of an automatic second execution. Serial input belongs to
-one boot. An OTA acceptance is followed by the matching install event; check the
-new boot and running firmware before reporting deployment success.
-
-Each device's existing Durable Object arms its alarm before inserting into Neon.
-Postgres records when another wake is due. The alarm retries pending work and
-stops once the device is settled. A six-hour indexed sweep recovers interrupted
-alarms and certificate revocations. A token replacement invalidates pending
-commands and schedules deactivation of the old certificate. No D1 database is
-required.
-
-## Buffered logs
-
-MQTT firmware batches ordinary logs in RAM every ten minutes. An empty buffer
-sends nothing. Command receipts and OTA events are sent independently, and a
-normal reboot attempts a final upload. Successful TLS verification messages
-stay on the local serial console. Power loss discards any unacknowledged RAM logs.
-
-Select **Fetch device logs** in the current boot's serial console to request a
-batch early. MCP clients can call `logs.flush` with the device and process IDs
-when `devices.get` reports `info.log_flush`. Read the receipt with `commands.get`.
-`last_acked_seq` is the last device log sequence acknowledged for this boot.
-`dropped_lines` counts lines discarded due to a full buffer since boot. Use
-the cursor returned by `uart.read` to page the stored stream, which also includes
-device events. WebSocket firmware continues streaming logs live.
+`node scripts/local-e2e.mjs` requires an isolated PostgreSQL database, Chromium, Mosquitto and its command-line clients. The native USB test in `npm test` uses a C compiler, pkg-config and the cJSON development package. It exercises real MQTT QoS 1 traffic over loopback, the production Worker handlers, PostgreSQL and local R2. The fixture emulates AWS enrollment, principal projection and connectivity. Cloud policy enforcement and physical radio behavior require a deployed canary.

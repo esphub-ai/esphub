@@ -96,12 +96,20 @@ async function op(name,args={}) {
   const command_id=value.command_id;
   notify("Command queued");
   const logRecall = name === "logs.flush";
-  const deadline = Date.now() + (logRecall ? 390000 : 30000);
+  const deadline =
+    Date.now() + (name === "ota.install" ? 600000 : logRecall ? 390000 : 90000);
   while (Date.now() < deadline) {
-    await new Promise(resolve=>setTimeout(resolve,logRecall ? 3000 : 1000));
-    value=await api("/operations/commands.get",{device_id:args.device_id,command_id});
-    if(["accepted","succeeded"].includes(value.state)) return {...value.result,process_id:value.process_id};
-    if(["failed","expired","unknown"].includes(value.state)) throw Error(value.result?.error || "Command "+value.state);
+    await new Promise((resolve) =>
+      setTimeout(resolve, logRecall ? 3000 : 1000),
+    );
+    value = await api("/operations/commands.get", {
+      device_id: args.device_id,
+      command_id,
+    });
+    if (value.state === "succeeded")
+      return { ...value.result, process_id: value.process_id };
+    if (["failed", "expired", "unknown"].includes(value.state))
+      throw Error(value.result?.error || "Command " + value.state);
   }
   throw Error("Command "+command_id+" is "+value.state+". Check commands.get for its receipt.");
 }
@@ -179,7 +187,7 @@ const devicePrompt = `Connect to ${mcpEndpoint} with CIMD OAuth and the devices:
 
 For a new board, identify it over USB. Ask me if the model is unclear, then call devices.create and follow its setup instructions.
 
-For a program update, confirm the target and what I want it to do. Use an existing HTTPS download URL, upload a local file with ota.prepare_upload, or stage generated main.py with programs.publish. Call launcher.enter, wait for launcher mode, then use ota.install with the matching kind and download URL. Check the next boot’s output before reporting success.`;
+For a program update, confirm the target and what I want it to do. Use an existing HTTPS download URL, upload a local firmware binary with ota.prepare_upload, or stage main.py with programs.publish. Call launcher.enter, wait for launcher mode, then use ota.install with the matching kind and download URL. Check the next boot’s output before reporting success.`;
 function devicePromptPanel() {
   return `<section class="mcp-setup" aria-labelledby="mcp-title"><h2 id="mcp-title">Use EspHub with your assistant</h2>
     <div class="mcp-grid"><div class="panel"><blockquote id="mcp-prompt">${esc(devicePrompt)}</blockquote>${button("copy-prompt", "Copy prompt")}</div></div></section>`;
@@ -287,9 +295,7 @@ async function refresh() {
             "</option>",
         )
         .join("") +
-      '</select><div class="kv cursor-value">Device RX cursor <b id="rx">' +
-      selected.rx_cursor +
-      '</b></div><div class="kv cursor-value">Browser TX cursor <b id="tx">0</b></div><button id="flush" hidden>Fetch device logs</button><p id="flush-result" role="status"></p><a class="crumb" href="/streams">Stream protocol ↗</a></div></div>';
+      '</select><div class="kv cursor-value">Browser TX cursor <b id="tx">0</b></div><button id="flush" hidden>Fetch device logs</button><p id="flush-result" role="status"></p><a class="crumb" href="/streams">Stream protocol ↗</a></div></div>';
     const flushButton = $("#flush");
     const flushResult = $("#flush-result");
     flushButton.onclick = async () => {
@@ -363,8 +369,6 @@ async function refresh() {
             op("uart.sessions", { device_id: device.id }),
           ]);
           if (currentView !== view) return;
-          $("#rx").textContent =
-            ss.find((s) => s.process_id === session)?.rx_cursor ?? 0;
           $("#connection").textContent = ds.online ? "● Online" : "○ Offline";
           setState(ds);
           if (ss.length !== sessions.length) {
@@ -544,10 +548,10 @@ async function action(k) {
       "<p>Install the latest verified release for this specific board. The connected launcher must report a matching board profile.</p>",
       "Install launcher",
       async () => {
-        await op("launcher.install", id);
+        await op("ota.install", { ...id, kind: "launcher" });
         tab = "Serial";
         await refresh();
-        notify("Launcher update accepted");
+        notify("Launcher image installed");
       },
     );
     return;
@@ -561,7 +565,7 @@ async function action(k) {
       async (a) => {
         const receipt = await op("ota.install", { ...id, ...a });
         session = receipt.process_id;
-        notify("Download accepted. Follow progress in Serial.");
+        notify("Install completed. Verify the next boot in Serial.");
         tab = "Serial";
         await refresh();
       },
@@ -629,7 +633,7 @@ async function explorer() {
     board: Object.keys(boardName)[0],
     ssid: "",
     url: "",
-    kind: "python",
+    kind: "launcher",
   };
   const select = () => {
     const t = tools.find((t) => t.name === $("#tool").value);
@@ -664,7 +668,6 @@ async function explorer() {
           "wifi.remove",
           "launcher.enter",
           "ota.install",
-          "launcher.install",
           "uart.write",
         ].includes(name)
       )
@@ -684,7 +687,7 @@ async function start() {
   if (path[0] === "streams") {
     docs(
       "UART streams",
-      '<p class="lead">Every boot has its own input and output streams. Record numbers start at one.</p><pre>devices/{DEVICE-UUID}/{PROCESS-ID}/uart/rx\ndevices/{DEVICE-UUID}/{PROCESS-ID}/uart/tx</pre><h2>RX · device stdin</h2><p class="doccopy">Web and MCP queue input against an active boot. The launcher handles command lines. MicroPython programs can read application messages with okou.read_input(). The board polls after its local cursor. Reconnects resume that cursor; rebooting creates a different process. Reuse the request ID to safely retry an enqueue.</p><h2>TX · device stdout</h2><p class="doccopy">The board sends numbered logs. Each client polls after its last delivered sequence. Archived boots are read-only. R2 stores bounded record pages and a committed cursor manifest for each direction.</p>',
+      '<p class="lead">Each boot has its own process ID and serial output.</p><h2>Device input</h2><p class="doccopy">Use uart.write with the current process ID. The board pulls the command and reports the result over MQTT. Reuse the request ID when retrying a write.</p><h2>Device output</h2><p class="doccopy">Use uart.read after the last delivered record. The same cursor reads stored logs and events from an archived boot. Use logs.flush on the current boot to fetch buffered output immediately.</p>',
     );
     return;
   }

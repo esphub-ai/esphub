@@ -23,6 +23,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: 24, cache: npm}
       - run: npm ci
+      - run: sudo apt-get update -qq && sudo apt-get install -y mosquitto mosquitto-clients pkg-config libcjson-dev
       - run: npm run migrate && npm run migrate
       - run: npm test && npm run build && node scripts/local-e2e.mjs
       - run: npx wrangler deploy --dry-run -c services/api/wrangler.jsonc && npx wrangler deploy --dry-run -c services/web/wrangler.jsonc
@@ -38,6 +39,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: 24, cache: npm}
       - run: npm ci
+      - name: Check MQTT relay configuration before applying the protocol migration
+        env:
+          RELAY_SECRET: ${{ secrets.IOT_RELAY_SECRET }}
+        run: test "${#RELAY_SECRET}" -ge 32
       - name: Migrate production Neon database
         run: npm run migrate
   deploy:
@@ -49,6 +54,7 @@ jobs:
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
       CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+      IOT_RELAY_SECRET: ${{ secrets.IOT_RELAY_SECRET }}
       IOT_ACCOUNT_ID: ${{ vars.IOT_ACCOUNT_ID }}
       IOT_DATA_ENDPOINT: ${{ vars.IOT_DATA_ENDPOINT }}
       IOT_ACCESS_KEY_ID: ${{ secrets.IOT_ACCESS_KEY_ID }}
@@ -64,7 +70,7 @@ jobs:
       - run: npm ci && npm run build
       - name: Check production credentials
         run: |
-          for var in CLERK_SECRET_KEY MIGRATION_DATABASE_URL RUNTIME_DB_PASSWORD CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+          for var in IOT_RELAY_SECRET IOT_ACCOUNT_ID IOT_DATA_ENDPOINT IOT_ACCESS_KEY_ID IOT_SECRET_ACCESS_KEY CLERK_SECRET_KEY MIGRATION_DATABASE_URL RUNTIME_DB_PASSWORD CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
             if [ -z "${!var}" ]; then echo "::error::Missing $var"; exit 1; fi
           done
       - name: Check Clerk production OAuth configuration

@@ -7,6 +7,7 @@ import os
 import sys
 import zipfile
 from pathlib import Path
+from elftools.elf.elffile import ELFFile
 
 board, version = sys.argv[1:3]
 setup_base = sys.argv[3:] == ["--setup-base"]
@@ -28,6 +29,24 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 image = (build / "esp-launcher.bin").read_bytes()
 assert image[288:].startswith(f"ESPHUB1/launcher/{board}\0".encode()), "Invalid OTA image profile"
+# Check the linked firmware, including the alternate StopWatch USB layout.
+# An MQTT client configured for TLS can still link ESP-IDF's default WS transport.
+settings = set(config.splitlines())
+for key in ("CONFIG_MQTT_TRANSPORT_SSL", "CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS"):
+    assert f"{key}=y" in settings, f"Missing {key}"
+for key in ("CONFIG_WS_TRANSPORT", "CONFIG_MQTT_TRANSPORT_WEBSOCKET", "CONFIG_MQTT_TRANSPORT_WEBSOCKET_SECURE"):
+    assert f"{key}=y" not in settings, f"Unexpected {key}"
+with (build / "esp-launcher.elf").open("rb") as elf:
+    symbols = {symbol.name for symbol in ELFFile(elf).get_section_by_name(".symtab").iter_symbols()
+               if symbol["st_shndx"] != "SHN_UNDEF"}
+unexpected = sorted(s for s in symbols if s.startswith(("esp_transport_ws_", "esp_websocket_client_")))
+assert not unexpected, f"WebSocket implementation linked: {unexpected}"
+required = {"esp_transport_ssl_init", "esp_mqtt_client_start", "esp_http_client_perform", "okou_hub_host_valid"}
+assert required <= symbols, f"Missing native transport or hostname validation: {required - symbols}"
+lower_image = image.lower()
+for marker in (b"upgrade: websocket", b"sec-websocket-", b"esp_transport_ws_", b"ws://", b"wss://"):
+    assert marker not in lower_image, f"Unexpected OTA image marker {marker!r}"
+print(f"{board} {build}: {len(image)} bytes, SHA-256 {digest(image)}; ELF and binary transport checks passed")
 ota = f"{prefix}-ota.bin"
 # The fresh USB variant uses the same board profile with another partition layout.
 if not setup_base:
