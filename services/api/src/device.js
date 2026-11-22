@@ -1,14 +1,19 @@
 import { DurableObject } from "cloudflare:workers";
-import { HTTPException } from "hono/http-exception";
-import { installProgram } from "./programs.js";
 import { Stream } from "./streams.js";
+function legacyRepl(info) {
+  return (
+    info?.role === "app" &&
+    info.fw?.name === "micropython" &&
+    info.image_profile !== "ESPHUB1/micropython/" + info.board
+  );
+}
 export class Device extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.pending = new Map();
     this.db = ctx.storage.sql;
     this.db.exec(
-      "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,started TEXT,info TEXT,rx_cursor INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS current_device(id TEXT, pid TEXT); CREATE TABLE IF NOT EXISTS writes(pid TEXT,k TEXT,seq INTEGER,PRIMARY KEY(pid,k))",
+      "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,started TEXT,info TEXT,rx_cursor INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS current_device(id TEXT, pid TEXT); CREATE TABLE IF NOT EXISTS writes(pid TEXT,k TEXT,seq INTEGER,PRIMARY KEY(pid,k)); CREATE TABLE IF NOT EXISTS programs(id TEXT PRIMARY KEY, source TEXT NOT NULL, expires INTEGER NOT NULL)",
     );
   }
   active() {
@@ -23,9 +28,33 @@ export class Device extends DurableObject {
       "devices/" + this.current().id + "/" + pid + "/uart/" + dir,
     );
   }
+  async alarm() {
+    this.db.exec("DELETE FROM programs WHERE expires<=?", Date.now());
+    const next = this.db
+      .exec("SELECT min(expires) AS expires FROM programs")
+      .one().expires;
+    if (next) await this.ctx.storage.setAlarm(next);
+  }
   async fetch(req) {
     const url = new URL(req.url),
       path = url.pathname;
+    if (path.startsWith("/artifacts/")) {
+      const row = this.db
+        .exec(
+          "SELECT source FROM programs WHERE id=? AND expires>?",
+          path.slice(11),
+          Date.now(),
+        )
+        .toArray()[0];
+      return row
+        ? new Response(row.source, {
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8",
+              "Cache-Control": "no-store",
+            },
+          })
+        : new Response(null, { status: 404 });
+    }
     if (path === "/connect") {
       const pair = new WebSocketPair();
       const old = this.active();
@@ -43,10 +72,12 @@ export class Device extends DurableObject {
       const row =
         boot &&
         this.db.exec("SELECT info FROM boots WHERE pid=?", boot).toArray()[0];
+      const info = row ? JSON.parse(row.info) : null;
       return Response.json({
         online: !!socket && socket.deserializeAttachment()?.pid === boot,
         process_id: boot || null,
-        info: row ? JSON.parse(row.info) : null,
+        info,
+        serial_input: !legacyRepl(info),
       });
     }
     if (path === "/revoke") {
@@ -62,6 +93,22 @@ export class Device extends DurableObject {
           .toArray(),
       );
     const args = await req.json();
+    if (path === "/publish") {
+      const id = crypto.randomUUID(),
+        expires = Date.now() + 24 * 3600000;
+      this.db.exec(
+        "INSERT INTO programs VALUES(?,?,?)",
+        id,
+        args.source,
+        expires,
+      );
+      if ((await this.ctx.storage.getAlarm()) === null)
+        await this.ctx.storage.setAlarm(expires);
+      return Response.json({
+        url: "https://api.esphub.ai/api/device/programs/" + id,
+        expires_at: new Date(expires).toISOString(),
+      });
+    }
     if (path === "/read" || path === "/write") {
       const pid = args.process_id;
       if (
@@ -80,6 +127,13 @@ export class Device extends DurableObject {
       )
         return Response.json(
           { error: "Session is no longer active" },
+          { status: 409 },
+        );
+      if (this.legacyRepl(pid))
+        return Response.json(
+          {
+            error: "Update MicroPython over HTTPS to enable application input",
+          },
           { status: 409 },
         );
       return this.ctx.blockConcurrencyWhile(async () => {
@@ -121,61 +175,76 @@ export class Device extends DurableObject {
     }
     if (!socket || !boot || socket.deserializeAttachment()?.pid !== boot)
       return Response.json({ error: "Device offline" }, { status: 409 });
-    if (path === "/program") {
-      const { info } = this.db
-        .exec("SELECT info FROM boots WHERE pid=?", boot)
-        .one();
-      const report = JSON.parse(info);
-      if (
-        report.role !== "app" ||
-        (report.board && report.board !== args.board)
-      )
+    if (path === "/enter" || path === "/ota") {
+      const info = JSON.parse(
+        this.db.exec("SELECT info FROM boots WHERE pid=?", boot).one().info,
+      );
+      if (info.board !== args.board || !["launcher", "app"].includes(info.role))
         return Response.json(
-          { error: "Start the matching ESP Hub MicroPython runtime first" },
-          { status: 409 },
-        );
-      if (this.installing)
-        return Response.json(
-          { error: "A program installation is already in progress" },
-          { status: 409 },
-        );
-      this.installing = true;
-      try {
-        let after;
-        const receipt = await installProgram(
-          args.source,
-          async (op, params) => {
-            if (op === "py.reset")
-              after = (await this.stream(boot, "tx").head()).last;
-            if (this.active() !== socket || this.current()?.pid !== boot)
-              throw new HTTPException(409, {
-                message: "Device session changed during installation",
-              });
-            const response = await this.rpc(socket, op, params);
-            const body = await response.json();
-            if (!response.ok)
-              throw new HTTPException(response.status, { message: body.error });
-            return body.data;
+          {
+            error: "Connected device must report the registered board profile",
           },
+          { status: 409 },
         );
-        return Response.json({
-          ...receipt,
-          device_id: this.current().id,
-          process_id: boot,
-          after,
-        });
-      } catch (error) {
-        if (error instanceof HTTPException)
-          return Response.json(
-            { error: error.message },
-            { status: error.status },
-          );
-        throw error;
-      } finally {
-        this.installing = false;
+      if (path === "/enter") {
+        const already = info.role === "launcher";
+        const response = await this.rpc(
+          socket,
+          already ? "status" : "reboot",
+          already ? {} : { target: "launcher" },
+        );
+        return response.ok
+          ? Response.json({
+              mode: already ? "launcher" : "rebooting",
+              process_id: boot,
+            })
+          : response;
       }
+      if (info.role !== "launcher")
+        return Response.json(
+          { error: "Call launcher.enter and wait for launcher mode" },
+          { status: 409 },
+        );
+      if (info.image_profile !== "ESPHUB1/launcher/" + args.board)
+        return Response.json(
+          { error: "Upgrade this older launcher with launcher.install first" },
+          { status: 409 },
+        );
+      const transfer_id = crypto.randomUUID();
+      const after = (await this.stream(boot, "tx").head()).last;
+      if (this.active() !== socket || this.current()?.pid !== boot)
+        return Response.json(
+          { error: "Launcher session changed" },
+          { status: 409 },
+        );
+      const response = await this.rpc(socket, "install", {
+        ...args,
+        transfer_id,
+      });
+      if (!response.ok) return response;
+      const { data } = await response.json();
+      if (!data?.accepted)
+        return Response.json(
+          { error: "Launcher did not accept OTA" },
+          { status: 409 },
+        );
+      return Response.json({
+        accepted: true,
+        transfer_id,
+        process_id: boot,
+        after,
+      });
     }
     return this.rpc(socket, args.op, args.args);
+  }
+  legacyRepl(pid) {
+    const attachment = this.active()?.deserializeAttachment();
+    if (typeof attachment?.legacyRepl === "boolean")
+      return attachment.legacyRepl;
+    const info = JSON.parse(
+      this.db.exec("SELECT info FROM boots WHERE pid=?", pid).one().info,
+    );
+    return legacyRepl(info);
   }
   rpc(socket, op, args) {
     const id = crypto.randomUUID();
@@ -258,7 +327,7 @@ export class Device extends DurableObject {
           JSON.stringify(m),
         );
         this.db.exec("UPDATE current_device SET pid=?", pid);
-        ws.serializeAttachment({ pid });
+        ws.serializeAttachment({ pid, legacyRepl: legacyRepl(m) });
         const tx = this.stream(pid, "tx");
         await Promise.all([tx.init(), this.stream(pid, "rx").init()]);
         this.rxLast = (await this.stream(pid, "rx").head()).last;
@@ -296,6 +365,7 @@ export class Device extends DurableObject {
         Number.isSafeInteger(m.after) &&
         m.after >= 0
       ) {
+        if (this.legacyRepl(pid)) return;
         const stored = this.db
           .exec("SELECT rx_cursor FROM boots WHERE pid=?", pid)
           .one().rx_cursor;

@@ -67,9 +67,7 @@ api.use("*", (c, next) =>
 api.get("/auth/me", async (c) =>
   c.json({ handle: (await identify(c)).handle }),
 );
-api.get("/api/device/connect", async (c) => {
-  if (c.req.header("Upgrade")?.toLowerCase() !== "websocket")
-    fail(426, "WebSocket upgrade required");
+async function authenticatedDevice(c) {
   const t = c.req
     .header("Authorization")
     ?.match(/^Bearer (okl_dev_[A-Za-z0-9_-]+)$/)?.[1];
@@ -78,10 +76,21 @@ api.get("/api/device/connect", async (c) => {
     [d] =
       await sql`SELECT id FROM esphub.devices WHERE token_hash=${await digest(t)}`;
   if (!d) fail(401, "Invalid device token");
-  return c.env.DEVICE.get(c.env.DEVICE.idFromName(d.id)).fetch(
-    "https://device/connect",
-    { headers: { Upgrade: "websocket", "X-Device-ID": d.id } },
+  return { id: d.id, stub: c.env.DEVICE.get(c.env.DEVICE.idFromName(d.id)) };
+}
+api.get("/api/device/programs/:artifact", async (c) => {
+  const { stub } = await authenticatedDevice(c);
+  return stub.fetch(
+    "https://device/artifacts/" + encodeURIComponent(c.req.param("artifact")),
   );
+});
+api.get("/api/device/connect", async (c) => {
+  if (c.req.header("Upgrade")?.toLowerCase() !== "websocket")
+    fail(426, "WebSocket upgrade required");
+  const { id, stub } = await authenticatedDevice(c);
+  return stub.fetch("https://device/connect", {
+    headers: { Upgrade: "websocket", "X-Device-ID": id },
+  });
 });
 api.post("/operations/:name", async (c) => {
   const user = await identify(c);

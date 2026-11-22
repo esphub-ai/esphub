@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
-import { installProgram } from "../services/api/src/programs.js";
 import { provisioning } from "../services/api/src/provisioning.js";
 import { validate } from "../services/api/src/operations.js";
 
@@ -44,14 +43,70 @@ print(json.dumps([c.args for c in canvas.drawString.call_args_list]))
   }
 });
 
-test("refuses an unacknowledged checksum and bounds source by UTF-8 size", async () => {
-  const input = { device_id: crypto.randomUUID(), source: "é".repeat(16385) };
-  assert.throws(() => validate("programs.install", input), /Invalid source/);
-  await assert.rejects(
-    installProgram("print(1)", (op) => {
-      assert.equal(op, "py.exec");
-      return { exception: null, output: "" };
-    }),
-    /checksum receipt/,
+test("publishing bounds UTF-8 byte size and OTA accepts only the three HTTPS targets", () => {
+  const device_id = crypto.randomUUID();
+  assert.throws(
+    () =>
+      validate("programs.publish", { device_id, source: "é".repeat(16385) }),
+    /Invalid source/,
   );
+  for (const kind of ["launcher", "micropython", "python"])
+    validate("ota.install", {
+      device_id,
+      kind,
+      url: "https://example.com/artifact",
+    });
+  for (const url of [
+    "http://example.com/a",
+    "https://user:password@example.com/a",
+    "https://example.com/a#b",
+    "https://example.com/" + "a".repeat(1024),
+  ])
+    assert.throws(() =>
+      validate("ota.install", { device_id, kind: "python", url }),
+    );
+  assert.throws(() =>
+    validate("ota.install", {
+      device_id,
+      kind: "app",
+      url: "https://example.com/a",
+    }),
+  );
+  assert.throws(
+    () => validate("programs.install", { device_id, source: "print(1)" }),
+    /Unknown tool/,
+  );
+});
+
+test("runtime boot activates complete source and preserves main.py on a rejected or interrupted download", () => {
+  const script = `import os, sys, tempfile, types
+from pathlib import Path
+boot = compile(Path("firmware/pyrt/overlay/okl/_boot.py").read_text(), "_boot.py", "exec")
+def module(name, **methods):
+    sys.modules[name] = types.SimpleNamespace(**methods)
+with tempfile.TemporaryDirectory() as root:
+    module("vfs", mount=lambda *a: None)
+    module("esp32", Partition=types.SimpleNamespace(TYPE_DATA=1, find=lambda *a, **k: [object()]))
+    module("okou", term=lambda: None, safe_boot=lambda: False)
+    module("micropython", alloc_emergency_exception_buf=lambda size: None)
+    module("os", chdir=lambda path: os.chdir(root), rename=os.rename, remove=os.remove, dupterm=lambda *a: None)
+    main = Path(root, "main.py")
+    staged = Path(root, ".esphub-next.py")
+    main.write_text("print('old')")
+    Path(root, ".esphub-download").write_text("print('partial')")
+    exec(boot, {})
+    assert main.read_text() == "print('old')"
+    staged.write_text("print('new')")
+    exec(boot, {})
+    assert main.read_text() == "print('new')" and not staged.exists()
+    staged.write_text("if (")
+    exec(boot, {})
+    assert main.read_text() == "print('new')" and not staged.exists()
+    sys.modules["os"] = os
+`;
+  const output = execFileSync("python3", ["-I", "-c", script], {
+    encoding: "utf8",
+  });
+  assert.match(output, /program\.applied/);
+  assert.match(output, /program\.rejected/);
 });

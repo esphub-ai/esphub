@@ -110,7 +110,7 @@ try {
   await copyPrompt.click();
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
   assert.equal(prompt, await page.locator("#mcp-prompt").textContent());
-  for (const required of ["https://api.esphub.ai/mcp", "CIMD OAuth", "devices:read", "devices:write", "devices.create", "programs.install"])
+  for (const required of ["https://api.esphub.ai/mcp", "CIMD OAuth", "devices:read", "devices:write", "devices.create", "programs.publish", "launcher.enter", "ota.install"])
     assert.ok(prompt.includes(required));
   if (process.env.QA_MCP_SCREENSHOT)
     await page.screenshot({path: process.env.QA_MCP_SCREENSHOT, fullPage: true});
@@ -194,6 +194,12 @@ try {
   await page.locator("#rx").filter({ hasText: /^1$/ }).waitFor();
   if (process.env.QA_SCREENSHOT)
     await page.screenshot({ path: process.env.QA_SCREENSHOT });
+  await page.getByRole("button", { name: "Firmware", exact: true }).click();
+  await page.getByRole("button", { name: "Enter launcher mode", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Install from URL", exact: true }).click();
+  assert.deepEqual(await page.locator('[name="kind"] option').evaluateAll(options => options.map(o => o.value)), ["python", "micropython", "launcher"]);
+  assert.equal(await page.locator('[name="sha256"]').count(), 0);
+  await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .getByRole("button", { name: "Delete device", exact: true })
@@ -226,11 +232,13 @@ try {
     "https://api.esphub.ai/releases/stopwatch/setup",
   );
   assert.equal(await page.getByRole("link", { name: "Launcher OTA image" }).count(), 0);
-  await page.getByText("Launcher-only downloads", {exact: true}).click();
+  await page.getByText("Firmware downloads", {exact: true}).click();
   assert.equal(
     await page.getByRole("link", { name: "Launcher OTA image" }).count(),
     1,
   );
+  assert.equal(await page.getByRole("link", { name: "MicroPython OTA image" }).getAttribute("href"),
+    "https://api.esphub.ai/releases/stopwatch/micropython");
   assert.deepEqual(errors, []);
   console.log(
     "PASS hosted sign-in and sign-up routing, signed session verification, live serial round trip, tool explorer, deletion, mobile navigation",

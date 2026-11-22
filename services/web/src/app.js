@@ -167,7 +167,7 @@ const devicePrompt = `Connect to ${mcpEndpoint} with CIMD OAuth and the devices:
 
 For a new board, identify it over USB. Ask me if the model is unclear, then call devices.create and follow its setup instructions.
 
-For a program update, confirm the target and what I want it to do. Deploy the MicroPython program with programs.install and report the verified result.`;
+For a program update, confirm the target and what I want it to do. Stage main.py with programs.publish, call launcher.enter, wait for launcher mode, then use ota.install with kind python and the returned URL. Check the next boot’s output before reporting success.`;
 const workflows = [
   {
     key: "initialize",
@@ -179,7 +179,7 @@ const workflows = [
     key: "update",
     title: "Update a program",
     detail: "Once your board is online, send a new MicroPython program over Wi-Fi.",
-    prompt: "Ask what I want to build and which board to use if unclear. Deploy it with programs.install and report the verified result.",
+    prompt: "Ask what I want to build and which board to use if unclear. Use programs.publish, launcher.enter and ota.install. Verify the new boot and report the result.",
   },
 ];
 function workflowCards() {
@@ -314,12 +314,13 @@ async function refresh() {
       '</select><div class="kv cursor-value">Device RX cursor <b id="rx">' +
       selected.rx_cursor +
       '</b></div><div class="kv cursor-value">Browser TX cursor <b id="tx">0</b></div><a class="crumb" href="/streams">Stream protocol ↗</a></div></div>';
-    const setState = (active) => {
+    const setState = (d) => {
+      const active = d.online && session === d.process_id && d.serial_input !== false;
       $("#cmd").disabled = !active;
       $("#send button").disabled = !active;
       $("#state").textContent = active ? "Connected" : "Read-only session";
     };
-    setState(device.online && session === device.process_id);
+    setState(device);
     $("#pid").onchange = (e) => {
       session = e.target.value;
       refresh().catch((err) => notify(err.message));
@@ -371,7 +372,7 @@ async function refresh() {
           $("#rx").textContent =
             ss.find((s) => s.process_id === session)?.rx_cursor ?? 0;
           $("#connection").textContent = ds.online ? "● Online" : "○ Offline";
-          setState(ds.online && ds.process_id === session);
+          setState(ds);
           if (ss.length !== sessions.length) {
             await refresh();
             return;
@@ -405,9 +406,10 @@ async function refresh() {
       ) +
       '</pre><div class="flex">' +
       button("info", "Inspect device") +
-      button("install", "Install application") +
-      button("launcher", "Update launcher") +
-      link("/setup?board=" + device.board, "Launcher downloads ↗") +
+      button("enter", "Enter launcher mode") +
+      button("install", "Install from URL") +
+      (device.info?.role === "launcher" && !device.info?.image_profile ? button("launcher", "Upgrade legacy launcher") : "") +
+      link("/setup?board=" + device.board, "Firmware downloads ↗") +
       '</div><pre id="out" hidden></pre></div>';
   } else
     area.innerHTML =
@@ -508,6 +510,14 @@ async function action(k) {
     );
     return;
   }
+  if (k === "enter") {
+    dialog("Enter launcher mode", "<p>The running application pauses while the launcher handles updates.</p>", "Enter launcher mode", async () => {
+      const result = await op("launcher.enter", id);
+      notify(result.mode === "launcher" ? "Launcher ready" : "Restarting into launcher mode");
+      await refresh();
+    });
+    return;
+  }
   if (k === "launcher") {
     dialog(
       "Update launcher",
@@ -524,14 +534,14 @@ async function action(k) {
   }
   if (k === "install") {
     dialog(
-      "Install application firmware",
-      field("url", "HTTPS image URL", "url", "required") +
-        field("sha256", "SHA-256", "text", 'required minlength="64"') +
-        field("version", "Application version", "text", "required"),
+      "Install from URL",
+      '<label>Update target<select class="field" name="kind"><option value="python">Python program (main.py)</option><option value="micropython">MicroPython runtime</option><option value="launcher">Launcher</option></select></label>' +
+        field("url", "HTTPS artifact URL", "url", "required"),
       "Install",
       async (a) => {
-        await op("firmware.install", { ...id, ...a });
-        notify("Install accepted. Follow progress in Serial.");
+        const receipt = await op("ota.install", { ...id, ...a });
+        session = receipt.process_id;
+        notify("Download accepted. Follow progress in Serial.");
         tab = "Serial";
         await refresh();
       },
@@ -592,8 +602,7 @@ async function explorer() {
     board: "paper-color",
     ssid: "",
     url: "",
-    version: "",
-    sha256: "",
+    kind: "python",
   };
   const select = () => {
     const t = tools.find((t) => t.name === $("#tool").value);
@@ -626,8 +635,8 @@ async function explorer() {
           "devices.reset",
           "devices.reboot",
           "wifi.remove",
-          "firmware.install",
-          "programs.install",
+          "launcher.enter",
+          "ota.install",
           "launcher.install",
           "uart.write",
         ].includes(name)
@@ -700,7 +709,7 @@ async function start() {
   if (path[0] === "streams") {
     docs(
       "UART streams",
-      '<p class="lead">Every boot has its own input and output streams. Record numbers start at one.</p><pre>devices/{DEVICE-UUID}/{PROCESS-ID}/uart/rx\ndevices/{DEVICE-UUID}/{PROCESS-ID}/uart/tx</pre><h2>RX · device stdin</h2><p class="doccopy">Web and MCP queue input against an active boot. The board polls after its local cursor. Reconnects resume that cursor; rebooting creates a different process. Reuse the request ID to safely retry an enqueue.</p><h2>TX · device stdout</h2><p class="doccopy">The board sends numbered logs. Each client polls after its last delivered sequence. Archived boots are read-only. R2 stores bounded record pages and a committed cursor manifest for each direction.</p>',
+      '<p class="lead">Every boot has its own input and output streams. Record numbers start at one.</p><pre>devices/{DEVICE-UUID}/{PROCESS-ID}/uart/rx\ndevices/{DEVICE-UUID}/{PROCESS-ID}/uart/tx</pre><h2>RX · device stdin</h2><p class="doccopy">Web and MCP queue input against an active boot. The launcher handles command lines. MicroPython programs can read application messages with okou.read_input(). The board polls after its local cursor. Reconnects resume that cursor; rebooting creates a different process. Reuse the request ID to safely retry an enqueue.</p><h2>TX · device stdout</h2><p class="doccopy">The board sends numbered logs. Each client polls after its last delivered sequence. Archived boots are read-only. R2 stores bounded record pages and a committed cursor manifest for each direction.</p>',
     );
     return;
   }
@@ -712,7 +721,7 @@ async function start() {
     );
     docs(
       "USB provisioning",
-      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install ESP Hub with MicroPython. Verify its SHA-256 and follow INSTALL.txt. In the USB console, run <code>wifi scan</code>, choose a network or enter a hidden SSID, then send the provisioning line below. For a hidden network set <code>hidden</code> to true.</p></div><div class="panel"><h3>3. Verify</h3><p>Wait for OKL-PROVISION-OK and check devices.get for the online MicroPython application. Install the supplied hello program and check its serial output.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","wifi":{"ssid":"&lt;ssid&gt;","pass":"&lt;password&gt;","hidden":false}}</pre><h2>Board packages</h2><div class="flex">' +
+      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install ESP Hub with MicroPython. Use the matching board kit from GitHub Releases and follow INSTALL.txt. In the USB console, run <code>wifi scan</code>, choose a network or enter a hidden SSID, then send the provisioning line below. For a hidden network set <code>hidden</code> to true.</p></div><div class="panel"><h3>3. Verify</h3><p>Wait for OKL-PROVISION-OK and check devices.get for the online MicroPython application. Stage the hello program with programs.publish. Enter launcher mode, install its URL with ota.install, then check the new boot for the hello message.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","wifi":{"ssid":"&lt;ssid&gt;","pass":"&lt;password&gt;","hidden":false}}</pre><h2>Board packages</h2><div class="flex">' +
         profiles
           .map(([board, name]) => {
             const base = "https://api.esphub.ai/releases/" + board + "/";
@@ -722,9 +731,10 @@ async function start() {
               '</h3><div class="flex">' +
               link(base + "setup", "First-time USB kit", true) +
               link(base + "setup-manifest", "Setup SHA-256 manifest") +
-              '</div><details><summary>Launcher-only downloads</summary><div class="flex">' +
+              '</div><details><summary>Firmware downloads</summary><div class="flex">' +
               link(base + "usb", "Launcher-only USB kit") +
               link(base + "ota", "Launcher OTA image") +
+              link(base + "micropython", "MicroPython OTA image") +
               link(base + "manifest", "Launcher manifest") +
               "</div></details></div>"
             );

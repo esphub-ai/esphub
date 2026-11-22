@@ -66,6 +66,17 @@ export async function launcherManifest(board) {
 }
 
 export async function releaseResponse(board, kind, tag, deviceDownload) {
+  if (kind === "micropython") {
+    const version = tag
+      ? /^micropython-v(\d+\.\d+\.\d+)$/.exec(tag)?.[1]
+      : setupRelease.runtime_version;
+    if (!version || !["paper-color", "stopwatch"].includes(board))
+      fail(404, "Unknown MicroPython image");
+    return Response.redirect(
+      `${releases}/download/micropython-v${version}/esphub-${board}-micropython-${version}.bin`,
+      302,
+    );
+  }
   if (kind === "setup" || kind === "setup-manifest") {
     const version = tag
       ? /^setup-v(\d+\.\d+\.\d+)$/.exec(tag)?.[1]

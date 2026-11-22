@@ -1,7 +1,7 @@
-import { programByteLimit } from "./programs.js";
 import { provisioning } from "./provisioning.js";
 import { launcherManifest } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
+const programByteLimit = 32 * 1024;
 const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
 const id = strings("device_id"),
@@ -46,15 +46,24 @@ const defs = [
     "Install the latest board-specific launcher on a connected launcher.",
     id,
   ],
+  [
+    "launcher.enter",
+    "Enter launcher mode for OTA. Wait for devices.get to report an online launcher.",
+    id,
+  ],
   ["firmware.get", "Read firmware metadata from the board.", id],
   [
-    "firmware.install",
-    "Install an HTTPS application image with a verified SHA-256 digest.",
-    { ...id, ...strings("url", "version", "sha256") },
+    "ota.install",
+    "In launcher mode, stream an HTTPS artifact for the registered board. Use https://api.esphub.ai/releases/{board}/ota for the official launcher or /releases/{board}/micropython for its runtime. For python, use a plain UTF-8 main.py URL. Follow install.done or install.failed in the returned UART session, then verify the next boot.",
+    {
+      ...id,
+      kind: { type: "string", enum: ["launcher", "micropython", "python"] },
+      url: { type: "string", maxLength: 1024 },
+    },
   ],
   [
-    "programs.install",
-    "Install and restart a MicroPython main.py on a connected device. Returns the on-device SHA-256 receipt and a cursor for checking startup output.",
+    "programs.publish",
+    "Stage main.py privately for this device for 24 hours. Pass the returned HTTPS URL to ota.install with kind python.",
     {
       ...id,
       source: {
@@ -115,12 +124,8 @@ export function validate(name, a) {
     (a.process_id && !/^[0-9a-f-]{8,36}$/i.test(a.process_id))
   )
     fail(400, "Invalid identifier");
-  if (
-    a.name?.trim().length === 0 ||
-    a.name?.length > 64 ||
-    a.version?.length > 24
-  )
-    fail(400, "Invalid name or version");
+  if (a.name?.trim().length === 0 || a.name?.length > 64)
+    fail(400, "Invalid name");
   for (const [k, max] of [
     ["text", 1024],
     ["source", programByteLimit],
@@ -132,8 +137,6 @@ export function validate(name, a) {
       (new TextEncoder().encode(a[k]).length > max || a[k].includes("\0"))
     )
       fail(400, "Invalid " + k);
-  if (a.sha256 && !/^[0-9a-f]{64}$/i.test(a.sha256))
-    fail(400, "Expected a SHA-256 digest");
   if (a.url) {
     let u;
     try {
@@ -145,9 +148,14 @@ export function validate(name, a) {
       u.protocol !== "https:" ||
       u.username ||
       u.password ||
-      a.url.length > 240
+      !a.url.startsWith("https://") ||
+      /[\s\\#]/.test(a.url) ||
+      new TextEncoder().encode(a.url).length > 1024
     )
-      fail(400, "Use a short HTTPS image URL");
+      fail(
+        400,
+        "Use an HTTPS artifact URL up to 1024 bytes without credentials or a fragment",
+      );
   }
 }
 const stub = (c, id) => c.env.DEVICE.get(c.env.DEVICE.idFromName(id));
@@ -197,8 +205,16 @@ export async function operate(c, owner, name, a) {
     await internal(c, d.id, "revoke");
     return { deleted: true };
   }
-  if (name === "programs.install")
-    return internal(c, d.id, "program", { board: d.board, source: a.source });
+  if (name === "programs.publish")
+    return internal(c, d.id, "publish", { source: a.source });
+  if (name === "launcher.enter")
+    return internal(c, d.id, "enter", { board: d.board });
+  if (name === "ota.install")
+    return internal(c, d.id, "ota", {
+      board: d.board,
+      kind: a.kind,
+      url: a.url,
+    });
   if (name === "uart.sessions") return internal(c, d.id, "sessions");
   if (name === "uart.read")
     return internal(c, d.id, "read", {
@@ -251,10 +267,6 @@ export async function operate(c, owner, name, a) {
       size: manifest.ota.size,
       version: manifest.version,
     };
-  }
-  if (name === "firmware.install") {
-    op = "install";
-    args = { kind: "app", url: a.url, sha256: a.sha256, version: a.version };
   }
   return (await internal(c, d.id, "rpc", { op, args })).data;
 }

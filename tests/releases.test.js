@@ -11,6 +11,16 @@ test("USB setup links follow the selected kit independently of launcher updates"
       result.headers.get("Location"),
       `https://github.com/okou-ai/esphub/releases/download/setup-v${setup.version}/esphub-${board}-esp32s3-${setup.version}-setup.zip`,
     );
+    const runtime = await releaseResponse(
+      board,
+      "micropython",
+      undefined,
+      false,
+    );
+    assert.equal(
+      runtime.headers.get("Location"),
+      `https://github.com/okou-ai/esphub/releases/download/micropython-v${setup.runtime_version}/esphub-${board}-micropython-${setup.runtime_version}.bin`,
+    );
     const old = await releaseResponse(
       board,
       "setup-manifest",

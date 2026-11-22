@@ -45,7 +45,7 @@ test("a failed manifest commit cannot expose or duplicate abandoned input", asyn
     ["one", "two"],
   );
 });
-test("reject invalid board, boot scope, firmware hashes and cursor", () => {
+test("reject invalid board, boot scope, firmware URLs and cursor", () => {
   assert.throws(() =>
     validate("devices.create", { name: "x", board: "esp32s3" }),
   );
@@ -64,11 +64,10 @@ test("reject invalid board, boot scope, firmware hashes and cursor", () => {
     }),
   );
   assert.throws(() =>
-    validate("firmware.install", {
+    validate("ota.install", {
       device_id: crypto.randomUUID(),
       url: "http://e.test/a",
-      version: "1",
-      sha256: "a".repeat(64),
+      kind: "launcher",
     }),
   );
   assert.doesNotThrow(() =>

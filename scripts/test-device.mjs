@@ -1,10 +1,5 @@
 import assert from "node:assert/strict";
 import postgres from "postgres";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import WebSocket from "ws";
 import { importPKCS8, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
@@ -12,7 +7,6 @@ const base = process.env.TEST_SITE_URL;
 if (!base || !["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   throw Error("A local TEST_SITE_URL is required");
 const sql = postgres(process.env.TEST_DATABASE_URL, { max: 1 });
-const flash = await mkdtemp(join(tmpdir(), "esphub-sim-flash-"));
 const endpoint = "https://api.esphub.ai/mcp";
 const issuer = "https://clerk.esphub.ai";
 const otherSubject = "user_" + randomUUID().replaceAll("-", "");
@@ -113,7 +107,8 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 18);
+  assert.equal(listed.length, 19);
+  assert.ok(!listed.some(t => t.name === "programs.install"));
   const readOnly = new Set([
     "devices.list",
     "devices.get",
@@ -170,7 +165,7 @@ try {
   });
   assert.match(watch.verification_source, /Hello, M5Stack Stopwatch/);
   assert.match(watch.verification_source, /setBrightness/);
-  await op("devices.delete", { device_id: watch.id });
+
   const other = await issue("devices:read devices:write", {
     sub: otherSubject,
   });
@@ -195,26 +190,13 @@ try {
     ws.once("error", no);
   });
   const inbox = [];
-  let resets = 0;
+
   ws.on("message", (msg) => {
     const f = JSON.parse(msg.toString());
     inbox.push(f);
     if (f.t === "req") {
-      let data = { output: "test Wi-Fi network" };
-      if (f.op === "py.exec") {
-        const code = f.args.code.replaceAll("/flash/", flash + "/");
-        const run = spawnSync("python3", ["-I", "-c", code], {
-          encoding: "utf8",
-        });
-        data = {
-          output: run.stdout,
-          exception: run.status === 0 ? null : run.stderr,
-        };
-      }
-      if (f.op === "py.reset") {
-        resets++;
-        data = {};
-      }
+      assert.ok(!["py.exec", "term.write"].includes(f.op));
+      const data = f.op === "install" ? { accepted: true } : { output: "test Wi-Fi network" };
       ws.send(
         JSON.stringify({
           t: "res",
@@ -266,46 +248,52 @@ try {
   await op("wifi.list", id, read);
   await op("firmware.get", id, read);
   assert.equal((await op("wifi.scan", id)).output, "test Wi-Fi network");
-  const install = (source, accessToken) =>
-    call(
-      "tools/call",
-      {
-        name: "programs.install",
-        arguments: { ...id, source },
-      },
-      accessToken,
-    );
-  const hello = d.verification_source;
-  assert.match((await install(hello)).content[0].text, /runtime/);
-  assert.match((await install(hello, other)).content[0].text, /not found/i);
-  send({
-    t: "hello",
-    boot_id: session.process_id,
-    role: "app",
-    board: "paper-color",
-    fw: { name: "micropython" },
-  });
-  await take((f) => f.t === "ack");
-  const source = hello + "# " + "é".repeat(3500) + "\n";
-  const receipt = await op("programs.install", { ...id, source });
-  assert.equal(receipt.verified, true);
-  assert.equal(receipt.bytes, Buffer.byteLength(source));
-  assert.equal(
-    receipt.sha256,
-    createHash("sha256").update(source).digest("hex"),
-  );
-  assert.equal(receipt.process_id, session.process_id);
-  assert.equal(receipt.restart, "acknowledged");
-  assert.equal(await readFile(join(flash, "main.py"), "utf8"), source);
-  assert.equal((await install("if (")).isError, true);
-  assert.equal(await readFile(join(flash, "main.py"), "utf8"), source);
-  assert.equal(resets, 1);
-  send({
-    t: "hello",
-    boot_id: randomUUID(),
-    fw: { name: "launcher", version: "test" },
-  });
-  await take((f) => f.t === "ack");
+  const source = d.verification_source + "# " + "é".repeat(3500) + "\n";
+  const staged = await op("programs.publish", { ...id, source });
+  const artifactUrl = base + "/backend" + new URL(staged.url).pathname;
+  assert.equal((await fetch(artifactUrl)).status, 401);
+  const download = token => fetch(artifactUrl, { headers: { Authorization: "Bearer " + token } });
+  assert.equal((await download(watch.token)).status, 404);
+  assert.equal(await (await download(d.token)).text(), source);
+  const attempt = (name, args) => call("tools/call", {name, arguments: args});
+  const ota = { ...id, kind: "python", url: staged.url };
+  const report = async (role, image_profile, board = "paper-color") => {
+    const boot_id = randomUUID();
+    send({t:"hello", boot_id, role, board, chip:"esp32s3", image_profile, fw:{name: role === "launcher" ? "esp-launcher" : "micropython"}});
+    await take(f => f.t === "ack");
+    return boot_id;
+  };
+  const oldApp = await report("app");
+  assert.equal((await attempt("ota.install", ota)).isError, true);
+  assert.equal((await attempt("uart.write", {...data, process_id:oldApp})).isError, true);
+  assert.equal((await op("launcher.enter", id)).mode, "rebooting");
+  assert.deepEqual((await take(f => f.op === "reboot")).args, {target:"launcher"});
+  await report("launcher");
+  assert.match((await attempt("ota.install", ota)).content[0].text, /launcher.install/);
+  await report("launcher", "ESPHUB1/launcher/stopwatch", "stopwatch");
+  assert.equal((await attempt("ota.install", ota)).isError, true);
+  const boot = await report("launcher", "ESPHUB1/launcher/paper-color");
+  assert.equal((await op("launcher.enter", id)).mode, "launcher");
+  for (const kind of ["python","launcher","micropython"]) {
+    const url = kind === "python" ? staged.url : "https://example.org/" + kind + ".bin";
+    const receipt = await op("ota.install", { ...id, kind, url });
+    assert.equal(receipt.accepted, true);
+    assert.equal(receipt.process_id, boot);
+    const wire = await take(f => f.op === "install");
+    assert.deepEqual(wire.args, {kind, url, board:"paper-color", transfer_id:receipt.transfer_id});
+    const event = kind === "launcher" ? "install.failed" : "install.done";
+    send({t:"event",name:event,data:{transfer_id:receipt.transfer_id,kind}});
+    send({t:"log",seq:kind === "python" ? 1 : kind === "launcher" ? 2 : 3, lines:[[123,"I","ota"]]});
+    await take(f => f.t === "ack");
+    const events = await op("uart.read", { ...id, process_id: boot, after: receipt.after });
+    assert.ok(events.records.some(r => r.text.includes(receipt.transfer_id) && r.text.includes(event)));
+  }
+  const app = await report("app", "ESPHUB1/micropython/paper-color");
+  assert.equal((await op("devices.get", id)).serial_input, true);
+  await op("uart.write", {...data, process_id:app,text:"application message"});
+  send({t:"uart.poll",after:0});
+  assert.equal((await take(f => f.t === "uart.input")).text, "application message");
+  await op("devices.delete", { device_id: watch.id });
   const archived = await call("tools/call", {
     name: "uart.write",
     arguments: { ...data, request_id: randomUUID() },
@@ -313,11 +301,10 @@ try {
   assert.equal(archived.isError, true);
   await op("devices.delete", id);
   console.log(
-    "PASS Clerk OAuth discovery, 18 MCP tools, verified MicroPython installation, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
+    "PASS Clerk OAuth discovery, 19 MCP tools, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
   );
 } finally {
   ws?.close();
-  await rm(flash, { recursive: true, force: true });
   await sql`DELETE FROM esphub.accounts WHERE clerk_subject IN (${subject}, ${otherSubject})`;
   await sql.end();
 }

@@ -13,15 +13,22 @@ ESP Hub provisions ESP32 devices over USB and manages them through the web and M
 
 Both supported models use ESP32-S3 and 16 MB flash. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the launcher, MicroPython runtime, partition table, flash arguments and a SHA-256 manifest. This kit replaces the partition table and app. The separate StopWatch launcher-only kit preserves its legacy partition layout.
 
-Connect the board over USB and call `devices.create`. Its response includes the device token, setup instructions, release manifest link and a board-specific display verification program. Flash the verified kit, open the launcher USB console at 115200 baud and run `wifi scan`. Select a network or enter a hidden SSID, then submit one newline-terminated JSON record:
+Connect the board over USB and call `devices.create`. Its response includes the device token, setup instructions, release manifest link and a board-specific display verification program. Download the matching kit over HTTPS, flash it, open the launcher USB console at 115200 baud and run `wifi scan`. Select a network or enter a hidden SSID, then submit one newline-terminated JSON record:
 
 ```text
 OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","wifi":{"ssid":"<network>","pass":"<password>","hidden":false}}
 ```
 
-After `OKL-PROVISION-OK`, use `devices.get` to wait for the online MicroPython app. Send the verification program with `programs.install`, then check the returned boot and cursor with `uart.read` for its hello message.
+After `OKL-PROVISION-OK`, wait for the online MicroPython app and use the OTA procedure to install the returned verification program. Check the new boot for its board-specific hello message.
 
-For subsequent updates, send UTF-8 source to `programs.install` (up to 32 KiB). The device verifies the staged file’s SHA-256, checks its syntax and atomically replaces `/flash/main.py`. The receipt records the digest and whether the interpreter acknowledged a soft restart.
+## OTA
+
+1. For generated Python, call `programs.publish` with the device ID and UTF-8 source (up to 32 KiB). It returns a private HTTPS URL valid for 24 hours. An existing HTTPS URL also works.
+2. Call `launcher.enter` with the device ID. Wait for `devices.get` to report an online launcher. Older launchers can upgrade once with `launcher.install`.
+3. Call `ota.install` with `device_id`, `kind` and `url`. Use a matching ESP Hub OTA binary from GitHub Releases for `launcher` or `micropython`, or a plain UTF-8 main.py file for `python`. Boot the matching OTA-capable runtime once to initialize its data volume before installing a program.
+4. Read `uart.read` from the returned boot and cursor. Match `install.done` or `install.failed` to the transfer ID. After the reboot, verify the new firmware identity or the program's startup output. A syntax error produces `program.rejected` and preserves the previous main.py.
+
+The launcher validates the HTTPS certificate and hostname and streams in 4 KiB blocks. It checks the board and image type before writing firmware. Launcher updates use the inactive launcher slot. Runtime updates write the application slot, so a failed runtime download may require a retry in launcher mode. Python writes a temporary LittleFS file. The runtime compiles it and atomically replaces main.py before executing it. A program can still fail after it starts. The hub's private artifact endpoint requires the device token. External downloads follow HTTPS redirects without that token.
 
 ## Console and authentication
 
@@ -29,7 +36,7 @@ Browser sign-in and sign-up use the Clerk production Account Portal at accounts.
 
 In the ESP Hub production Clerk instance, register https://api.esphub.ai/mcp under Agents → MCP servers and allow public clients to connect with CIMD. In OAuth applications → Settings, enable Publish CIMD support and leave Publish DCR support off. Use a client version that supports Client ID Metadata Documents (CIMD). Under OAuth applications, create and advertise `devices:read` and `devices:write`. Select both `devices:read` and `devices:write` in the default and allowed scopes for dynamic clients. Clerk uses `offline_access` for token refresh. Use the instance's secret key for the API Worker.
 
-Neon stores registrations, hashed USB device tokens and device ownership. Each device has a Durable Object coordinating the active WebSocket and serial writes. R2 stores RX and TX at devices/{device UUID}/{boot ID}/uart/{rx,tx}. Each small manifest points to the committed record count in bounded 64-record pages. The device polls its RX cursor over its authenticated socket. TX clients poll independently. Writes have an idempotency key and target one live boot. An old boot is read-only. A queued record is not proof of command success. The launcher executes complete command lines; a MicroPython application must include the terminal hook in the application runtime.
+Neon stores registrations, hashed USB device tokens and device ownership. Each device has a Durable Object coordinating the active WebSocket and serial writes. R2 stores RX and TX at devices/{device UUID}/{boot ID}/uart/{rx,tx}. Each small manifest points to the committed record count in bounded 64-record pages. The device polls its RX cursor over its authenticated socket. TX clients poll independently. Writes have an idempotency key and target one live boot. An old boot is read-only. A queued record is not proof of command success. The launcher executes command lines. MicroPython applications read incoming messages with `okou.read_input()` and send output with `print()`.
 
 ## Delivery
 
@@ -37,7 +44,7 @@ Install dependencies with npm ci. npm run build bundles browser code and generat
 
 Pushes to main run verification on an ephemeral PostgreSQL instance, migrate production Neon, deploy the Hono API then the website, and check public domains and authentication boundaries. Required repository secrets are CLERK_SECRET_KEY (ESP Hub production instance), MIGRATION_DATABASE_URL, RUNTIME_DB_PASSWORD (64 lowercase hex characters), and CLOUDFLARE_API_TOKEN. CLOUDFLARE_ACCOUNT_ID is a repository variable. CI ensures the esphub-production R2 bucket exists. The migration role creates a restricted runtime role; the API Worker receives the runtime database URL and the Clerk credential. Configure the production environment to suit the organization's deployment policy.
 
-Launchers build on ESP-IDF 5.4.1 and the MicroPython runtimes build on ESP-IDF 5.5.5. Each has its own build and GitHub release series (`launcher-v*` and `micropython-v*`). To publish a first-time USB kit, pin already released component versions and increment the kit version in `shared/setup-release.json`. The setup pipeline verifies the downloaded components and publishes `setup-v*`. Example scripts are delivered over MCP after the runtime connects. GitHub Releases hosts all firmware packages. The API resolves board-specific assets from GitHub and pins each OTA command to the release tag and its SHA-256. R2 is reserved for UART streams.
+Launchers build on ESP-IDF 5.4.1 and the MicroPython runtimes build on ESP-IDF 5.5.5. Each has its own build and GitHub release series (`launcher-v*` and `micropython-v*`). To publish a first-time USB kit, pin already released component versions and increment the kit version in `shared/setup-release.json`. The setup pipeline verifies the downloaded components and publishes `setup-v*`. Example scripts are delivered over MCP after the runtime connects. GitHub Releases hosts all firmware packages. New OTA commands carry an HTTPS URL. The legacy launcher upgrade tool also supplies the manifest fields that older launchers require. R2 is reserved for UART streams.
 
 ## Origin
 
