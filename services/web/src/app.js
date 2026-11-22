@@ -122,7 +122,9 @@ function hero() {
   main.innerHTML =
     '<section class="hero"><div><div class="kicker">ESP32 device operations</div><h1>Your boards.<br><span class="accent">Within reach.</span></h1><p class="lead">Provision over USB, manage firmware and open a remote serial console from your browser or an MCP client.</p><div class="actions">' +
     link("/devices", "Open the console ↗", true) +
+    '<span id="account-link">' +
     link(hostedPage("/sign-up", application + "/devices"), "Create account") +
+    "</span>" +
     '</div></div><div class="art"><div class="halo"></div><img src="/esp32s3-e926c2315ec8.webp" alt="Espressif ESP32-S3 development board"><div class="meta"><span>HARDWARE PROFILE</span><span>ESPRESSIF</span></div><span class="caption">ESP32-S3 / DEVKITC-1</span><span class="cross">+</span></div></section><div class="strip"><a href="/setup">↳ USB provisioning</a><a href="/devices">↳ Device console</a><a href="/streams">↳ Boot-scoped UART</a><a href="/mcp">↳ MCP endpoint</a></div><section class="dash"><div class="kicker">Launcher firmware</div><h2>Supported devices</h2><div class="board">' +
     Object.entries(boardName)
       .map(
@@ -580,6 +582,19 @@ async function start() {
       return;
     }
     hero();
+    // Keep public content available while Clerk checks the shared domain session.
+    try {
+      await loadClerk();
+      if (clerk.session) {
+        await api("/auth/me");
+        $("#account-link").innerHTML = link(
+          application + "/account",
+          "My account",
+        );
+      }
+    } catch (error) {
+      console.warn("Unable to check the ESP Hub session", error.name);
+    }
     return;
   }
   if (path[0] === "mcp") {

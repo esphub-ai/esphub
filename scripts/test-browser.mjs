@@ -105,6 +105,8 @@ try {
     origin + "/devices",
   );
   signedIn = true;
+  await page.goto(origin);
+  await page.getByRole("link", { name: "My account" }).waitFor();
   await page.goto(origin + "/devices");
   await page.getByText("+ Add device").click();
   await page.locator("[name=name]").fill("Paper Color · integration");
