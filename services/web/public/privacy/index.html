@@ -15,25 +15,34 @@
 <body>
   <nav aria-label="Home"><a href="/">EspHub</a></nav>
   <main>
-    <h1>Privacy policy</h1>
-    <p>Effective <time datetime="2026-11-22">November 22, 2026</time></p>
-    <p>This policy explains how Okou (Max &amp; Zoe, Inc.) handles personal information when you use the EspHub website, device console, API, or MCP connector.</p>
-    <h2>When you sign in</h2>
-    <p>Clerk handles sign-in, session cookies, and OAuth consent. EspHub uses your account identifier to associate boards with your account and check access. When you connect an MCP client such as Claude, the consent screen shows which permissions it requests.</p>
-    <h2>When you connect a board</h2>
-    <p>EspHub processes the device name, model, identifiers, firmware version, connection status, boot history, and serial input and output. Wi-Fi operations can include nearby and saved network names and a password you supply to configure a board. Commands, serial records, and files can contain personal information depending on what you or your software put in them.</p>
-    <p>We use this information to register and authenticate devices, route commands, deliver software, and make device history available for troubleshooting. We use access and diagnostic information to secure and operate the service. If you contact us, we use the details you provide to respond.</p>
-    <h2>What a connected client can see and change</h2>
-    <p>EspHub receives the tool name and arguments that your client sends and returns results to that client. For example, a serial-read request can return text printed by your board. Write permission also enables operations such as configuring Wi-Fi, sending serial input, or installing firmware. The client provider handles information it receives under its own privacy policy. Disconnecting a client does not erase results already returned to it.</p>
-    <h2>Service providers and file downloads</h2>
-    <p>Clerk provides identity services. Neon stores account and device registration records. Cloudflare hosts the service, coordinates device connections, and stores serial records and staged files. GitHub hosts public firmware releases. If you supply a download URL, the board contacts that host to retrieve the file. Our providers may process information outside your country.</p>
-    <h2>How long information is available</h2>
-    <p>Private programs and firmware files staged through EspHub expire after 24 hours. This limit applies to the staged copy. Software installed on your board remains there until replaced or erased. Account, registration, and serial history are separate records used for access control and troubleshooting. Removing a device revokes its device token. Contact us to request deletion of associated history.</p>
-    <h2>Your choices and privacy requests</h2>
-    <p>You can choose which OAuth permissions to grant, disconnect your MCP client, and remove registered devices. Depending on where you live, you may have rights to access, correct, delete, or obtain a copy of personal information, object to or restrict processing, or complain to a local data protection authority.</p>
-    <p>For privacy questions or requests, email <a href="mailto:ethan@okou.ai">ethan@okou.ai</a> with the account email and the information your request concerns. We may ask you to verify ownership. Please keep passwords, device tokens, and private serial logs out of your request.</p>
-    <h2>Changes to this policy</h2>
-    <p>We will publish updates on this page and revise the effective date above.</p>
+    <h1>EspHub Privacy Policy</h1>
+    <p>Effective <time datetime="2026-11-23">November 23, 2026</time></p>
+    <p>Max &amp; Zoe, Inc. (Okou, “we” or “us”) operates EspHub. This policy explains how we use personal information when you visit the website, use the device console or API, or connect an MCP client such as ChatGPT or Claude.</p>
+    <h2>Account information and cookies</h2>
+    <p>Clerk handles sign-in, session cookies, and OAuth consent. EspHub uses your account identifier to associate devices with your account and check who can access them. Session cookies let the console recognize your signed-in browser. Clearing or blocking them may require you to sign in again. If you email us, we use your email address and the information you send to respond.</p>
+    <h2>Device data and why we use it</h2>
+    <ul>
+      <li><strong>Registration and connection.</strong> We use the device name, model, identifiers, and authentication records to register boards, authenticate connections, and route commands to the intended device.</li>
+      <li><strong>Hardware and software reports.</strong> Physical boards can report firmware versions, connection status, boot identifiers, and serial input and output. A compatible MicroPython runtime can also report the source of its current <code>main.py</code>. We make these records available for device management and troubleshooting.</li>
+      <li><strong>Network configuration.</strong> A Wi-Fi operation can involve nearby or saved network names and the password you supply to configure a board. Command arguments, source code, and serial output can contain personal information or credentials that you or your software include.</li>
+      <li><strong>Virtual devices.</strong> If you create a Virtual ESP32, we store its account association, simulated firmware information, boot IDs, timestamps, and startup messages so you can return to the same board and read earlier sessions. Its boot logs describe simulated events.</li>
+    </ul>
+    <p>We also use access and diagnostic information to maintain the service, investigate failures, and protect accounts and devices.</p>
+    <h2>Information shared with a connected client</h2>
+    <p>EspHub receives the tool name and arguments your client sends. After checking access, it returns the result to that client. For example, asking for the latest boot log sends the requested serial output back to ChatGPT or Claude. A request to inspect a reported program can return source code. With write permission, a client can also request changes to a device.</p>
+    <p>The client provider handles the information it receives under its own privacy policy. You can disconnect the client to stop future authorized access. Copies of results it already received are subject to that provider’s retention and deletion controls.</p>
+    <h2>Providers and international processing</h2>
+    <p>Clerk provides identity services. Neon stores account, device, and virtual boot records. Cloudflare hosts EspHub, coordinates connections, and stores device records and staged files. For devices using the MQTT connection, AWS IoT handles device certificates and wake notifications. GitHub hosts public firmware releases. When you supply a download URL, the board contacts the host you selected. These providers may process information outside your country.</p>
+    <h2>Retention and deletion</h2>
+    <p>Private programs and firmware files staged through EspHub have a 24-hour expiry. That period applies to the staged copy. Software already installed on hardware stays there until you replace or erase it.</p>
+    <p>Account records, physical device history, and a runtime’s reported source are separate from staged uploads. We use those records to associate devices with an account, enforce access, and provide diagnostics. Removing a physical registration revokes its device token. Removing a virtual registration deletes that board’s saved boot history. Contact us to request deletion of other associated records.</p>
+    <h2>Your choices and privacy rights</h2>
+    <p>You can choose which OAuth permissions to grant, disconnect a client, and remove registered devices. Depending on where you live, you may have rights to access, correct, delete, or obtain a copy of personal information, object to or restrict processing, or complain to a data protection authority.</p>
+    <p>To exercise a right or ask a privacy question, email <a href="mailto:ethan@okou.ai">ethan@okou.ai</a> with your account email and a description of your request. We may ask you to verify ownership. Please leave passwords, tokens, and private serial logs out of your message.</p>
+    <h2>Children’s privacy</h2>
+    <p>EspHub is not directed to children under 13. If you believe a child has provided us with personal information, contact us at the address above so we can investigate and address the request.</p>
+    <h2>Policy updates</h2>
+    <p>We will publish updates on this page and revise the effective date. Our <a href="/terms/">Terms of Service</a> explain the rules for using EspHub and managing devices.</p>
   </main>
 </body>
 </html>
