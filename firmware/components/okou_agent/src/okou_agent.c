@@ -92,6 +92,8 @@ static char *s_txbuf;
 static okou_hooks_t s_hooks;
 static char s_install_state[20] = "queued";
 static cJSON *s_leased_commands;
+static char s_inflight_id[37];
+static int64_t s_inflight_until;
 static bool s_iot, s_iot_started, s_transport_selected, s_pull_due;
 static bool s_started, s_cfg_ok, s_dev;
 static char s_hub[100], s_cid[96], s_csec[100], s_tok[96], s_url[180];
@@ -425,9 +427,12 @@ static bool send_text(const char *s, size_t len)
         }
         if (!cJSON_GetObjectItemCaseSensitive(frame, "boot_id"))
             cJSON_AddStringToObject(frame, "boot_id", s_boot_id);
-        bool receipt = cJSON_IsString(cJSON_GetObjectItem(frame, "t")) &&
-                       !strcmp(cJSON_GetObjectItem(frame, "t")->valuestring, "res");
+        bool receipt = type && !strcmp(type, "res");
+        const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(frame, "id"));
+        bool completed = receipt && id && strcmp(id, s_inflight_id) == 0;
         cJSON *reply = okou_iot_post("frame", frame);
+        if (!reply && receipt)
+            reply = okou_iot_post("frame", frame);
         cJSON_Delete(frame);
         if (!reply) {
             s_ws_broken = true;
@@ -436,8 +441,10 @@ static bool send_text(const char *s, size_t len)
         const cJSON *seq = cJSON_GetObjectItemCaseSensitive(reply, "seq");
         if (cJSON_IsNumber(seq))
             okou_log_ack((int64_t)seq->valuedouble);
-        if (receipt)
+        if (completed) {
+            s_inflight_id[0] = 0;
             s_pull_due = true;
+        }
         cJSON_Delete(reply);
         return true;
     }
@@ -559,7 +566,8 @@ static void ws_teardown(const char *why)
 {
     if (s_iot_started) {
         cJSON_Delete(s_leased_commands);
-        s_leased_commands=NULL;
+        s_leased_commands = NULL;
+        s_inflight_id[0] = 0;
         okou_iot_stop();
         s_iot_started = false;
     }
@@ -1145,9 +1153,11 @@ static void pull_commands(void)
         if (id)
             cJSON_AddStringToObject(body, "id", id);
         cJSON *permission = id ? okou_iot_post("start", body) : NULL;
-        if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(permission, "start")))
+        if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(permission, "start"))) {
+            strlcpy(s_inflight_id, id, sizeof(s_inflight_id));
+            s_inflight_until = now_us() + 90000000;
             handle_req(command);
-        else {
+        } else {
             cJSON_Delete(s_leased_commands);
             s_leased_commands = NULL;
             if (!permission)
@@ -1242,13 +1252,14 @@ static void agent_task(void *arg)
             }
         } else {
             drain_txq();
-            if (s_iot && s_pull_due && s_hello_acked) {
+            if (s_iot && s_pull_due && s_hello_acked && (!s_inflight_id[0] || now >= s_inflight_until)) {
                 s_pull_due = false;
                 pull_commands();
             }
             if (!s_iot && s_hello_acked && now - last_uart_poll >= 1500000) {
                 char poll[80];
-                int n = snprintf(poll, sizeof(poll), "{\"t\":\"uart.poll\",\"after\":%lu}", (unsigned long)uart_cursor);
+                int n = snprintf(poll, sizeof(poll), "{\"t\":\"uart.poll\",\"after\":%lu}",
+                                 (unsigned long)uart_cursor);
                 send_text(poll, n);
                 last_uart_poll = now;
             }

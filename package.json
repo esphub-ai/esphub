@@ -38,10 +38,10 @@
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
-    "jose": "^6.2.18",
     "playwright-core": "^1.65.1",
     "prettier": "^3.10.1",
     "wrangler": "^4.166.0",
-    "ws": "^8.23.0"
+    "ws": "^8.23.0",
+    "jose": "^6.2.18"
   }
 }

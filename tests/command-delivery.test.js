@@ -40,10 +40,10 @@ test(
       assert.equal(batches.flat().length, 1);
       assert.deepEqual(command.args, args);
       await db`UPDATE esphub.device_commands SET next_wake=now(),lease_until=now() WHERE id=${command.id}`;
-      await retryDue(db, {});
+      await retryDue(db, {}, id);
       assert.equal((await pull(db, id, boot))[0].id, command.id);
       await db`UPDATE esphub.device_commands SET state='executing',next_wake=now() WHERE id=${command.id}`;
-      await retryDue(db, {});
+      await retryDue(db, {}, id);
       assert.equal(
         (
           await db`SELECT state FROM esphub.device_commands WHERE id=${command.id}`
@@ -58,6 +58,14 @@ test(
       );
       assert.equal((await receipt(db, id, boot, ack)).state, "succeeded");
       assert.equal((await receipt(db, id, boot, ack)).state, "succeeded");
+      await assert.rejects(
+        receipt(db, id, boot, {
+          id: command.id,
+          ok: false,
+          error: "conflicting result",
+        }),
+        (e) => e.status === 409,
+      );
       const [finished] =
         await db`SELECT args,result FROM esphub.device_commands WHERE id=${command.id}`;
       assert.deepEqual(finished, { args: {}, result: ack.data });

@@ -156,7 +156,8 @@ static void mqtt_event(void *ctx, esp_event_base_t base, int32_t event, void *ar
             signal_event(IOT_OFFLINE);
         break;
     case MQTT_EVENT_SUBSCRIBED:
-        signal_event(IOT_SUBSCRIBED | IOT_WAKE);
+        signal_event((e->data_len == 1 && e->data && ((unsigned char)e->data[0]) <= 1) ? IOT_SUBSCRIBED | IOT_WAKE
+                                                                                       : IOT_OFFLINE);
         break;
     case MQTT_EVENT_DATA:
         signal_event(IOT_WAKE);

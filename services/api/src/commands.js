@@ -36,12 +36,12 @@ export async function enqueue(
 }
 
 export async function pull(db, device, boot) {
-  // Lease a contiguous batch once. Delivered operations are never silently replayed.
-  // A lost reply is observable as unknown after the lease. Only untouched rows expire.
+  // A lost pull releases the lease. Start permission is one-shot, so a lost
+  // execution receipt becomes unknown without repeating the side effect.
   const rows = await db`WITH locked AS (
     SELECT id FROM esphub.devices WHERE id=${device} AND boot_id=${boot} AND transport='mqtt' FOR UPDATE
   ), pending AS (
-    SELECT q.id,q.seq,q.state,pg_column_size(q.args)+256 AS bytes
+    SELECT q.id,q.seq,q.state,octet_length(q.args::text)+256 AS bytes
     FROM esphub.device_commands q JOIN locked d ON q.device_id=d.id
     WHERE q.state IN ('queued','claimed','executing') AND q.expires_at>now() AND (q.boot_id IS NULL OR q.boot_id=${boot})
     ORDER BY q.seq LIMIT 4 FOR UPDATE OF q
@@ -60,15 +60,22 @@ export async function receipt(db, device, boot, frame) {
   const result = JSON.stringify(
     frame.ok ? (frame.data ?? {}) : { error: String(frame.error ?? "Failed") },
   );
+  const ack = await digest(JSON.stringify([frame.ok, JSON.parse(result)]));
   const [row] = await db`UPDATE esphub.device_commands SET
+    receipt_hash=${ack},
     state=CASE WHEN ${state}='succeeded' AND operation IN ('install','reboot','provision.reset') THEN 'accepted' ELSE ${state} END,
     result=${result}::text::jsonb,args=CASE WHEN operation='reboot' THEN args ELSE '{}'::jsonb END,
     next_wake=CASE WHEN ${state}='succeeded' AND operation IN ('install','reboot','provision.reset') THEN now()+interval '10 minutes' END
     WHERE device_id=${device} AND id=${frame.id} AND claimed_boot=${boot}
-    AND (state IN ('executing','unknown') OR (state IN ('succeeded','failed','accepted') AND result=${result}::text::jsonb))
+    AND state IN ('executing','unknown') AND receipt_hash IS NULL
     RETURNING state`;
-  if (!row) fail(409, "Unknown or conflicting receipt");
-  return row;
+  if (row) return row;
+  const [existing] =
+    await db`SELECT state FROM esphub.device_commands WHERE device_id=${device}
+    AND id=${frame.id} AND claimed_boot=${boot} AND (receipt_hash=${ack} OR
+      (operation='install' AND receipt_hash IS NULL AND state IN ('failed','succeeded')))`;
+  if (!existing) fail(409, "Unknown or conflicting receipt");
+  return existing;
 }
 
 export async function retryDue(db, env, device = null) {

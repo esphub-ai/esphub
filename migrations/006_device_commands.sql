@@ -23,6 +23,7 @@ CREATE TABLE esphub.device_commands (
  lease_until timestamptz,
  state text NOT NULL DEFAULT 'queued' CHECK (state IN ('queued','claimed','executing','accepted','succeeded','failed','expired','unknown')),
  result jsonb,
+ receipt_hash text,
  next_wake timestamptz DEFAULT now(),
  UNIQUE(device_id,request_id), UNIQUE(device_id,seq)
 );

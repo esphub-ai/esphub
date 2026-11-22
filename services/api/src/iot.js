@@ -62,7 +62,7 @@ export function publishWake(env, id) {
   return request(
     env,
     env.IOT_DATA_ENDPOINT,
-    "/topics/devices/" + id + "/wake?qos=1",
+    "/topics/" + encodeURIComponent("devices/" + id + "/wake") + "?qos=1",
     "POST",
     { pending: true },
     "iotdata",
