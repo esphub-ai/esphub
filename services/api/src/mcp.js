@@ -18,6 +18,7 @@ import { operate, tools } from "./operations.js";
 const options = {
   resourceUrl: mcpEndpoint,
   requiredScopes: ["devices:read"],
+  challengeScopes: ["offline_access"],
   discoverable: false,
 };
 export const authenticateMcp = mcpAuth(options);

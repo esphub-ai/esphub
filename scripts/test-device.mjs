@@ -69,6 +69,7 @@ try {
     await fetch(base + "/backend/.well-known/oauth-protected-resource/mcp")
   ).json();
   assert.equal(discovery.resource, endpoint);
+  assert.deepEqual(discovery.scopes_supported, ["devices:read", "offline_access"]);
   assert.deepEqual(discovery.authorization_servers, [issuer]);
   const read = await issue("devices:read");
   for (const invalid of [
