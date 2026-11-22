@@ -31,6 +31,7 @@
 #include "driver/gpio.h"
 #include "sdkconfig.h"
 #include "okou_priv.h"
+#include "okou_ble.h"
 #include "okou_iot.h"
 
 #define TAG OKOU_TAG
@@ -80,6 +81,9 @@ struct okou_req {
 static QueueHandle_t s_rxq, s_txq, s_pollq;
 static esp_websocket_client_handle_t s_ws;
 static volatile uint32_t s_gen;
+#if CONFIG_OKOU_BLE_WIFI
+static bool s_ble_sync_needed;
+#endif
 static volatile bool s_ws_up, s_hello_acked, s_ws_broken, s_reload;
 static int64_t s_conn_start_us, s_up_since_us, s_last_rx_us, s_last_ping_us, s_last_flush_us, s_next_connect_us;
 static uint32_t s_backoff_ms = 1000;
@@ -918,7 +922,7 @@ static void handle_req(const cJSON *root)
             }
         }
     } else if (strcmp(op, "provision.reset") == 0) {
-        const char *keys[] = {"mqtt_identity", "ssid", "pass", "cid", "csec", "hub", OKOU_KEY_TOKEN};
+        const char *keys[] = {"mqtt_identity", "ble_key", "ssid", "pass", "cid", "csec", "hub", OKOU_KEY_TOKEN};
         r = okou_nvs_set_str(OKOU_KEY_WIFIS, "[]");
         for (size_t i = 0; r == ESP_OK && i < sizeof(keys)/sizeof(keys[0]); ++i) {
             r = okou_nvs_erase(keys[i]);
@@ -1117,6 +1121,18 @@ static void handle_text(char *s, size_t len)
                 s_hello_acked = true;
                 on_first_ack();
             }
+#if CONFIG_OKOU_BLE_WIFI
+        } else if (strcmp(t->valuestring, "ble.rotate") == 0) {
+            const cJSON *g = cJSON_GetObjectItemCaseSensitive(root, "generation");
+            const cJSON *key = cJSON_GetObjectItemCaseSensitive(root, "secret");
+            if (okou_ble_busy()) { s_ble_sync_needed = true; }
+            else if (cJSON_IsNumber(g) && g->valueint > 1 && cJSON_IsString(key) &&
+                okou_ble_install((unsigned)g->valueint, key->valuestring, false) == ESP_OK) {
+                char ack[80];
+                snprintf(ack, sizeof(ack), "{\"t\":\"ble.installed\",\"generation\":%d}", g->valueint);
+                send_text(ack, strlen(ack));
+            }
+#endif
         } else if (strcmp(t->valuestring, "uart.input") == 0) {
             uart_input(root);
         } else if (strcmp(t->valuestring, "req") == 0) {
@@ -1187,6 +1203,9 @@ static void agent_task(void *arg)
                 ESP_LOGI(TAG, "hub connected");
                 s_ws_up = true;
                 s_hello_acked = false;
+#if CONFIG_OKOU_BLE_WIFI
+                s_ble_sync_needed = true;
+#endif
                 s_up_since_us = s_last_rx_us = s_last_ping_us = now_us();
                 okou_log_rewind();
                 send_hello();
@@ -1222,6 +1241,9 @@ static void agent_task(void *arg)
                 okou_log_rewind();
                 if (send_hello()) {
                     s_hello_acked = true;
+#if CONFIG_OKOU_BLE_WIFI
+                    s_ble_sync_needed = true;
+#endif
                     on_first_ack();
                 } else {
                     s_ws_broken = true;
@@ -1261,6 +1283,28 @@ static void agent_task(void *arg)
             drain_txq();
             if (s_hello_acked && s_hooks.on_connected_poll)
                 s_hooks.on_connected_poll(s_boot_id);
+#if CONFIG_OKOU_BLE_WIFI
+            if (okou_ble_busy()) s_ble_sync_needed = true;
+            else if (s_hello_acked && s_ble_sync_needed) {
+                unsigned generation = okou_ble_generation();
+                char report[80];
+                snprintf(report, sizeof(report), "{\"t\":\"ble.installed\",\"generation\":%u}", generation);
+                if (s_iot && generation) {
+                    cJSON *frame = cJSON_Parse(report);
+                    cJSON_AddStringToObject(frame, "boot_id", s_boot_id);
+                    cJSON *reply = okou_iot_post("frame", frame);
+                    cJSON_Delete(frame);
+                    if (!reply) s_ws_broken = true;
+                    else {
+                        const cJSON *key = cJSON_GetObjectItemCaseSensitive(reply, "secret");
+                        const cJSON *next = cJSON_GetObjectItemCaseSensitive(reply, "generation");
+                        s_ble_sync_needed = cJSON_IsNumber(next) && cJSON_IsString(key) &&
+                            okou_ble_install(next->valueint, key->valuestring, false) == ESP_OK;
+                        cJSON_Delete(reply);
+                    }
+                } else if (!generation || send_text(report, strlen(report))) s_ble_sync_needed = false;
+            }
+#endif
             if (s_iot && s_pull_due && s_hello_acked && (!s_inflight_id[0] || now >= s_inflight_until)) {
                 s_pull_due = false;
                 pull_commands();
@@ -1392,6 +1436,9 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     if (e != ESP_OK) {
         ESP_LOGE(TAG, "network start: %s", esp_err_to_name(e));
     }
+#if CONFIG_OKOU_BLE_WIFI
+    okou_ble_start();
+#endif
     const esp_app_desc_t *d = esp_app_get_description();
     ESP_LOGI(TAG, "agent start: %s %s role=%s boot_id=%s", d->project_name, d->version,
              g_okou_cfg.role == OKOU_ROLE_LAUNCHER ? "launcher" : "app", s_boot_id);

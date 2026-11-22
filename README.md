@@ -21,6 +21,8 @@ OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","wifi":{"ssid":"<network>
 
 After `OKL-PROVISION-OK`, wait for the online MicroPython app and use the OTA procedure to install the returned verification program. Check the new boot for its board-specific hello message.
 
+Paper Color can also use Bluetooth for the first Wi-Fi connection and subsequent network changes after a one-time USB credential write. [Mac setup and BLE protocol](tools/ble-wifi/README.md).
+
 ## OTA
 
 1. For any local OTA file, use `ota.prepare_upload` and PUT the file as described below. If you already have an HTTPS download URL, use it directly. For generated Python, call `programs.publish` with the device ID and UTF-8 source (up to 32 KiB). It returns a private HTTPS URL valid for 24 hours. An existing HTTPS URL also works.

@@ -107,7 +107,7 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 22);
+  assert.equal(listed.length, 23);
   assert.ok(!listed.some(t => t.name === "programs.install"));
   const readOnly = new Set([
     "commands.get",
@@ -119,7 +119,7 @@ try {
     "uart.sessions",
     "uart.read",
   ]);
-  const additiveTools = new Set(["devices.create", "ota.prepare_upload", "programs.publish"]);
+  const additiveTools = new Set(["wifi.ble_credential", "devices.create", "ota.prepare_upload", "programs.publish"]);
   const openWorldTools = new Set(["wifi.scan", "wifi.add", "launcher.install", "ota.install", "uart.write"]);
   for (const { name, annotations } of listed) {
     // Active Wi-Fi discovery observes nearby networks but still requires write scope.
@@ -165,6 +165,11 @@ try {
     }),
     id = { device_id: d.id };
   assert.match(d.prompt, /hidden SSID/);
+  assert.match(d.ble_secret, /^[0-9a-f]{64}$/);
+  const firstBle = await op("wifi.ble_credential", id);
+  const { credential } = await import("../services/api/src/ble.js");
+  const deriveFor = (secret, beacon) => credential(secret, Buffer.from(beacon.slice(0,16), "hex"));
+  assert.deepEqual(firstBle, await deriveFor(d.ble_secret, firstBle.beacon));
   assert.match(d.verification_source, /Hello, M5Stack Paper Color/);
   assert.equal(
     d.setup_manifest,
@@ -207,7 +212,7 @@ try {
   const other = await issue("devices:read devices:write", {
     sub: otherSubject,
   });
-  for (const name of ["devices.get", "devices.delete"]) {
+  for (const name of ["devices.get", "devices.delete", "wifi.ble_credential"]) {
     const response = await request(
       "tools/call",
       { name, arguments: id },
@@ -263,12 +268,28 @@ try {
     chip: "esp32s3",
   });
   await take((f) => f.t === "ack");
+  send({ t: "ble.installed", generation: 1 });
+  const offer = await take(f => f.t === "ble.rotate");
+  assert.equal(offer.generation, 2);
+  send({ t: "ble.installed", generation: 1 });
+  assert.deepEqual(await take(f => f.t === "ble.rotate"), offer);
+  const recovery = await op("wifi.ble_credential", id);
+  const {alternate, ...previous} = recovery;
+  assert.deepEqual(previous, await deriveFor(d.ble_secret, previous.beacon));
+  assert.deepEqual(alternate, await deriveFor(offer.secret, alternate.beacon));
+  send({ t: "ble.installed", generation: 2 });
+  const afterRecovery = await take(f => f.t === "ble.rotate");
+  assert.equal(afterRecovery.generation, 3);
+  send({ t: "ble.installed", generation: 3 });
   send({ t: "log", seq: 1, lines: [[121, "I", "boot log"]] });
   await take((f) => f.t === "ack" && f.seq === 1);
   assert.equal(
     (await op("uart.read", { ...session, after: 0 }, read)).records[0].text,
     "boot log",
   );
+  const rotatedBle = await op("wifi.ble_credential", id);
+  assert.deepEqual(rotatedBle, await deriveFor(afterRecovery.secret, rotatedBle.beacon));
+  assert.notEqual(rotatedBle.psk, (await deriveFor(d.ble_secret, rotatedBle.beacon)).psk);
   assert.equal((await op("devices.get", id, read)).online, true);
   const data = { ...session, text: "help\n", request_id: randomUUID() };
   assert.equal((await op("uart.write", data)).sequence, 1);
@@ -386,7 +407,7 @@ try {
   assert.equal(archived.isError, true);
   await op("devices.delete", id);
   console.log(
-    "PASS Clerk OAuth discovery, 22 MCP tools, private R2 uploads, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
+    "PASS Clerk OAuth discovery, 23 MCP tools, BLE credential issuance and acknowledged rotation, private R2 uploads, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
   );
 } finally {
   ws?.close();
