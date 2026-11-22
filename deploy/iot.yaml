@@ -16,10 +16,10 @@ Resources:
                 iot:Connection.Thing.IsAttached: 'true'
           - Effect: Allow
             Action: iot:Subscribe
-            Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/devices/${!iot:Connection.Thing.Attributes[deviceId]}/wake'
+            Resource: !Join ['', [!Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/devices/', '${iot:Connection.Thing.Attributes[deviceId]}/wake']]
           - Effect: Allow
             Action: iot:Receive
-            Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topic/devices/${!iot:Connection.Thing.Attributes[deviceId]}/wake'
+            Resource: !Join ['', [!Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:topic/devices/', '${iot:Connection.Thing.Attributes[deviceId]}/wake']]
   BackendPermissions:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -33,11 +33,17 @@ Resources:
             Action: iot:GetConnection
             Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:client/esphub-*'
           - Effect: Allow
-            Action: [iot:CreateThing, iot:AttachThingPrincipal]
+            Action: iot:CreateThing
             Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:thing/esphub-*'
           - Effect: Allow
+            Action: iot:AttachThingPrincipal
+            Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:cert/*'
+            Condition:
+              ArnLike:
+                iot:thingArn: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:thing/esphub-*'
+          - Effect: Allow
             Action: iot:AttachPolicy
-            Resource: !GetAtt DevicePolicy.Arn
+            Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:cert/*'
           - Effect: Allow
             Action: [iot:UpdateCertificate, iot:DeleteCertificate]
             Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:cert/*'

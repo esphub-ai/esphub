@@ -15,7 +15,7 @@ try {
       );
     await tx.unsafe("GRANT USAGE ON SCHEMA esphub TO esphub_runtime");
     await tx.unsafe(
-      "GRANT SELECT,INSERT,UPDATE,DELETE ON esphub.accounts, esphub.devices, esphub.device_commands TO esphub_runtime",
+      "GRANT SELECT,INSERT,UPDATE,DELETE ON esphub.accounts, esphub.devices, esphub.device_commands, esphub.iot_revocations TO esphub_runtime",
     );
   });
 } finally {
@@ -34,7 +34,17 @@ await writeFile(
   JSON.stringify({
     DATABASE_URL: uri.href,
     CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
-    ...Object.fromEntries(["IOT_ACCOUNT_ID","IOT_DATA_ENDPOINT","IOT_ACCESS_KEY_ID","IOT_SECRET_ACCESS_KEY","IOT_SESSION_TOKEN"].filter(k=>process.env[k]).map(k=>[k,process.env[k]])),
+    ...Object.fromEntries(
+      [
+        "IOT_ACCOUNT_ID",
+        "IOT_DATA_ENDPOINT",
+        "IOT_ACCESS_KEY_ID",
+        "IOT_SECRET_ACCESS_KEY",
+        "IOT_SESSION_TOKEN",
+      ]
+        .filter((k) => process.env[k])
+        .map((k) => [k, process.env[k]]),
+    ),
   }),
   {
     mode: 0o600,
