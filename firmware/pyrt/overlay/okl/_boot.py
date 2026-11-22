@@ -18,6 +18,12 @@ if _p:
     try:
         vfs.mount(_p[0], "/flash")
     except OSError:
+        # Only initialize erased flash. Preserve an existing filesystem on mount errors.
+        virgin = bytearray(256)
+        for block in (0, 1):
+            _p[0].readblocks(block, virgin, 0)
+            if virgin != b"\xff" * len(virgin):
+                raise
         print("okl: formatting the data partition (LittleFS)")
         vfs.VfsLfs2.mkfs(_p[0])
         vfs.mount(_p[0], "/flash")

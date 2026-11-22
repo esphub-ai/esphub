@@ -38,6 +38,28 @@ edit("main.c", "void MICROPY_ESP_IDF_ENTRY(void) {",
 edit("main.c", "    MICROPY_BOARD_STARTUP();\n",
      "    MICROPY_BOARD_STARTUP();\n    okl_runtime_start(); /* okou_agent owns Wi-Fi and the hub link */\n")
 
+# Keep raw and friendly REPL upload modes out of the production USB console.
+edit("main.c", """    for (;;) {
+        if (pyexec_mode_kind == PYEXEC_MODE_RAW_REPL) {
+            vprintf_like_t vprintf_log = esp_log_set_vprintf(vprintf_null);
+            if (pyexec_raw_repl() != 0) {
+                break;
+            }
+            esp_log_set_vprintf(vprintf_log);
+        } else {
+            if (pyexec_friendly_repl() != 0) {
+                break;
+            }
+        }
+    }
+""", """    /* Applications can read USB input. Finished programs idle with VM callbacks
+     * enabled while the native agent remains available for OTA and recovery. */
+    for (;;) {
+        mp_handle_pending(false);
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+""")
+
 # 3. Board: our sdkconfig fragment last, our frozen manifest, no Japanese/Korean 24 px fonts.
 bdir = f"boards/{board}"
 if board == "M5STACK_StopWatch":
