@@ -1,3 +1,4 @@
+import setupRelease from "../../../shared/setup-release.json" with { type: "json" };
 import { fail } from "./auth.js";
 
 const releases = "https://github.com/okou-ai/esphub/releases";
@@ -65,6 +66,17 @@ export async function launcherManifest(board) {
 }
 
 export async function releaseResponse(board, kind, tag, deviceDownload) {
+  if (kind === "setup" || kind === "setup-manifest") {
+    const version = tag
+      ? /^setup-v(\d+\.\d+\.\d+)$/.exec(tag)?.[1]
+      : setupRelease.version;
+    if (!version || !["paper-color", "stopwatch"].includes(board))
+      fail(404, "Unknown USB setup kit");
+    return Response.redirect(
+      `${releases}/download/setup-v${version}/esphub-${board}-esp32s3-${version}${extensions[kind]}`,
+      302,
+    );
+  }
   const url = assetURL(board, kind, await resolveTag(tag));
   if (!deviceDownload || kind !== "ota") return Response.redirect(url, 302);
   // The deployed ESP-IDF installer expects a direct 200 response to a pinned download.

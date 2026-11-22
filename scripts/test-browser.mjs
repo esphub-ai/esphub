@@ -229,6 +229,8 @@ try {
       .getAttribute("href"),
     "https://api.esphub.ai/releases/stopwatch/setup",
   );
+  assert.equal(await page.getByRole("link", { name: "Launcher OTA image" }).count(), 0);
+  await page.getByText("Launcher-only downloads", {exact: true}).click();
   assert.equal(
     await page.getByRole("link", { name: "Launcher OTA image" }).count(),
     1,

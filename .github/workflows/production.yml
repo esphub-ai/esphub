@@ -2,7 +2,7 @@ name: Production
 on:
   push:
     branches: [main]
-    paths-ignore: ['firmware/**','.github/workflows/launcher.yml','scripts/package-launcher.py','**/*.md']
+    paths-ignore: ['firmware/**','.github/workflows/launcher.yml','.github/workflows/runtime.yml','.github/workflows/setup.yml','scripts/package-launcher.py','scripts/package-setup.py','**/*.md']
   pull_request:
   workflow_dispatch:
 permissions: {contents: read}
@@ -67,6 +67,12 @@ jobs:
           curl -fsS --retry 3 https://clerk.esphub.ai/.well-known/oauth-authorization-server | jq -e '.issuer == "https://clerk.esphub.ai" and .client_id_metadata_document_supported == true and (has("registration_endpoint") | not) and (.scopes_supported | contains(["devices:read","devices:write"]))'
       - name: Ensure production UART bucket exists
         run: node scripts/ensure-bucket.mjs
+      - name: Check the first-time setup kits before switching the API
+        run: |
+          version=$(jq -r .version shared/setup-release.json)
+          for board in stopwatch paper-color; do
+            curl -fsSL --retry 12 --retry-all-errors --retry-delay 5 "https://github.com/$GITHUB_REPOSITORY/releases/download/setup-v$version/esphub-$board-esp32s3-$version-setup.json" | jq -e --arg board "$board" --arg version "$version" '.board == $board and .version == $version and .runtime_size > 0'
+          done
       - name: Deploy API and device broker
         run: |
           umask 077

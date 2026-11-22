@@ -710,7 +710,7 @@ async function start() {
     );
     docs(
       "USB provisioning",
-      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Verify the first-time kit against its SHA-256 manifest. Follow INSTALL.txt. In the USB console, run <code>wifi scan</code>, choose a network or enter a hidden SSID, then send the provisioning line below. For a hidden network set <code>hidden</code> to true.</p></div><div class="panel"><h3>3. Verify</h3><p>Wait for OKL-PROVISION-OK and check devices.get for the online MicroPython application. Install the supplied hello program and check its serial output.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","wifi":{"ssid":"&lt;ssid&gt;","pass":"&lt;password&gt;","hidden":false}}</pre><h2>Board packages</h2><div class="flex">' +
+      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install ESP Hub with MicroPython. Verify its SHA-256 and follow INSTALL.txt. In the USB console, run <code>wifi scan</code>, choose a network or enter a hidden SSID, then send the provisioning line below. For a hidden network set <code>hidden</code> to true.</p></div><div class="panel"><h3>3. Verify</h3><p>Wait for OKL-PROVISION-OK and check devices.get for the online MicroPython application. Install the supplied hello program and check its serial output.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","wifi":{"ssid":"&lt;ssid&gt;","pass":"&lt;password&gt;","hidden":false}}</pre><h2>Board packages</h2><div class="flex">' +
         profiles
           .map(([board, name]) => {
             const base = "https://api.esphub.ai/releases/" + board + "/";
@@ -720,10 +720,11 @@ async function start() {
               '</h3><div class="flex">' +
               link(base + "setup", "First-time USB kit", true) +
               link(base + "setup-manifest", "Setup SHA-256 manifest") +
+              '</div><details><summary>Launcher-only downloads</summary><div class="flex">' +
               link(base + "usb", "Launcher-only USB kit") +
               link(base + "ota", "Launcher OTA image") +
               link(base + "manifest", "Launcher manifest") +
-              "</div></div>"
+              "</div></details></div>"
             );
           })
           .join("") +

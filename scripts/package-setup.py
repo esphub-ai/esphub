@@ -8,12 +8,13 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("board", choices=["paper-color", "stopwatch"])
-parser.add_argument("version")
 parser.add_argument("launcher", type=Path)
 parser.add_argument("runtime", type=Path)
 parser.add_argument("output", type=Path)
 args = parser.parse_args()
-prefix = f"esphub-{args.board}-esp32s3-{args.version}-setup"
+recipe = json.loads((Path(__file__).resolve().parents[1] / "shared/setup-release.json").read_text())
+version = recipe["version"]
+prefix = f"esphub-{args.board}-esp32s3-{version}-setup"
 kit = args.output / (prefix + ".zip")
 image = args.runtime.read_bytes()
 with ZipFile(args.launcher) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
@@ -35,7 +36,8 @@ esptool.py --chip esp32s3 --port PORT write_flash @flash_args
 Open the launcher's USB console at 115200 baud and send: wifi scan
 """)
 
-manifest = dict(board=args.board, chip="esp32s3", version=args.version, file=kit.name,
+manifest = dict(board=args.board, chip="esp32s3", **recipe, file=kit.name,
+                download_url=f"https://github.com/okou-ai/esphub/releases/download/setup-v{version}/{kit.name}",
                 sha256=hashlib.sha256(kit.read_bytes()).hexdigest(),
                 runtime_sha256=hashlib.sha256(image).hexdigest(), runtime_size=len(image))
 kit.with_suffix(".json").write_text(json.dumps(manifest, indent=2) + "\n")
