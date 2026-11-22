@@ -32,6 +32,7 @@ test(
         enqueue(c, id, "term.write", { data: "changed" }, boot, key),
         (e) => e.status === 409,
       );
+      const second = await enqueue(c, id, "status", {}, boot);
       const batches = await Promise.all([
         pull(db, id, boot),
         pull(db, id, boot),
@@ -39,11 +40,13 @@ test(
       const [command] = batches.flat();
       assert.equal(batches.flat().length, 1);
       assert.deepEqual(command.args, args);
-      const second = await enqueue(c, id, "status", {}, boot);
+      assert.equal(command.more, true);
       assert.equal((await pull(db, id, boot)).length, 0); // one command outstanding
       await db`UPDATE esphub.device_commands SET next_wake=now() WHERE id=${command.id}`;
       await retryDue(db, {}, id);
-      assert.equal((await pull(db, id, boot))[0].id, second.command_id);
+      const [last] = await pull(db, id, boot);
+      assert.equal(last.id, second.command_id);
+      assert.equal(last.more, false);
       assert.equal(
         (
           await db`SELECT state FROM esphub.device_commands WHERE id=${command.id}`

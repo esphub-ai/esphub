@@ -15,7 +15,7 @@ The launcher and MicroPython share one device agent. Firmware keeps a single aut
 
 ## Command delivery and receipts
 
-The API commits the command before publishing a wake. The device pulls on subscription, on a wake, and after completing work. Pull selects the oldest eligible command and atomically changes its state from `queued` to `dispatched`. A request ID identifies one command and payload. Concurrent pulls and retries cannot dispatch that command twice.
+The API commits the command before publishing a wake. The device pulls on subscription or a pending-work wake. A pull carries a flag when more commands are already queued, so finishing the last command needs only its MQTT report. Pull selects the oldest eligible command and atomically changes its state from `queued` to `dispatched`. A request ID identifies one command and payload. Concurrent pulls and retries cannot dispatch that command twice.
 
 `dispatched` means the server returned the command for delivery. An interrupted pull can leave the board without the command. The server reports `unknown` after the receipt deadline and never automatically replays dispatched work. Queued commands expire after five minutes. A valid late receipt can resolve an unknown result. Reboots complete when the requested next boot is observed. Install commands complete on a matching `install.done` or `install.failed` event. Check the next boot separately to verify that the program started.
 

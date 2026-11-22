@@ -378,7 +378,6 @@ static bool send_text(const char *s, size_t len)
         okou_log_ack(seq);
     if (sent && (final || (result && id && !strcmp(id, s_inflight_id)))) {
         s_inflight_id[0] = 0;
-        s_pull_due = true;
     }
     cJSON_Delete(frame);
     if (!sent)
@@ -936,6 +935,7 @@ static void pull_commands(void)
     const cJSON *command = cJSON_GetArrayItem(commands, 0);
     const char *id = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(command, "id"));
     if (id) {
+        if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(command, "more"))) s_pull_due = true;
         strlcpy(s_inflight_id, id, sizeof(s_inflight_id));
         s_inflight_until = now_us() + 90000000;
         handle_req(command);

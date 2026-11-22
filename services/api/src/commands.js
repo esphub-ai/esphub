@@ -47,7 +47,10 @@ export async function pull(db, device, boot) {
   ) UPDATE esphub.device_commands q SET state='dispatched',args=CASE WHEN operation='reboot' THEN q.args ELSE '{}'::jsonb END,dispatched_boot=${boot},
     next_wake=now()+CASE WHEN operation='install' THEN interval '10 minutes' ELSE interval '90 seconds' END
     FROM first WHERE q.id=first.id AND q.state='queued'
-    RETURNING q.id,q.operation AS op,first.args,q.seq`;
+    RETURNING q.id,q.operation AS op,first.args,q.seq, EXISTS (
+      SELECT 1 FROM esphub.device_commands next WHERE next.device_id=q.device_id AND next.seq>q.seq
+      AND next.state='queued' AND next.expires_at>now() AND (next.boot_id IS NULL OR next.boot_id=${boot})
+    ) AS more`;
 }
 
 export async function receipt(db, device, boot, frame) {
