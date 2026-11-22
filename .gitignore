@@ -7,3 +7,5 @@ build/
 sdkconfig
 managed_components/
 __pycache__/
+services/web/public/app.js
+services/web/public/tools.json
