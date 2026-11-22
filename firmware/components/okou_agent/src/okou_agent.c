@@ -83,7 +83,9 @@ static volatile bool s_ws_up, s_hello_acked, s_ws_broken, s_reload;
 static int64_t s_conn_start_us, s_up_since_us, s_last_rx_us, s_last_ping_us, s_last_flush_us, s_next_connect_us;
 static uint32_t s_backoff_ms = 1000;
 static volatile int64_t s_reboot_at_us;
-static char s_boot_id[9];
+static char s_boot_id[33];
+static uint32_t uart_cursor;
+static int64_t last_uart_poll;
 static bool s_rolled_back;
 static char *s_txbuf;
 static okou_hooks_t s_hooks;
@@ -897,6 +899,14 @@ static void handle_req(const cJSON *root)
                 snprintf(err, sizeof(err), "NVS write failed");
             }
         }
+    } else if (strcmp(op, "provision.reset") == 0) {
+        const char *keys[] = {"ssid","pass","cid","csec","hub",OKOU_KEY_TOKEN};
+        r = okou_nvs_set_str(OKOU_KEY_WIFIS, "[]");
+        for (size_t i = 0; r == ESP_OK && i < sizeof(keys)/sizeof(keys[0]); ++i) {
+            r = okou_nvs_erase(keys[i]);
+        }
+        if (r == ESP_OK) r = okou_enter_setup();
+        if (r != ESP_OK) snprintf(err, sizeof(err), "reset failed: %s", esp_err_to_name(r));
     } else if (strcmp(op, "reboot") == 0) {
         r = op_reboot(args, data, err, sizeof(err));
     } else if (strcmp(op, "install") == 0 && g_okou_cfg.role == OKOU_ROLE_APP) {
@@ -1037,6 +1047,29 @@ static void on_first_ack(void)
     }
 }
 
+/* RX cursor belongs to this boot and survives Wi-Fi reconnects. A new process ID
+ * intentionally starts from zero. Never retry a partially consumed serial record. */
+static void uart_input(const cJSON *root)
+{
+    const cJSON *seq = cJSON_GetObjectItemCaseSensitive(root, "seq");
+    const cJSON *text = cJSON_GetObjectItemCaseSensitive(root, "text");
+    if (!cJSON_IsNumber(seq) || seq->valuedouble != (double)uart_cursor + 1 || !cJSON_IsString(text)) return;
+    cJSON *args = cJSON_CreateObject(), *reply = cJSON_CreateObject();
+    if (!args || !reply || !cJSON_AddStringToObject(args, "data", text->valuestring)) {
+        cJSON_Delete(args); cJSON_Delete(reply); return;
+    }
+    char error[128] = "terminal unavailable";
+    esp_err_t result = ESP_ERR_NOT_SUPPORTED;
+    for (int i = 0; i < s_nops; i++) {
+        if (s_ops[i].fn && strcmp(s_ops[i].op, "term.write") == 0) {
+            result = s_ops[i].fn(args, reply, error, sizeof(error));
+            break;
+        }
+    }
+    ++uart_cursor;
+    if (result != ESP_OK) ESP_LOGW(TAG, "UART input %lu: %s", (unsigned long)uart_cursor, error);
+    cJSON_Delete(args); cJSON_Delete(reply);
+}
 static void handle_text(char *s, size_t len)
 {
     s_last_rx_us = now_us();
@@ -1059,6 +1092,8 @@ static void handle_text(char *s, size_t len)
                 s_hello_acked = true;
                 on_first_ack();
             }
+        } else if (strcmp(t->valuestring, "uart.input") == 0) {
+            uart_input(root);
         } else if (strcmp(t->valuestring, "req") == 0) {
             handle_req(root);
         }
@@ -1121,6 +1156,12 @@ static void agent_task(void *arg)
             }
         } else {
             drain_txq();
+            if (s_hello_acked && now - last_uart_poll >= 1500000) {
+                char poll[80];
+                int n = snprintf(poll, sizeof(poll), "{\"t\":\"uart.poll\",\"after\":%lu}", (unsigned long)uart_cursor);
+                send_text(poll, n);
+                last_uart_poll = now;
+            }
             if (now - s_last_flush_us >= FLUSH_INTERVAL_US) {
                 s_last_flush_us = now;
                 flush_logs();
@@ -1166,7 +1207,9 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
         return e;
     }
     ensure_queues();
-    snprintf(s_boot_id, sizeof(s_boot_id), "%08" PRIx32, esp_random());
+    for (int i = 0; i < 4; ++i) {
+        snprintf(s_boot_id + 8*i, 9, "%08" PRIx32, esp_random());
+    }
     s_rolled_back = esp_ota_get_last_invalid_partition() != NULL;
     record_rollback();
 

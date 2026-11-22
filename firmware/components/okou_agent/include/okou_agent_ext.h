@@ -47,6 +47,7 @@ void okou_op_reply(okou_req_t *req, bool ok, cJSON *data, const char *err);
 
 /* Push one line into the log stream sent to the hub (level E/W/I/D/V or 'O' for plain output).
  * For output that does not go through ESP_LOG, e.g. an interpreter's print(). Never blocks. */
+int okou_cmd_run(const char *name, const cJSON *argv, char **out_text);
 void okou_log_text(char level, const char *text, size_t len);
 
 typedef struct {
