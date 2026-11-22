@@ -1,3 +1,4 @@
+import { softwareInventory } from "./software.js";
 import { newBleSecret, issueBle } from "./ble.js";
 import { connected } from "./iot.js";
 import { artifactBase } from "./uploads.js";
@@ -138,6 +139,7 @@ const defs = [
       },
     },
   ],
+  ["programs.get", readOnly, "Read the last reported main.py for the current or last-seen MicroPython boot, including offline devices.", id],
   [
     "uart.sessions",
     readOnly,
@@ -278,8 +280,10 @@ export async function internal(c, id, path, args) {
 }
 async function summary(c, d) {
   if (d.transport !== "mqtt") return internal(c, d.id, "summary");
+  const [online, broker] = await Promise.all([connected(c.env, d.id), internal(c, d.id, "summary")]);
   return {
-    online: await connected(c.env, d.id),
+    online,
+    software: broker.process_id === d.boot_id ? broker.software : softwareInventory(d.boot_info),
     process_id: d.boot_id,
     info: d.boot_info,
     serial_input: true,
@@ -329,6 +333,7 @@ export async function operate(c, owner, name, a) {
       transport: d.transport,
       ...(await summary(c, d)),
     });
+  if (name === "programs.get") return internal(c, d.id, "program");
   if (name === "commands.get") {
     const [row] =
       await db`SELECT id AS command_id,state,result,claimed_boot AS process_id FROM esphub.device_commands WHERE device_id=${d.id} AND id=${a.command_id}`;

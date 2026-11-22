@@ -26,6 +26,7 @@ const writeAccess = requireAdditionalScopes("devices:write");
 const readTools = new Set([
   "commands.get",
   "devices.list",
+  "programs.get",
   "devices.get",
   "wifi.list",
   "firmware.get",

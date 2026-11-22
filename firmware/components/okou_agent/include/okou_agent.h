@@ -10,6 +10,8 @@
  */
 #pragma once
 
+#define OKOU_SDK_VERSION "1.0.0"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -40,9 +42,11 @@ typedef struct {
      * the SDK neither marks the app valid nor applies the fail_boots safety net. Use this for
      * devices that must keep working offline. */
     bool app_validates;
+    /* Static interpreter version string, set only by the MicroPython port. */
+    const char *micropython_version;
 } okou_config_t;
 
-#define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .app_validates = false }
+#define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .app_validates = false, .micropython_version = NULL }
 
 /* One-call init: NVS, log tee, network (optional), agent task. cfg may be NULL (defaults).
  * For role=app it also implements the fail_boots safety net (may reboot into the launcher). */

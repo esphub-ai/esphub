@@ -56,6 +56,7 @@ void okou_log_text(char level, const char *text, size_t len);
 typedef struct {
     void (*on_hello_acked)(void);       /* first hub ack after our hello (agent task) */
     void (*on_request)(const char *op); /* every hub req (agent task) */
+    void (*on_connected_poll)(const char *boot_id); /* agent task, after hello acknowledgement */
 } okou_hooks_t;
 void okou_set_hooks(const okou_hooks_t *hooks); /* call before okou_agent_start() */
 

@@ -381,6 +381,13 @@ static void hello_fill(cJSON *o)
     cJSON_AddStringToObject(fw, "version", d->version);
     cJSON_AddStringToObject(fw, "idf", d->idf_ver);
     cJSON_AddStringToObject(fw, "sha256", sha);
+    cJSON_AddStringToObject(o, "sdk_version", OKOU_SDK_VERSION);
+    if (g_okou_cfg.micropython_version)
+        cJSON_AddStringToObject(o, "micropython_version", g_okou_cfg.micropython_version);
+    const esp_partition_t *launcher = g_okou_cfg.role == OKOU_ROLE_LAUNCHER ? run : okou_launcher_partition();
+    esp_app_desc_t launcher_desc;
+    if (launcher && esp_ota_get_partition_description(launcher, &launcher_desc) == ESP_OK)
+        cJSON_AddStringToObject(o, "launcher_version", launcher_desc.version);
     cJSON_AddStringToObject(o, "partition", run ? run->label : "");
     cJSON_AddStringToObject(o, "ota_state", run ? okou_ota_state_str(run) : "");
     cJSON_AddStringToObject(o, "chip", CONFIG_IDF_TARGET);
@@ -1274,6 +1281,8 @@ static void agent_task(void *arg)
             }
         } else {
             drain_txq();
+            if (s_hello_acked && s_hooks.on_connected_poll)
+                s_hooks.on_connected_poll(s_boot_id);
 #if CONFIG_OKOU_BLE_WIFI
             if (okou_ble_busy()) s_ble_sync_needed = true;
             else if (s_hello_acked && s_ble_sync_needed) {

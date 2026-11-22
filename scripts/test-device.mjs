@@ -107,7 +107,7 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 22);
+  assert.equal(listed.length, 23);
   assert.ok(!listed.some(t => t.name === "programs.install"));
   const readOnly = new Set([
     "commands.get",
@@ -115,6 +115,7 @@ try {
     "devices.get",
     "wifi.list",
     "firmware.get",
+    "programs.get",
     "uart.sessions",
     "uart.read",
   ]);
@@ -318,7 +319,7 @@ try {
   const ota = { ...id, kind: "python", url: staged.url };
   const report = async (role, image_profile, board = "paper-color") => {
     const boot_id = randomUUID();
-    send({t:"hello", boot_id, role, board, chip:"esp32s3", image_profile, fw:{name: role === "launcher" ? "esp-launcher" : "micropython"}});
+    send({t:"hello", boot_id, role, board, mac:"00:11:22:33:44:55", chip:"esp32s3", image_profile, fw:{version:"1.2.3", name: role === "launcher" ? "esp-launcher" : "micropython"}});
     await take(f => f.t === "ack");
     return boot_id;
   };
@@ -357,6 +358,18 @@ try {
     assert.ok(events.records.some(r => r.text.includes(receipt.transfer_id) && r.text.includes(event)));
   }
   const app = await report("app", "ESPHUB1/micropython/paper-color");
+  const inventory = (await op("devices.get", id)).software;
+  assert.equal(inventory.launcher_version, "1.2.3");
+  assert.equal(inventory.launcher_last_seen, true);
+  assert.equal(inventory.application.kind, "micropython");
+  assert.equal((await op("programs.get", id, read)).status, "unreported");
+  const uploadSource = (pid, token, source) => fetch(base + "/backend/api/device/program/" + pid, {
+    method:"PUT", headers:{Authorization:"Bearer " + token, "X-Program-Status":"available"}, body:source,
+  });
+  assert.equal((await uploadSource(oldApp,d.token,source)).status,409);
+  assert.equal((await uploadSource(app,watch.token,source)).status,409);
+  assert.equal((await uploadSource(app,d.token,source)).status,200);
+  assert.deepEqual(await op("programs.get", id, read), {process_id:app, status:"available", source});
   assert.equal((await op("devices.get", id)).serial_input, true);
   await op("uart.write", {...data, process_id:app,text:"application message"});
   send({t:"uart.poll",after:0});
@@ -372,7 +385,9 @@ try {
     assert.equal(response.status,200,await response.clone().text());
     return response.json();
   };
-  await devicePost("frame",{t:"hello",board:"stopwatch",role:"app",boot_id:mqttBoot});
+  await devicePost("frame",{t:"hello",board:"stopwatch",role:"app",boot_id:mqttBoot,micropython_version:"1.27.0",fw:{name:"micropython",version:"test-runtime"}});
+  assert.equal((await uploadSource(mqttBoot,watch.token,"")).status,200);
+  assert.equal((await op("programs.get",{device_id:watch.id},read)).source,"");
   const queued=await op("uart.write",{device_id:watch.id,process_id:mqttBoot,request_id:randomUUID(),text:"test"});
   const body={boot_id:mqttBoot};
   const {commands}=await devicePost("pull",body);
@@ -392,7 +407,7 @@ try {
   assert.equal(archived.isError, true);
   await op("devices.delete", id);
   console.log(
-    "PASS Clerk OAuth discovery, 22 MCP tools, BLE credential issuance and acknowledged rotation, private R2 uploads, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
+    "PASS Clerk OAuth discovery, 23 MCP tools, BLE credential issuance and acknowledged rotation, private R2 uploads, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
   );
 } finally {
   ws?.close();

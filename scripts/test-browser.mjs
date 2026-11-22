@@ -172,6 +172,21 @@ try {
   assert.deepEqual(await page.locator('[name="kind"] option').evaluateAll(options => options.map(o => o.value)), ["python", "micropython", "launcher"]);
   assert.equal(await page.locator('[name="sha256"]').count(), 0);
   await page.getByRole("button", { name: "Close", exact: true }).click();
+  const pythonBoot = randomUUID();
+  const ready = new Promise(resolve => ws.on("message", function onAck(buf) {
+    if (JSON.parse(buf).t === "ack") { ws.off("message", onAck); resolve(); }
+  }));
+  send({t:"hello",role:"app",board:"paper-color",boot_id:pythonBoot,launcher_version:"1.1.17",micropython_version:"1.27.0",fw:{name:"micropython",version:"1.1.18"}});
+  await ready;
+  const source = "# 咖啡 café <script>window.bad = true</script>\nprint(42)\n";
+  assert.equal((await fetch(origin+"/backend/api/device/program/"+pythonBoot,{
+    method:"PUT",headers:{Authorization:"Bearer "+token,"X-Program-Status":"available"},body:source
+  })).status,200);
+  await page.getByRole("button", { name: "Firmware", exact: true }).click();
+  await page.getByText("1.27.0", {exact:true}).waitFor();
+  await page.locator("#program").filter({hasText:"print(42)"}).waitFor();
+  assert.equal(await page.locator("#program").textContent(),source);
+  assert.equal(await page.locator("#program script").count(),0);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .getByRole("button", { name: "Delete device", exact: true })

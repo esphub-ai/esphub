@@ -139,6 +139,17 @@ function docs(title, body) {
     body +
     "</section>";
 }
+function softwareFields(software) {
+  const app = software?.application;
+  const fields = [["Launcher", (software?.launcher_version || "Not reported") + (software?.launcher_last_seen ? " (last seen)" : "")]];
+  if (!app) return fields;
+  if (app.kind === "micropython") {
+    fields.push(["MicroPython", app.micropython_version || "Not reported"], ["Runtime build", app.version]);
+  } else {
+    fields.push(["Application", [app.name, app.version].filter(Boolean).join(" ")], ["ESPHub SDK", app.sdk_version || "Not reported"], ["ESP-IDF", app.esp_idf_version]);
+  }
+  return fields;
+}
 function row(d) {
   return (
     '<a class="device" href="/device/' +
@@ -149,9 +160,10 @@ function row(d) {
     esc(boardName[d.board]) +
     " · " +
     d.id.slice(0, 8) +
-    '</small></span><span class="tag">' +
-    esc(d.info?.fw?.version || "No report") +
-    '</span><span class="mini">' +
+    "</small><small>" +
+    (d.software?.application?.last_seen ? "Last seen app · " : "") +
+    softwareFields(d.software).map(([label, value]) => label + " " + esc(value || "Not reported")).join(" · ") +
+    '</small></span><span class="mini">' +
     (d.online ? "● Online" : "○ Offline") +
     "</span><span>↗</span></a>"
   );
@@ -344,21 +356,36 @@ async function refresh() {
     if (device.online) await action("saved");
   } else if (tab === "Firmware") {
     area.innerHTML =
-      '<div class="panel"><h3>Firmware</h3><pre>' +
-      esc(
-        JSON.stringify(
-          device.info?.fw ?? { status: "Awaiting first connection" },
-          null,
-          2,
-        ),
-      ) +
-      '</pre><div class="flex">' +
+      '<div class="panel"><h3>Firmware</h3><dl class="software">' +
+      softwareFields(device.software).map(([label,value]) => "<dt>" + label + "</dt><dd>" + esc(value || "Not reported") + "</dd>").join("") +
+      "</dl>" +
+      (device.software?.application?.last_seen ? '<p class="notice">Application details are from its last reported boot.</p>' : "") +
+      '<div class="flex">' +
       button("info", "Inspect device") +
       button("enter", "Enter launcher mode") +
       button("install", "Install from URL") +
       (device.info?.role === "launcher" && !device.info?.image_profile ? button("launcher", "Upgrade legacy launcher") : "") +
       link("/setup?board=" + device.board, "Firmware downloads ↗") +
       '</div><pre id="out" hidden></pre></div>';
+    const app = device.software?.application;
+    if (app?.kind === "micropython") {
+      area.insertAdjacentHTML("beforeend", '<section class="panel"><h3>main.py</h3><pre id="program">Reading boot snapshot…</pre></section>');
+      const output = $("#program");
+      try {
+        const snapshot = await op("programs.get", {device_id:device.id});
+        if (currentView !== view) return;
+        const messages = {
+          available: snapshot.source === "" ? "Empty file (0 bytes)" : snapshot.source,
+          missing: "No main.py on this boot.",
+          too_large: "main.py exceeds the 32 KiB snapshot limit.",
+          unreadable: "The runtime could not read main.py.",
+          unreported: app.micropython_version ? "This boot has not reported its source yet." : "This runtime has not reported source. Update MicroPython to enable boot snapshots.",
+        };
+        output.textContent = snapshot.process_id && snapshot.process_id !== app.process_id ? "The device changed boots. Reopen Firmware to refresh." : messages[snapshot.status] || "Source unavailable.";
+      } catch (error) {
+        output.textContent = error.message;
+      }
+    }
   } else
     area.innerHTML =
       '<div class="panel"><h3>Device controls</h3><p class="notice">Reboot opens a new serial session. Reset clears the device token and saved Wi-Fi networks. Generate a new token to provision again over USB.</p><div class="actions">' +
