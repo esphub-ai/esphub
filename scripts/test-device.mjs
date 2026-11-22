@@ -262,8 +262,14 @@ try {
   assert.equal(offer.generation, 2);
   send({ t: "ble.installed", generation: 1 });
   assert.deepEqual(await take(f => f.t === "ble.rotate"), offer);
-  assert.equal((await call("tools/call", {name:"wifi.ble_credential", arguments:id})).isError, true);
+  const recovery = await op("wifi.ble_credential", id);
+  const {alternate, ...previous} = recovery;
+  assert.deepEqual(previous, await deriveFor(d.ble_secret, previous.beacon));
+  assert.deepEqual(alternate, await deriveFor(offer.secret, alternate.beacon));
   send({ t: "ble.installed", generation: 2 });
+  const afterRecovery = await take(f => f.t === "ble.rotate");
+  assert.equal(afterRecovery.generation, 3);
+  send({ t: "ble.installed", generation: 3 });
   send({ t: "log", seq: 1, lines: [[121, "I", "boot log"]] });
   await take((f) => f.t === "ack" && f.seq === 1);
   assert.equal(
@@ -271,7 +277,7 @@ try {
     "boot log",
   );
   const rotatedBle = await op("wifi.ble_credential", id);
-  assert.deepEqual(rotatedBle, await deriveFor(offer.secret, rotatedBle.beacon));
+  assert.deepEqual(rotatedBle, await deriveFor(afterRecovery.secret, rotatedBle.beacon));
   assert.notEqual(rotatedBle.psk, (await deriveFor(d.ble_secret, rotatedBle.beacon)).psk);
   assert.equal((await op("devices.get", id, read)).online, true);
   const data = { ...session, text: "help\n", request_id: randomUUID() };

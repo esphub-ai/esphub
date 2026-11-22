@@ -36,15 +36,21 @@ export async function credential(
 }
 
 export async function issueBle(sql, owner, id) {
-  const [d] = await sql`UPDATE esphub.devices SET ble_issued=true WHERE id=${id}
+  const [d] = await sql`UPDATE esphub.devices SET ble_issued=true,
+    ble_pending_issued=(ble_pending IS NOT NULL) WHERE id=${id}
     AND owner=${owner} AND board='paper-color' AND ble_secret IS NOT NULL
-    AND ble_pending IS NULL RETURNING ble_secret`;
+    RETURNING ble_secret, ble_pending`;
   if (!d)
-    fail(409, "Initialize BLE over USB or finish the pending rotation first");
-  return credential(d.ble_secret);
+    fail(
+      409,
+      "Initialize this Paper Color registration for BLE over USB first",
+    );
+  const current = await credential(d.ble_secret);
+  if (d.ble_pending) current.alternate = await credential(d.ble_pending);
+  return current;
 }
 
-// A hello from the authenticated device reports its durably installed generation.
+// The authenticated device reports its durably installed generation after reconnect.
 // A lost offer or confirmation is retried using the same pending key.
 export async function syncBle(sql, id, tokenHash, generation) {
   if (
@@ -54,11 +60,9 @@ export async function syncBle(sql, id, tokenHash, generation) {
     generation >= 2147483647
   )
     return;
-  const committed =
-    await sql`UPDATE esphub.devices SET ble_secret=ble_pending, ble_pending=NULL,
-    ble_generation=ble_generation+1, ble_issued=false WHERE id=${id} AND token_hash=${tokenHash} AND ble_pending IS NOT NULL
+  await sql`UPDATE esphub.devices SET ble_secret=ble_pending, ble_pending=NULL,
+    ble_generation=ble_generation+1, ble_issued=ble_pending_issued, ble_pending_issued=false WHERE id=${id} AND token_hash=${tokenHash} AND ble_pending IS NOT NULL
     AND ble_generation=${generation - 1} RETURNING id`;
-  if (committed.length) return;
   const [next] =
     await sql`UPDATE esphub.devices SET ble_pending=COALESCE(ble_pending,${newBleSecret()})
     WHERE id=${id} AND token_hash=${tokenHash} AND ble_generation=${generation} AND ble_issued=true

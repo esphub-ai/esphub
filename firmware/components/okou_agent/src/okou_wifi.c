@@ -509,7 +509,12 @@ esp_err_t okou_wifi_init(void)
         return ESP_ERR_NO_MEM;
     }
     load();
-    return xTaskCreate(wifi_task, "okou_wifi", 4096, NULL, 3, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
+#if CONFIG_OKOU_BLE_WIFI
+    const unsigned stack_bytes = 6144;
+#else
+    const unsigned stack_bytes = 4096;
+#endif
+    return xTaskCreate(wifi_task, "okou_wifi", stack_bytes, NULL, 3, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
 #else /* QEMU / OpenCores Ethernet: no Wi-Fi */

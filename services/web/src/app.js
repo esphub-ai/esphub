@@ -392,7 +392,7 @@ async function action(k) {
         await fleet();
         credential(
           "USB provisioning",
-          JSON.stringify({ hub: d.hub, token: d.token, ble_secret: d.ble_secret }, null, 2),
+          JSON.stringify({ hub: d.hub, token: d.token, ble_secret: d.ble_secret }),
         );
       },
     );
@@ -410,7 +410,8 @@ async function action(k) {
       "Replace",
       async () => {
         const result = await op("devices.reissue", id);
-        credential("USB provisioning", JSON.stringify(result, null, 2));
+        if (result.ble_secret) credential("USB provisioning", JSON.stringify(result));
+        else credential("USB token", result.token);
       },
     );
     return;

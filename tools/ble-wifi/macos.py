@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Paper Color provisioning on macOS. Requires Python >=3.13 and bleak."""
+
 import argparse
 import asyncio
 import contextlib
@@ -30,7 +31,9 @@ class Channel:
 
     async def flush(self):
         while self.outgoing.pending:
-            await self.ble.write_gatt_char(CHANNEL, self.outgoing.read(20), response=True)
+            await self.ble.write_gatt_char(
+                CHANNEL, self.outgoing.read(20), response=True
+            )
 
     async def run(self, action):
         while True:
@@ -65,16 +68,10 @@ class Channel:
         return result
 
 
-async def provision(cred):
+async def provision(credential):
     import CoreBluetooth as cb
     from Foundation import NSObject, NSRunLoop, NSDate
     from bleak import BleakClient, BleakScanner
-
-    beacon = uuid.UUID(hex=cred["beacon"])
-    key = bytes.fromhex(cred["psk"])
-    if len(key) != 32:
-        raise ValueError("Invalid credential")
-    reply = str(uuid.UUID(int=beacon.int ^ (1 << 127)))
 
     class PeripheralDelegate(NSObject):
         def peripheralManagerDidUpdateState_(self, manager):
@@ -86,11 +83,15 @@ async def provision(cred):
 
     delegate = PeripheralDelegate.alloc().init()
     delegate.started = delegate.failed = False
-    manager = cb.CBPeripheralManager.alloc().initWithDelegate_queue_options_(delegate, None, None)
+    manager = cb.CBPeripheralManager.alloc().initWithDelegate_queue_options_(
+        delegate, None, None
+    )
 
     async def pump():
         while True:
-            NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.002))
+            NSRunLoop.currentRunLoop().runUntilDate_(
+                NSDate.dateWithTimeIntervalSinceNow_(0.002)
+            )
             await asyncio.sleep(0.01)
 
     runloop = asyncio.create_task(pump())
@@ -99,19 +100,41 @@ async def provision(cred):
             while manager.state() in (0, 1):
                 await asyncio.sleep(0.05)
         if manager.state() != 5:
-            raise RuntimeError("Bluetooth unavailable. Check the Mac's Bluetooth permission and power.")
-        manager.startAdvertising_({cb.CBAdvertisementDataServiceUUIDsKey: [cb.CBUUID.UUIDWithString_(str(beacon))]})
-        async with asyncio.timeout(10):
-            while not delegate.started:
-                await asyncio.sleep(0.05)
-        if delegate.failed:
-            raise RuntimeError("macOS declined Bluetooth advertising")
-        device = await BleakScanner.find_device_by_filter(
-            lambda _, adv: reply in adv.service_uuids, timeout=40, service_uuids=[reply]
-        )
-        if not device:
-            raise RuntimeError("No matching board replied to this beacon")
-        manager.stopAdvertising()
+            raise RuntimeError(
+                "Bluetooth unavailable. Check the Mac's Bluetooth permission and power."
+            )
+        candidates = [credential]
+        if credential.get("alternate"):
+            candidates.append(credential["alternate"])
+        for candidate in candidates:
+            beacon = uuid.UUID(hex=candidate["beacon"])
+            key = bytes.fromhex(candidate["psk"])
+            if len(key) != 32:
+                raise ValueError("Invalid credential")
+            reply = str(uuid.UUID(int=beacon.int ^ (1 << 127)))
+            delegate.started = delegate.failed = False
+            manager.startAdvertising_(
+                {
+                    cb.CBAdvertisementDataServiceUUIDsKey: [
+                        cb.CBUUID.UUIDWithString_(str(beacon))
+                    ]
+                }
+            )
+            async with asyncio.timeout(10):
+                while not delegate.started:
+                    await asyncio.sleep(0.05)
+            if delegate.failed:
+                raise RuntimeError("macOS declined Bluetooth advertising")
+            device = await BleakScanner.find_device_by_filter(
+                lambda _, adv: reply in adv.service_uuids,
+                timeout=20 if len(candidates) > 1 else 40,
+                service_uuids=[reply],
+            )
+            manager.stopAdvertising()
+            if device:
+                break
+        else:
+            raise RuntimeError("No matching board replied to the beacon")
         async with BleakClient(device) as ble:
             session = Channel(ble, key)
             async with asyncio.timeout(45):
@@ -120,21 +143,38 @@ async def provision(cred):
             with open("/dev/tty", "r") as keyboard, open("/dev/tty", "w") as terminal:
                 for i, name in enumerate(result["ssids"], 1):
                     print(f"{i}. {name!r}", file=terminal)
-                print("Network number, or enter a hidden SSID: ", end="", file=terminal, flush=True)
+                print(
+                    "Network number, or enter a hidden SSID: ",
+                    end="",
+                    file=terminal,
+                    flush=True,
+                )
                 choice = keyboard.readline().rstrip("\r\n")
                 listed = choice.isdecimal() and 0 < int(choice) <= len(result["ssids"])
                 ssid = result["ssids"][int(choice) - 1] if listed else choice
                 while True:
-                    password = getpass.getpass("Wi-Fi password (empty for open network): ", stream=terminal)
-                    await session.request("wifi.join", ssid=ssid, password=password, hidden=not listed)
+                    password = getpass.getpass(
+                        "Wi-Fi password (empty for open network): ", stream=terminal
+                    )
+                    await session.request(
+                        "wifi.join", ssid=ssid, password=password, hidden=not listed
+                    )
                     async with asyncio.timeout(90):
                         while True:
                             status = await session.request("wifi.status")
-                            if status["state"] == "saved" and status["connected"] == ssid:
-                                print("Device saved the network and obtained an IP on the selected Wi-Fi.")
+                            if (
+                                status["state"] == "saved"
+                                and status["connected"] == ssid
+                            ):
+                                print(
+                                    "Device saved the network and obtained an IP on the selected Wi-Fi."
+                                )
                                 return
                             if status["state"] == "failed":
-                                print("The board could not join or save the network. Re-enter the password or press Ctrl-C.", file=terminal)
+                                print(
+                                    "The board could not join or save the network. Re-enter the password or press Ctrl-C.",
+                                    file=terminal,
+                                )
                                 break
                             await asyncio.sleep(1)
     finally:
@@ -165,12 +205,27 @@ def unwrap(payload):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--device", type=uuid.UUID, help="request the credential using the local Okou CLI (otherwise read JSON on stdin)")
+    parser.add_argument(
+        "--device",
+        type=uuid.UUID,
+        help="request the credential using the local Okou CLI (otherwise read JSON on stdin)",
+    )
     args = parser.parse_args()
     if args.device:
-        reply = subprocess.run(["okou", "mcp", "call", "esphub-mcp", "wifi.ble_credential",
-                                "--input", json.dumps({"device_id": str(args.device)}), "--json"],
-                               stdout=subprocess.PIPE, check=True)
+        reply = subprocess.run(
+            [
+                "okou",
+                "mcp",
+                "call",
+                "esphub-mcp",
+                "wifi.ble_credential",
+                "--input",
+                json.dumps({"device_id": str(args.device)}),
+                "--json",
+            ],
+            stdout=subprocess.PIPE,
+            check=True,
+        )
         payload = json.loads(reply.stdout)
     else:
         payload = json.load(sys.stdin)
@@ -180,4 +235,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(provision(credential))
     except TimeoutError:
-        sys.exit("Timed out waiting for the device. Verify its connection before retrying.")
+        sys.exit(
+            "Timed out waiting for the device. Verify its connection before retrying."
+        )

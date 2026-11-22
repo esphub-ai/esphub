@@ -235,7 +235,7 @@ export async function operate(c, owner, name, a) {
     const secret = token("okl_dev_");
     const bleSecret = d.board === "paper-color" ? newBleSecret() : null;
     await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, ble_generation=1,
-      ble_secret=${bleSecret}, ble_pending=NULL, ble_issued=false WHERE owner=${owner} AND id=${d.id}`;
+      ble_secret=${bleSecret}, ble_pending=NULL, ble_pending_issued=false, ble_issued=false WHERE owner=${owner} AND id=${d.id}`;
     await internal(c, d.id, "revoke");
     return { token: secret, ...(bleSecret ? { ble_secret: bleSecret } : {}) };
   }

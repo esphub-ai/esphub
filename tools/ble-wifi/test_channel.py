@@ -1,4 +1,5 @@
 """Host protocol test using a real TLS peer behind a 20-byte GATT transport."""
+
 import json
 import os
 import ssl
@@ -12,7 +13,9 @@ class Device:
         config = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         config.minimum_version = config.maximum_version = ssl.TLSVersion.TLSv1_3
         config.num_tickets = 0
-        config.set_psk_server_callback(lambda identity: psk if identity == "wifi" else b"")
+        config.set_psk_server_callback(
+            lambda identity: psk if identity == "wifi" else b""
+        )
         self.rx, self.tx = ssl.MemoryBIO(), ssl.MemoryBIO()
         self.tls = config.wrap_bio(self.rx, self.tx, server_side=True)
         self.ready = False
@@ -63,4 +66,13 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
 
     def test_cli_envelopes(self):
         credential = {"psk": "example", "beacon": "example"}
-        self.assertEqual(unwrap({"result": {"content": [{"type": "text", "text": json.dumps(credential)}]}}), credential)
+        self.assertEqual(
+            unwrap(
+                {
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(credential)}]
+                    }
+                }
+            ),
+            credential,
+        )
