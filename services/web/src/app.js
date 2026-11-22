@@ -209,7 +209,7 @@ async function refresh() {
     esc(device.name) +
     '</h1><span class="mono notice">' +
     device.id +
-    '</span></div><span class="chip">' +
+    '</span></div><span class="chip" id="connection">' +
     (device.online ? "● Online" : "○ Offline") +
     '</span></div><div class="tabs">' +
     ["Serial", "Wi-Fi", "Firmware", "Settings"]
@@ -234,6 +234,17 @@ async function refresh() {
         '<div class="panel"><h3>No boot sessions yet</h3><p>Connect the board over USB and complete provisioning.</p><div class="actions">' +
         link("/setup?board=" + device.board, "USB setup →") +
         "</div></div>";
+      const awaitFirstBoot = async () => {
+        try {
+          const boots = await op("uart.sessions", { device_id: device.id });
+          if (currentView === view && boots.length) await refresh();
+        } catch (err) {
+          if (currentView === view) notify(err.message);
+        } finally {
+          if (currentView === view) poll = setTimeout(awaitFirstBoot, 2500);
+        }
+      };
+      poll = setTimeout(awaitFirstBoot, 2500);
       return;
     }
     const selected =
@@ -254,9 +265,9 @@ async function refresh() {
             "</option>",
         )
         .join("") +
-      '</select><div class="kv">Device RX cursor <b id="rx">' +
+      '</select><div class="kv cursor-value">Device RX cursor <b id="rx">' +
       selected.rx_cursor +
-      '</b></div><div class="kv">Browser TX cursor <b id="tx">0</b></div><a class="crumb" href="/streams">Stream protocol ↗</a></div></div>';
+      '</b></div><div class="kv cursor-value">Browser TX cursor <b id="tx">0</b></div><a class="crumb" href="/streams">Stream protocol ↗</a></div></div>';
     const setState = (active) => {
       $("#cmd").disabled = !active;
       $("#send button").disabled = !active;
@@ -313,6 +324,7 @@ async function refresh() {
           if (currentView !== view) return;
           $("#rx").textContent =
             ss.find((s) => s.process_id === session)?.rx_cursor ?? 0;
+          $("#connection").textContent = ds.online ? "● Online" : "○ Offline";
           setState(ds.online && ds.process_id === session);
           if (ss.length !== sessions.length) {
             await refresh();
@@ -614,16 +626,27 @@ async function start() {
     return;
   }
   if (path[0] === "setup") {
+    const selectedBoard = new URLSearchParams(location.search).get("board");
+    const profiles = Object.entries(boardName).filter(
+      ([board]) =>
+        !Object.hasOwn(boardName, selectedBoard) || board === selectedBoard,
+    );
     docs(
       "USB provisioning",
       '<div class="guide"><div class="panel"><h3>1. Register</h3><p>Add the board in the console or with devices.create. Save its one-time device token.</p></div><div class="panel"><h3>2. Flash</h3><p>Use the USB kit for the exact board on first installation. For an existing compatible ESPhub partition table, use the launcher-only OTA image.</p></div><div class="panel"><h3>3. Connect</h3><p>Open the serial port and submit the JSON line below with your token and Wi-Fi credentials.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","wifi":{"ssid":"&lt;ssid&gt;","pass":"&lt;password&gt;"}}</pre><h2>Board packages</h2><div class="flex">' +
-        Object.entries(boardName)
-          .map(([b, n]) =>
-            link(
-              "https://api.esphub.ai/releases/" + b + "/usb",
-              n + " · USB kit",
-            ),
-          )
+        profiles
+          .map(([board, name]) => {
+            const base = "https://api.esphub.ai/releases/" + board + "/";
+            return (
+              '<div class="panel"><h3>' +
+              esc(name) +
+              '</h3><div class="flex">' +
+              link(base + "usb", "USB installation kit", true) +
+              link(base + "ota", "Launcher OTA image") +
+              link(base + "manifest", "SHA-256 manifest") +
+              "</div></div>"
+            );
+          })
           .join("") +
         '</div><p class="notice" style="margin-top:16px">Unzip and follow INSTALL.txt. The StopWatch and Paper Color use different partition tables and board bring-up.</p>',
     );

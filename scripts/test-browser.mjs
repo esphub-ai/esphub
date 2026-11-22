@@ -40,6 +40,8 @@ try {
     await page.locator("dialog pre").textContent(),
   ).token;
   await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.locator(".device").first().click();
+  await page.getByText("No boot sessions yet").waitFor();
   const url = new URL("/backend/api/device/connect", origin);
   url.protocol = "ws:";
   ws = new WebSocket(url, { headers: { Authorization: "Bearer " + token } });
@@ -76,14 +78,13 @@ try {
     if (ws.readyState === 1) send({ t: "uart.poll", after: rx });
   }, 200);
   poll.unref();
-  await page.locator(".device").first().click();
   await page.locator("#cmd").fill("hello from browser");
   await page.locator("#send button").click();
   await page
     .locator("#logs")
     .getByText(/serial echo: hello from browser/)
     .waitFor();
-  await page.locator("#rx").filter({hasText: /^1$/}).waitFor();
+  await page.locator("#rx").filter({ hasText: /^1$/ }).waitFor();
   if (process.env.QA_SCREENSHOT)
     await page.screenshot({ path: process.env.QA_SCREENSHOT });
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -112,6 +113,17 @@ try {
       p,
     );
   }
+  await page.goto(origin + "/setup?board=stopwatch");
+  assert.equal(
+    await page
+      .getByRole("link", { name: "USB installation kit" })
+      .getAttribute("href"),
+    "https://api.esphub.ai/releases/stopwatch/usb",
+  );
+  assert.equal(
+    await page.getByRole("link", { name: "Launcher OTA image" }).count(),
+    1,
+  );
   assert.deepEqual(errors, []);
   console.log(
     "PASS browser passkey registration and sign-in, live serial round trip, tool explorer, deletion, mobile navigation",
