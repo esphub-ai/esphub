@@ -1,0 +1,78 @@
+// Immutable historical releases may contain several boards. New tags identify one board.
+export function releaseVersion(tag, kind, board) {
+  const scoped = `${kind}-${board}-v`;
+  const legacy = kind + "-v";
+  const version = tag.startsWith(scoped)
+    ? tag.slice(scoped.length)
+    : tag.startsWith(legacy)
+      ? tag.slice(legacy.length)
+      : "";
+  return /^\d+\.\d+\.\d+$/.test(version) ? version : null;
+}
+
+export function newer(a, b) {
+  const left = a.split(".").map(Number),
+    right = b.split(".").map(Number);
+  return (left[0] - right[0] || left[1] - right[1] || left[2] - right[2]) > 0;
+}
+
+export function assetNames(board, chip, kind, version) {
+  const base = `esphub-${board}-${chip}-${version}`;
+  if (kind === "launcher")
+    return {
+      manifest: base + ".json",
+      ota: base + "-ota.bin",
+      usb: base + "-usb.zip",
+    };
+  if (kind === "setup")
+    return {
+      setup: base + "-setup.zip",
+      "setup-manifest": base + "-setup.json",
+    };
+  return { micropython: `esphub-${board}-micropython-${version}.bin` };
+}
+
+export async function publishedFirmware(boards, request = fetch, token) {
+  const index = Object.fromEntries(Object.keys(boards).map((id) => [id, {}]));
+  const headers = {
+    "User-Agent": "ESPHub-firmware",
+    Accept: "application/vnd.github+json",
+  };
+  if (token) headers.Authorization = "Bearer " + token;
+  for (let page = 1; ; page++) {
+    const url = `https://api.github.com/repos/okou-ai/esphub/releases?per_page=100&page=${page}`;
+    const res = await request(url, {
+      headers,
+      cf: { cacheEverything: true, cacheTtl: 120 },
+    });
+    if (!res.ok) throw Error("GitHub Releases unavailable: " + res.status);
+    const releases = await res.json();
+    for (const release of releases) {
+      if (release.draft || release.prerelease) continue;
+      const tag = release.tag_name,
+        kind = tag.split("-")[0];
+      if (!["launcher", "micropython", "setup"].includes(kind)) continue;
+      const assets = new Set(
+        release.assets.filter((a) => a.state === "uploaded").map((a) => a.name),
+      );
+      for (const [board, { chip }] of Object.entries(boards)) {
+        const version = releaseVersion(tag, kind, board),
+          current = index[board][kind];
+        if (!version || (current && !newer(version, current.version))) continue;
+        if (
+          Object.values(assetNames(board, chip, kind, version)).every((name) =>
+            assets.has(name),
+          )
+        )
+          index[board][kind] = {
+            tag,
+            version,
+            fingerprint:
+              release.body?.match(/^Build inputs: ([0-9a-f]{64})$/m)?.[1] ??
+              null,
+          };
+      }
+    }
+    if (!res.headers.get("Link")?.includes('rel="next"')) return index;
+  }
+}

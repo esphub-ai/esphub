@@ -1,0 +1,121 @@
+name: Build a board
+on:
+  workflow_call:
+    inputs:
+      profile:
+        required: true
+        type: string
+permissions: {contents: read}
+env:
+  BOARD: ${{ fromJSON(inputs.profile).board }}
+  CHIP: ${{ fromJSON(inputs.profile).chip }}
+jobs:
+  reserve:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    steps:
+      - name: Pin selected release tags to this source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOBS: ${{ toJSON(fromJSON(inputs.profile).jobs) }}
+        run: |
+          set -euo pipefail
+          for tag in $(jq -r '.[].tag' <<< "$JOBS"); do
+            if sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha 2>/dev/null); then
+              test "$sha" = "$GITHUB_SHA"
+            else
+              gh api "repos/$GITHUB_REPOSITORY/git/refs" -X POST -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" --silent
+            fi
+          done
+  component:
+    needs: reserve
+    if: ${{ !cancelled() && needs.reserve.result != 'failure' && fromJSON(inputs.profile).components[0] != null }}
+    name: ${{ matrix.task.kind }}
+    strategy:
+      fail-fast: false
+      matrix:
+        task: ${{ fromJSON(inputs.profile).components }}
+    runs-on: ${{ matrix.task.runner }}
+    container: ${{ matrix.task.container || null }}
+    env:
+      VERSION: ${{ matrix.task.version }}
+      KIND: ${{ matrix.task.kind }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select the board's composite action
+        shell: bash
+        run: cp -R "firmware/boards/$BOARD/$KIND" .board-task
+      - uses: ./.board-task
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BOARD }}-${{ matrix.task.kind }}
+          path: dist/
+          if-no-files-found: error
+  kit:
+    needs: [reserve, component]
+    if: ${{ !cancelled() && needs.reserve.result != 'failure' && needs.component.result != 'failure' && fromJSON(inputs.profile).kit != null }}
+    name: USB kit
+    runs-on: ${{ fromJSON(inputs.profile).kit.runner }}
+    container: ${{ fromJSON(inputs.profile).kit.container || null }}
+    env:
+      VERSION: ${{ fromJSON(inputs.profile).kit.version }}
+      TAG: ${{ fromJSON(inputs.profile).kit.tag }}
+      LAUNCHER_VERSION: ${{ fromJSON(inputs.profile).kit.launcher.version }}
+      LAUNCHER_TAG: ${{ fromJSON(inputs.profile).kit.launcher.tag }}
+      MICROPYTHON_VERSION: ${{ fromJSON(inputs.profile).kit.micropython.version }}
+      MICROPYTHON_TAG: ${{ fromJSON(inputs.profile).kit.micropython.tag }}
+      LOCAL_LAUNCHER: ${{ toJSON(fromJSON(inputs.profile).kit.local_launcher) }}
+      LOCAL_MICROPYTHON: ${{ toJSON(fromJSON(inputs.profile).kit.local_micropython) }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        if: fromJSON(inputs.profile).kit.local_launcher
+        with:
+          name: ${{ env.BOARD }}-launcher
+          path: components/launcher
+      - uses: actions/download-artifact@v4
+        if: fromJSON(inputs.profile).kit.local_micropython
+        with:
+          name: ${{ env.BOARD }}-micropython
+          path: components/micropython
+      - name: Select the board's USB kit action
+        shell: bash
+        run: cp -R "firmware/boards/$BOARD/setup" .board-task
+      - uses: ./.board-task
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BOARD }}-setup
+          path: dist/
+          if-no-files-found: error
+  publish:
+    needs: [reserve, component, kit]
+    if: ${{ !cancelled() && needs.reserve.result == 'success' && needs.component.result != 'failure' && needs.kit.result != 'failure' }}
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ env.BOARD }}-*
+          path: assets
+      - name: Publish only the selected board's completed tasks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOBS: ${{ toJSON(fromJSON(inputs.profile).jobs) }}
+        run: |
+          set -euo pipefail
+          for kind in launcher micropython setup; do
+            job=$(jq -c --arg kind "$kind" '.[] | select(.kind == $kind)' <<< "$JOBS")
+            [[ -n "$job" ]] || continue
+            tag=$(jq -r .tag <<< "$job")
+            fingerprint=$(jq -r .fingerprint <<< "$job")
+            dir="assets/$BOARD-$kind"
+            if gh release view "$tag" -R "$GITHUB_REPOSITORY" --json isDraft,body,assets > release.json 2>/dev/null; then
+              jq -e --arg receipt "Build inputs: $fingerprint" '.isDraft == false and (.body | contains($receipt))' release.json
+              diff <(find "$dir" -type f -printf '%f\n' | sort) <(jq -r '.assets[].name' release.json | sort)
+            else
+              gh release create "$tag" "$dir"/* -R "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+                --title "$tag" --notes "Build inputs: $fingerprint"
+            fi
+          done

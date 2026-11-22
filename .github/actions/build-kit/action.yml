@@ -1,0 +1,37 @@
+name: Assemble ESP Hub USB kit
+description: Combine the selected launcher and runtime for this board.
+inputs:
+  erase_all:
+    description: Erase previously used flash on first installation.
+    default: "false"
+  launcher_variant:
+    description: Launcher USB layout to include.
+    default: usb
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        ERASE_ALL: ${{ inputs.erase_all }}
+        VARIANT: ${{ inputs.launcher_variant }}
+      run: |
+        set -euo pipefail
+        mkdir -p components/{launcher,micropython} dist
+        base="esphub-$BOARD-$CHIP-$LAUNCHER_VERSION"
+        kit="$base-$VARIANT.zip"
+        app="esphub-$BOARD-micropython-$MICROPYTHON_VERSION"
+        if [[ "$VARIANT" == fresh-usb ]]; then manifest="$base-fresh-usb.sha256"; else manifest="$base.json"; fi
+        if [[ "$LOCAL_LAUNCHER" == false ]]; then
+          gh release download "$LAUNCHER_TAG" -p "$kit" -p "$manifest" -D components/launcher
+        fi
+        if [[ "$LOCAL_MICROPYTHON" == false ]]; then
+          gh release download "$MICROPYTHON_TAG" -p "$app.bin" -p "$app.sha256" -D components/micropython
+        fi
+        if [[ "$VARIANT" == fresh-usb ]]; then
+          (cd components/launcher && sha256sum -c "$manifest")
+        else
+          jq -er --arg name "$kit" --arg board "$BOARD" 'select(.board == $board and .usb.file == $name) | .usb.sha256 + "  " + .usb.file' "components/launcher/$manifest" > components/launcher/checksum
+          (cd components/launcher && sha256sum -c checksum)
+        fi
+        (cd components/micropython && sha256sum -c "$app.sha256")
+        python3 scripts/package-setup.py "$BOARD" "components/launcher/$kit" "components/micropython/$app.bin" dist

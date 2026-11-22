@@ -1,0 +1,40 @@
+name: Board firmware
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      board:
+        description: Optional board directory. Only unpublished changes are built.
+        type: string
+        required: false
+permissions: {contents: read}
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      boards: ${{ steps.plan.outputs.boards }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: 24}
+      - id: plan
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: node scripts/firmware-plan.mjs
+  board:
+    needs: plan
+    if: needs.plan.outputs.boards != '[]'
+    name: ${{ matrix.profile.board }}
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ fromJSON(needs.plan.outputs.boards) }}
+    concurrency:
+      group: firmware-${{ github.ref }}-${{ matrix.profile.board }}
+      cancel-in-progress: false
+    permissions: {contents: write}
+    uses: ./.github/workflows/build-board.yml
+    with:
+      profile: ${{ toJSON(matrix.profile) }}

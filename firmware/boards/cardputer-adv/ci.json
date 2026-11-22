@@ -1,0 +1,7 @@
+{
+  "launcher": {
+    "container": "espressif/idf:v5.4.1"
+  },
+  "micropython": {},
+  "setup": {}
+}

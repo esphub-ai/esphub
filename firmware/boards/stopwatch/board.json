@@ -1,0 +1,6 @@
+{
+  "name": "StopWatch",
+  "model": "M5Stack Stopwatch",
+  "chip": "esp32s3",
+  "flash_mb": 16
+}

@@ -20,16 +20,6 @@ menu "esp-launcher"
         int "New launcher: roll back if the hub has not acked hello within (s)"
         default 300
 
-    choice OKL_BOARD
-        prompt "Board"
-        default OKL_BOARD_GENERIC
-        config OKL_BOARD_GENERIC
-            bool "Generic (no board bring-up)"
-        config OKL_BOARD_M5_STOPWATCH
-            bool "M5Stack StopWatch (M5PM1 power hold, watchdog off)"
-            depends on IDF_TARGET_ESP32S3
-    endchoice
-
     config OKL_PROV_BUTTON_GPIO
         int "BOOT button GPIO (hold 3 s: stay in launcher for USB setup); -1 = none"
         range -1 48

@@ -1,0 +1,10 @@
+{
+  "launcher": {
+    "container": "espressif/idf:v5.4.1",
+    "inputs": [
+      "firmware/partitions/16mb.csv"
+    ]
+  },
+  "micropython": {},
+  "setup": {}
+}
