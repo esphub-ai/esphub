@@ -129,6 +129,15 @@ try {
     0,
   );
   assert.match(await setup.locator("blockquote").textContent(), /OAuth/);
+  const workflows = page.getByRole("region", { name: "Device workflows" });
+  for (const title of ["Initialize a device", "Update a program"]) {
+    const card = workflows.getByRole("article").filter({ hasText: title });
+    await card.getByRole("button", { name: "Copy prompt" }).click();
+    assert.equal(
+      await page.evaluate(() => navigator.clipboard.readText()),
+      await card.locator("blockquote").textContent(),
+    );
+  }
   await setup.getByLabel("MCP client").selectOption("codex");
   if (process.env.QA_MCP_SCREENSHOT)
     await page.screenshot({
@@ -216,9 +225,9 @@ try {
   await page.goto(origin + "/setup?board=stopwatch");
   assert.equal(
     await page
-      .getByRole("link", { name: "USB installation kit" })
+      .getByRole("link", { name: "First-time USB kit" })
       .getAttribute("href"),
-    "https://api.esphub.ai/releases/stopwatch/usb",
+    "https://api.esphub.ai/releases/stopwatch/setup",
   );
   assert.equal(
     await page.getByRole("link", { name: "Launcher OTA image" }).count(),

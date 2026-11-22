@@ -11,15 +11,17 @@ ESP Hub provisions ESP32 devices over USB and manages them through the web and M
 
 ## Devices and releases
 
-A chip name is insufficient to choose a launcher. Both supported boards use ESP32-S3 and 16 MB flash. StopWatch requires power-management initialization and its preserved legacy partition layout (application at 0x510000). Paper Color uses the standard layout (application at 0x420000). Each release contains two USB kits with the bootloader, partition table, initial OTA selection, launcher and generated flash arguments, two launcher-only OTA images, and two SHA-256 manifests. USB setup is for first installation; confirm the board and partition map before using it on a previously configured device. Application firmware and MicroPython user scripts have a separate lifecycle. Installing the USB kit alone boots the launcher.
+Both supported models use ESP32-S3 and 16 MB flash. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the launcher, MicroPython runtime, partition table, flash arguments and a SHA-256 manifest. This kit replaces the partition table and app. The separate StopWatch launcher-only kit preserves its legacy partition layout.
 
-Add a device at app.esphub.ai or via devices.create. Flash the matching kit and send a newline-terminated provisioning record on local USB:
+Connect the board over USB and call `devices.create`. Its response includes the device token, setup instructions, release manifest link and a board-specific display verification program. Flash the verified kit, open the launcher USB console at 115200 baud and run `wifi scan`. Select a network or enter a hidden SSID, then submit one newline-terminated JSON record:
 
 ```text
-OKL-PROVISION {"hub":"api.esphub.ai","token":"<one-time-token>","wifi":{"ssid":"<network>","pass":"<password>"}}
+OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","wifi":{"ssid":"<network>","pass":"<password>","hidden":false}}
 ```
 
-Wait for OKL-PROVISION-OK and the real device hello. The token is accepted only on the device endpoint. The launcher has no Bluetooth provisioning component.
+After `OKL-PROVISION-OK`, use `devices.get` to wait for the online MicroPython app. Send the verification program with `programs.install`, then check the returned boot and cursor with `uart.read` for its hello message.
+
+For subsequent updates, send UTF-8 source to `programs.install` (up to 32 KiB). The device verifies the staged file’s SHA-256, checks its syntax and atomically replaces `/flash/main.py`. The receipt records the digest and whether the interpreter acknowledged a soft restart.
 
 ## Console and authentication
 
@@ -35,7 +37,7 @@ Install dependencies with npm ci. npm run build bundles browser code and generat
 
 Pushes to main run verification on an ephemeral PostgreSQL instance, migrate production Neon, deploy the Hono API then the website, and check public domains and authentication boundaries. Required repository secrets are CLERK_SECRET_KEY (ESP Hub production instance), MIGRATION_DATABASE_URL, RUNTIME_DB_PASSWORD (64 lowercase hex characters), and CLOUDFLARE_API_TOKEN. CLOUDFLARE_ACCOUNT_ID is a repository variable. CI ensures the esphub-production R2 bucket exists. The migration role creates a restricted runtime role; the API Worker receives the runtime database URL and the Clerk credential. Configure the production environment to suit the organization's deployment policy.
 
-Firmware changes build on ESP-IDF 5.4.1. A GitHub release is published only after both hardware profiles build. GitHub Releases hosts all firmware packages. The API resolves board-specific assets from GitHub and pins each OTA command to the release tag and its SHA-256. R2 is reserved for UART streams.
+Launchers build on ESP-IDF 5.4.1 and the MicroPython runtimes build on ESP-IDF 5.5.5. A GitHub release is published only after both hardware profiles build. GitHub Releases hosts all firmware packages. The API resolves board-specific assets from GitHub and pins each OTA command to the release tag and its SHA-256. R2 is reserved for UART streams.
 
 ## Origin
 

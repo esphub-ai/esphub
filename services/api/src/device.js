@@ -1,4 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
+import { HTTPException } from "hono/http-exception";
+import { installProgram } from "./programs.js";
 import { Stream } from "./streams.js";
 export class Device extends DurableObject {
   constructor(ctx, env) {
@@ -119,8 +121,65 @@ export class Device extends DurableObject {
     }
     if (!socket || !boot || socket.deserializeAttachment()?.pid !== boot)
       return Response.json({ error: "Device offline" }, { status: 409 });
+    if (path === "/program") {
+      const { info } = this.db
+        .exec("SELECT info FROM boots WHERE pid=?", boot)
+        .one();
+      const report = JSON.parse(info);
+      if (
+        report.role !== "app" ||
+        (report.board && report.board !== args.board)
+      )
+        return Response.json(
+          { error: "Start the matching ESP Hub MicroPython runtime first" },
+          { status: 409 },
+        );
+      if (this.installing)
+        return Response.json(
+          { error: "A program installation is already in progress" },
+          { status: 409 },
+        );
+      this.installing = true;
+      try {
+        let after;
+        const receipt = await installProgram(
+          args.source,
+          async (op, params) => {
+            if (op === "py.reset")
+              after = (await this.stream(boot, "tx").head()).last;
+            if (this.active() !== socket || this.current()?.pid !== boot)
+              throw new HTTPException(409, {
+                message: "Device session changed during installation",
+              });
+            const response = await this.rpc(socket, op, params);
+            const body = await response.json();
+            if (!response.ok)
+              throw new HTTPException(response.status, { message: body.error });
+            return body.data;
+          },
+        );
+        return Response.json({
+          ...receipt,
+          device_id: this.current().id,
+          process_id: boot,
+          after,
+        });
+      } catch (error) {
+        if (error instanceof HTTPException)
+          return Response.json(
+            { error: error.message },
+            { status: error.status },
+          );
+        throw error;
+      } finally {
+        this.installing = false;
+      }
+    }
+    return this.rpc(socket, args.op, args.args);
+  }
+  rpc(socket, op, args) {
     const id = crypto.randomUUID();
-    return await new Promise((resolve) => {
+    return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         resolve(
@@ -139,9 +198,7 @@ export class Device extends DurableObject {
         },
       });
       try {
-        socket.send(
-          JSON.stringify({ t: "req", id, op: args.op, args: args.args }),
-        );
+        socket.send(JSON.stringify({ t: "req", id, op, args }));
       } catch {
         this.pending
           .get(id)

@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 import postgres from "postgres";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import WebSocket from "ws";
 import { importPKCS8, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
@@ -7,6 +12,7 @@ const base = process.env.TEST_SITE_URL;
 if (!base || !["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   throw Error("A local TEST_SITE_URL is required");
 const sql = postgres(process.env.TEST_DATABASE_URL, { max: 1 });
+const flash = await mkdtemp(join(tmpdir(), "esphub-sim-flash-"));
 const endpoint = "https://api.esphub.ai/mcp";
 const issuer = "https://clerk.esphub.ai";
 const otherSubject = "user_" + randomUUID().replaceAll("-", "");
@@ -107,7 +113,7 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 17);
+  assert.equal(listed.length, 18);
   const readOnly = new Set([
     "devices.list",
     "devices.get",
@@ -152,6 +158,19 @@ try {
       name: "Simulator",
     }),
     id = { device_id: d.id };
+  assert.match(d.prompt, /hidden SSID/);
+  assert.match(d.verification_source, /Hello, M5Stack Paper Color/);
+  assert.equal(
+    d.setup_manifest,
+    "https://api.esphub.ai/releases/paper-color/setup-manifest",
+  );
+  const watch = await op("devices.create", {
+    board: "stopwatch",
+    name: "Watch",
+  });
+  assert.match(watch.verification_source, /Hello, M5Stack Stopwatch/);
+  assert.match(watch.verification_source, /setBrightness/);
+  await op("devices.delete", { device_id: watch.id });
   const other = await issue("devices:read devices:write", {
     sub: otherSubject,
   });
@@ -176,18 +195,35 @@ try {
     ws.once("error", no);
   });
   const inbox = [];
+  let resets = 0;
   ws.on("message", (msg) => {
     const f = JSON.parse(msg.toString());
     inbox.push(f);
-    if (f.t === "req")
+    if (f.t === "req") {
+      let data = { output: "test Wi-Fi network" };
+      if (f.op === "py.exec") {
+        const code = f.args.code.replaceAll("/flash/", flash + "/");
+        const run = spawnSync("python3", ["-I", "-c", code], {
+          encoding: "utf8",
+        });
+        data = {
+          output: run.stdout,
+          exception: run.status === 0 ? null : run.stderr,
+        };
+      }
+      if (f.op === "py.reset") {
+        resets++;
+        data = {};
+      }
       ws.send(
         JSON.stringify({
           t: "res",
           id: f.id,
           ok: true,
-          data: { output: "test Wi-Fi network" },
+          data,
         }),
       );
+    }
   });
   const send = (v) => ws.send(JSON.stringify(v));
   const take = async (pred) => {
@@ -230,6 +266,40 @@ try {
   await op("wifi.list", id, read);
   await op("firmware.get", id, read);
   assert.equal((await op("wifi.scan", id)).output, "test Wi-Fi network");
+  const install = (source, accessToken) =>
+    call(
+      "tools/call",
+      {
+        name: "programs.install",
+        arguments: { ...id, source },
+      },
+      accessToken,
+    );
+  const hello = d.verification_source;
+  assert.match((await install(hello)).content[0].text, /runtime/);
+  assert.match((await install(hello, other)).content[0].text, /not found/i);
+  send({
+    t: "hello",
+    boot_id: session.process_id,
+    role: "app",
+    board: "paper-color",
+    fw: { name: "micropython" },
+  });
+  await take((f) => f.t === "ack");
+  const source = hello + "# " + "é".repeat(3500) + "\n";
+  const receipt = await op("programs.install", { ...id, source });
+  assert.equal(receipt.verified, true);
+  assert.equal(receipt.bytes, Buffer.byteLength(source));
+  assert.equal(
+    receipt.sha256,
+    createHash("sha256").update(source).digest("hex"),
+  );
+  assert.equal(receipt.process_id, session.process_id);
+  assert.equal(receipt.restart, "acknowledged");
+  assert.equal(await readFile(join(flash, "main.py"), "utf8"), source);
+  assert.equal((await install("if (")).isError, true);
+  assert.equal(await readFile(join(flash, "main.py"), "utf8"), source);
+  assert.equal(resets, 1);
   send({
     t: "hello",
     boot_id: randomUUID(),
@@ -243,10 +313,11 @@ try {
   assert.equal(archived.isError, true);
   await op("devices.delete", id);
   console.log(
-    "PASS Clerk OAuth discovery, 17 MCP tools, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
+    "PASS Clerk OAuth discovery, 18 MCP tools, verified MicroPython installation, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
   );
 } finally {
   ws?.close();
+  await rm(flash, { recursive: true, force: true });
   await sql`DELETE FROM esphub.accounts WHERE clerk_subject IN (${subject}, ${otherSubject})`;
   await sql.end();
 }

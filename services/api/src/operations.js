@@ -1,3 +1,5 @@
+import { programByteLimit } from "./programs.js";
+import { provisioning } from "./provisioning.js";
 import { launcherManifest } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
 const strings = (...names) =>
@@ -8,7 +10,7 @@ const defs = [
   ["devices.list", "List your registered devices.", {}],
   [
     "devices.create",
-    "Register a board and issue its one-time USB provisioning token.",
+    "Identify the USB board first. Ask the user if uncertain. Register it and follow the returned provisioning prompt.",
     {
       ...strings("name"),
       board: { enum: ["paper-color", "stopwatch"], type: "string" },
@@ -50,6 +52,18 @@ const defs = [
     "Install an HTTPS application image with a verified SHA-256 digest.",
     { ...id, ...strings("url", "version", "sha256") },
   ],
+  [
+    "programs.install",
+    "Install and restart a MicroPython main.py on a connected device. Returns the on-device SHA-256 receipt and a cursor for checking startup output.",
+    {
+      ...id,
+      source: {
+        type: "string",
+        maxLength: programByteLimit,
+        description: "UTF-8 MicroPython source, up to 32 KiB.",
+      },
+    },
+  ],
   ["uart.sessions", "List boot sessions and consumed device RX cursors.", id],
   [
     "uart.read",
@@ -87,7 +101,9 @@ export function validate(name, a) {
     if (!p) fail(400, "Unexpected " + k);
     if (
       (p.type === "string" &&
-        (typeof v !== "string" || !v.length || v.length > 4096)) ||
+        (typeof v !== "string" ||
+          !v.length ||
+          v.length > (p.maxLength ?? 4096))) ||
       (p.enum && !p.enum.includes(v)) ||
       (p.type === "integer" && (!Number.isSafeInteger(v) || v < 0))
     )
@@ -107,6 +123,7 @@ export function validate(name, a) {
     fail(400, "Invalid name or version");
   for (const [k, max] of [
     ["text", 1024],
+    ["source", programByteLimit],
     ["ssid", 32],
     ["password", 63],
   ])
@@ -150,7 +167,12 @@ export async function operate(c, owner, name, a) {
     const secret = token("okl_dev_");
     const [d] =
       await db`INSERT INTO esphub.devices(owner,name,board,token_hash) VALUES(${owner},${a.name.trim()},${a.board},${await digest(secret)}) RETURNING id,name,board`;
-    return { ...d, token: secret, hub: "api.esphub.ai" };
+    return {
+      ...d,
+      token: secret,
+      hub: "api.esphub.ai",
+      ...provisioning(d.board),
+    };
   }
   if (name === "devices.list") {
     const ds =
@@ -175,6 +197,8 @@ export async function operate(c, owner, name, a) {
     await internal(c, d.id, "revoke");
     return { deleted: true };
   }
+  if (name === "programs.install")
+    return internal(c, d.id, "program", { board: d.board, source: a.source });
   if (name === "uart.sessions") return internal(c, d.id, "sessions");
   if (name === "uart.read")
     return internal(c, d.id, "read", {

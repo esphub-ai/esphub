@@ -163,7 +163,26 @@ function row(d) {
     "</span><span>↗</span></a>"
   );
 }
-const setupPrompt = `Connect my MCP client to ESP Hub. Add a server named esphub using Streamable HTTP at ${mcpEndpoint}. Use a client that supports OAuth Client ID Metadata Documents (CIMD) and request devices:read and devices:write. Open the ESP Hub sign-in and consent page when prompted. Preserve my other MCP servers. Once connected, call devices.list and show me my registered devices.`;
+const setupPrompt = `Connect esphub at ${mcpEndpoint} using HTTP and CIMD OAuth. Request devices:read and devices:write, then list my devices.`;
+const workflows = [
+  {
+    key: "initialize",
+    title: "Initialize a device",
+    detail: "Plug the board into your computer by USB. Your assistant will flash it, help you choose Wi-Fi and verify the display.",
+    prompt: "Identify my USB board. Ask me if the model is unclear. Call devices.create and follow its setup prompt.",
+  },
+  {
+    key: "update",
+    title: "Update a program",
+    detail: "Once your board is online, send a new MicroPython program over Wi-Fi.",
+    prompt: "Ask what I want to build and which board to use if unclear. Deploy it with programs.install and report the verified result.",
+  },
+];
+function workflowCards() {
+  return `<section class="mcp-setup" aria-labelledby="workflows-title"><h2 id="workflows-title">Device workflows</h2><div class="mcp-grid">${workflows.map(({ key, title, detail, prompt }) =>
+    `<article class="panel"><h3>${title}</h3><p>${detail}</p><blockquote id="prompt-${key}">${esc(prompt)}</blockquote>${button("copy-" + key, "Copy prompt")}</article>`
+  ).join("")}</div></section>`;
+}
 const mcpClients = {
   codex: {
     instruction: "Use a Codex version with CIMD support. Add the server and follow the browser prompt. If you already added it, run codex mcp login esphub --oauth-client-registration cimd.",
@@ -188,7 +207,7 @@ const mcpClients = {
 function mcpSetup() {
   return `<section class="mcp-setup" aria-labelledby="mcp-title">
     <div class="toolbar"><h2 id="mcp-title">Connect an MCP client</h2></div>
-    <p>Connect using your ESP Hub account. Your client requests read and write access by default. Review both permissions in your browser. If you previously set a bearer token for this connection, remove it from your client configuration first. <a href="/mcp">MCP reference ↗</a></p>
+    <p>Sign in with your ESP Hub account to grant device access. <a href="/mcp">MCP reference ↗</a></p>
     <div class="mcp-grid">
       <div class="panel"><div class="toolbar"><h3>Client configuration</h3><select id="mcp-client" aria-label="MCP client"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
         <p id="mcp-instruction"></p><pre id="mcp-config"></pre>${button("copy-config", "Copy configuration")}</div>
@@ -205,7 +224,7 @@ async function fleet() {
     '</div></div><div class="board"><div class="bar"><input class="field" style="max-width:320px" id="filter" aria-label="Filter devices" placeholder="Filter devices"><span class="tag">' +
     ds.length +
     ' REGISTERED</span></div><div id="rows"></div></div>' +
-    mcpSetup() +
+    mcpSetup() + workflowCards() +
     "</section>";
   const select = $("#mcp-client");
   function showConfig() {
@@ -415,8 +434,14 @@ function credential(title, value) {
   );
 }
 async function action(k) {
-  if (k === "copy-config" || k === "copy-prompt") {
-    const source = $(k === "copy-config" ? "#mcp-config" : "#mcp-prompt");
+  const copyTargets = {
+    "copy-config": "#mcp-config",
+    "copy-prompt": "#mcp-prompt",
+    "copy-initialize": "#prompt-initialize",
+    "copy-update": "#prompt-update",
+  };
+  if (Object.hasOwn(copyTargets, k)) {
+    const source = $(copyTargets[k]);
     try {
       await navigator.clipboard.writeText(source.textContent);
       notify(k === "copy-config" ? "Configuration copied" : "Prompt copied");
@@ -568,6 +593,7 @@ async function explorer() {
     after: 0,
     request_id: crypto.randomUUID(),
     text: "help\n",
+    source: 'print("Hello from ESP Hub")\n',
     name: "My board",
     board: "paper-color",
     ssid: "",
@@ -607,6 +633,7 @@ async function explorer() {
           "devices.reboot",
           "wifi.remove",
           "firmware.install",
+          "programs.install",
           "launcher.install",
           "uart.write",
         ].includes(name)
@@ -649,11 +676,11 @@ async function start() {
     const ref = await (await fetch("/tools.json")).json();
     docs(
       "MCP reference",
-      '<p class="lead">Connect your MCP client to ESP Hub with OAuth. Clients request read and write access by default. Read access covers device details, saved Wi-Fi networks, firmware information and serial output. Write access covers device management, Wi-Fi scans and changes, firmware installation and serial input.</p><pre>https://api.esphub.ai/mcp</pre>' +
+      '<p class="lead">Connect your MCP client to ESP Hub with OAuth. Clients request read and write access by default. Read access covers device details, saved Wi-Fi networks, firmware information and serial output. Write access covers device management, Wi-Fi scans and changes, firmware and program installation, and serial input.</p><pre>https://api.esphub.ai/mcp</pre>' +
         link("/devices", "Client setup →") +
         " " +
         link("/explorer", "Open tool explorer ↗", true) +
-        "<h2>Tools</h2><table><tr><th>Name</th><th>Capability</th></tr>" +
+        workflowCards() + "<h2>Tools</h2><table><tr><th>Name</th><th>Capability</th></tr>" +
         ref
           .map(
             (t) =>
@@ -683,7 +710,7 @@ async function start() {
     );
     docs(
       "USB provisioning",
-      '<div class="guide"><div class="panel"><h3>1. Register</h3><p>Add the board in the console or with devices.create. Save its one-time device token.</p></div><div class="panel"><h3>2. Flash</h3><p>Use the USB kit for the exact board on first installation. For an existing compatible ESPhub partition table, use the launcher-only OTA image.</p></div><div class="panel"><h3>3. Connect</h3><p>Open the serial port and submit the JSON line below with your token and Wi-Fi credentials.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","wifi":{"ssid":"&lt;ssid&gt;","pass":"&lt;password&gt;"}}</pre><h2>Board packages</h2><div class="flex">' +
+      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Verify the first-time kit against its SHA-256 manifest. Follow INSTALL.txt. In the USB console, run <code>wifi scan</code>, choose a network or enter a hidden SSID, then send the provisioning line below. For a hidden network set <code>hidden</code> to true.</p></div><div class="panel"><h3>3. Verify</h3><p>Wait for OKL-PROVISION-OK and check devices.get for the online MicroPython application. Install the supplied hello program and check its serial output.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","wifi":{"ssid":"&lt;ssid&gt;","pass":"&lt;password&gt;","hidden":false}}</pre><h2>Board packages</h2><div class="flex">' +
         profiles
           .map(([board, name]) => {
             const base = "https://api.esphub.ai/releases/" + board + "/";
@@ -691,14 +718,16 @@ async function start() {
               '<div class="panel"><h3>' +
               esc(name) +
               '</h3><div class="flex">' +
-              link(base + "usb", "USB installation kit", true) +
+              link(base + "setup", "First-time USB kit", true) +
+              link(base + "setup-manifest", "Setup SHA-256 manifest") +
+              link(base + "usb", "Launcher-only USB kit") +
               link(base + "ota", "Launcher OTA image") +
-              link(base + "manifest", "SHA-256 manifest") +
+              link(base + "manifest", "Launcher manifest") +
               "</div></div>"
             );
           })
           .join("") +
-        '</div><p class="notice" style="margin-top:16px">Browse all versions on <a href="https://github.com/okou-ai/esphub/releases">GitHub Releases</a>. Unzip and follow INSTALL.txt. The StopWatch and Paper Color use different partition tables and board bring-up.</p>',
+        '</div><p class="notice" style="margin-top:16px">Browse all versions on <a href="https://github.com/okou-ai/esphub/releases">GitHub Releases</a>. First-time kits replace the partition table and app. Back up existing data before flashing. Use the kit labeled for your exact board.</p>',
     );
     return;
   }

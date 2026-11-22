@@ -2,7 +2,13 @@ import { fail } from "./auth.js";
 
 const releases = "https://github.com/okou-ai/esphub/releases";
 const tagPattern = /^launcher-v(\d+\.\d+\.\d+)$/;
-const extensions = { manifest: ".json", usb: "-usb.zip", ota: "-ota.bin" };
+const extensions = {
+  manifest: ".json",
+  usb: "-usb.zip",
+  setup: "-setup.zip",
+  "setup-manifest": "-setup.json",
+  ota: "-ota.bin",
+};
 
 async function resolveTag(tag) {
   if (!tag) {
