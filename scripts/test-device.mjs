@@ -117,6 +117,15 @@ try {
     "uart.sessions",
     "uart.read",
   ]);
+  const additiveTools = new Set(["devices.create", "ota.prepare_upload", "programs.publish"]);
+  const openWorldTools = new Set(["wifi.scan", "wifi.add", "launcher.install", "ota.install", "uart.write"]);
+  for (const { name, annotations } of listed) {
+    // Active Wi-Fi discovery observes nearby networks but still requires write scope.
+    const observesOnly = readOnly.has(name) || name === "wifi.scan";
+    assert.equal(annotations?.readOnlyHint, observesOnly, name);
+    assert.equal(annotations?.destructiveHint, !observesOnly && !additiveTools.has(name), name);
+    assert.equal(annotations?.openWorldHint, openWorldTools.has(name), name);
+  }
   for (const { name } of listed.filter((t) => !readOnly.has(t.name))) {
     const denied = await request("tools/call", { name, arguments: {} }, read);
     assert.equal(denied.status, 403, name);
