@@ -1,3 +1,5 @@
+import { enroll, enabled } from "./iot.js";
+import { pull, receipt, retryDue } from "./commands.js";
 import { maxUploadBytes } from "./uploads.js";
 import { releaseResponse } from "./releases.js";
 import { Hono } from "hono";
@@ -99,12 +101,45 @@ async function authenticatedDevice(c) {
     .header("Authorization")
     ?.match(/^Bearer (okl_dev_[A-Za-z0-9_-]+)$/)?.[1];
   if (!t) fail(401, "Device token required");
+  const hash=await digest(t);
   const sql = c.get("sql"),
     [d] =
-      await sql`SELECT id FROM esphub.devices WHERE token_hash=${await digest(t)}`;
+      await sql`SELECT id,board,transport,cert_id,boot_id FROM esphub.devices WHERE token_hash=${hash}`;
   if (!d) fail(401, "Invalid device token");
-  return { id: d.id, stub: c.env.DEVICE.get(c.env.DEVICE.idFromName(d.id)) };
+  return { ...d,hash, stub: c.env.DEVICE.get(c.env.DEVICE.idFromName(d.id)) };
 }
+api.post("/api/device/iot/:action",async c=>{
+  const d=await authenticatedDevice(c),db=c.get("sql"),action=c.req.param("action"),m=await c.req.json();
+  if(action==="capabilities") return c.json({mqtt:enabled(c.env)});
+  if(action==="enroll") return c.json(await enroll(c.env,db,d.id,d.hash,m.csr));
+  if(!d.cert_id || !enabled(c.env)) fail(403,"Device enrollment required");
+  const boot=m.boot_id;
+  if(typeof boot!=="string" || !/^[0-9a-f]{32}$/.test(boot)) fail(400,"Invalid boot ID");
+  if(action==="frame" && m.t==="hello"){
+    if(m.board!==d.board || !["launcher","app"].includes(m.role)) fail(409,"Registered board mismatch");
+    const ack=await d.stub.fetch("https://device/mqtt-frame",{method:"POST",body:JSON.stringify({frame:m,boot_id:boot,device_id:d.id})});
+    if(!ack.ok) return ack;
+    const rows=await db`UPDATE esphub.devices SET boot_id=${boot},boot_info=${JSON.stringify(m)}::jsonb,transport='mqtt' WHERE id=${d.id} AND token_hash=${d.hash} RETURNING id`;
+    if(!rows.length) fail(401,"Registration changed");
+    return ack;
+  }
+  if(d.transport!=="mqtt" || d.boot_id!==boot) fail(409,"Stale device session");
+  if(action==="start"){
+    if(!/^[0-9a-f-]{36}$/.test(m.id??"")) fail(400,"Invalid command ID");
+    const rows=await db`UPDATE esphub.device_commands SET state='executing',lease_until=now()+interval '90 seconds',next_wake=now()+interval '90 seconds'
+      WHERE device_id=${d.id} AND id=${m.id} AND claimed_boot=${boot} AND state='claimed' AND lease_until>now()
+      AND expires_at>now() RETURNING id`;
+    return c.json({start:!!rows.length});
+  }
+  if(action==="pull") return c.json({commands:await pull(db,d.id,boot)});
+  if(action==="frame" && m.t==="res"){
+    if(typeof m.ok!=="boolean" || !/^[0-9a-f-]{36}$/.test(m.id??"")) fail(400,"Invalid receipt");
+    return c.json(await receipt(db,d.id,boot,m));
+  }
+  if(action==="frame" && ["log","event","metric"].includes(m.t))
+    return d.stub.fetch("https://device/mqtt-frame",{method:"POST",body:JSON.stringify({frame:m,boot_id:boot,device_id:d.id})});
+  fail(404,"Unknown action");
+});
 api.get("/api/device/programs/:artifact", async (c) => {
   const { stub } = await authenticatedDevice(c);
   return stub.fetch(
@@ -114,7 +149,8 @@ api.get("/api/device/programs/:artifact", async (c) => {
 api.get("/api/device/connect", async (c) => {
   if (c.req.header("Upgrade")?.toLowerCase() !== "websocket")
     fail(426, "WebSocket upgrade required");
-  const { id, stub } = await authenticatedDevice(c);
+  const { id, stub, transport } = await authenticatedDevice(c);
+  if(transport==="mqtt") fail(409,"MQTT transport active; reissue token to return to legacy provisioning");
   return stub.fetch("https://device/connect", {
     headers: { Upgrade: "websocket", "X-Device-ID": id },
   });
@@ -132,4 +168,4 @@ api.post("/operations/:name", async (c) => {
     ),
   );
 });
-export default api;
+export default {fetch:api.fetch,async scheduled(_event,env){if(enabled(env)) await withDatabase(env,db=>retryDue(db,env));}};

@@ -32,15 +32,16 @@
     "@clerk/mcp-tools": "^1.0.0",
     "@modelcontextprotocol/server": "^2.4.0",
     "@neondatabase/serverless": "^1.2.1",
+    "aws4fetch": "^1.0.20",
     "hono": "^4.13.19",
     "postgres": "^4.1.1"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
+    "jose": "^6.2.18",
     "playwright-core": "^1.65.1",
     "prettier": "^3.10.1",
     "wrangler": "^4.166.0",
-    "ws": "^8.23.0",
-    "jose": "^6.2.18"
+    "ws": "^8.23.0"
   }
 }

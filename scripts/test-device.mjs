@@ -107,7 +107,7 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 20);
+  assert.equal(listed.length, 21);
   assert.ok(!listed.some(t => t.name === "programs.install"));
   const readOnly = new Set([
     "devices.list",

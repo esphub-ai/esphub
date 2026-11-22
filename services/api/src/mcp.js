@@ -24,6 +24,7 @@ const options = {
 export const authenticateMcp = mcpAuth(options);
 const writeAccess = requireAdditionalScopes("devices:write");
 const readTools = new Set([
+  "commands.get",
   "devices.list",
   "devices.get",
   "wifi.list",

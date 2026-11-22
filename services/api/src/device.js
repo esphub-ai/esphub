@@ -103,6 +103,22 @@ export class Device extends DurableObject {
           .toArray(),
       );
     const args = await req.json();
+    if(path==="/check-upload") return (await this.uploads.ready(args.url,args.kind)) ? Response.json({ready:true}) : Response.json({error:"Upload not ready"},{status:409});
+    if(path==="/mqtt-frame"){
+      return this.ctx.blockConcurrencyWhile(async()=>{
+        const m=args.frame,pid=args.boot_id;
+        if(m.t==="hello"){
+          if(socket) socket.close(1000,"Transport changed");
+          this.db.exec("DELETE FROM current_device");
+          this.db.exec("INSERT INTO current_device(id,pid) VALUES(?,?)",args.device_id,pid);
+          this.db.exec("INSERT INTO boots(pid,started,info) VALUES(?,?,?) ON CONFLICT(pid) DO UPDATE SET info=excluded.info",pid,new Date().toISOString(),JSON.stringify(m));
+          const tx=this.stream(pid,"tx"); await tx.init();
+          return Response.json({t:"ack",seq:(await tx.head()).source});
+        }
+        if(this.current()?.pid!==pid) return Response.json({error:"Stale boot"},{status:409});
+        return Response.json(await this.recordFrame(pid,m));
+      });
+    }
     if (path === "/prepare-upload") return this.uploads.prepare(args);
     if (path === "/publish") {
       const id = crypto.randomUUID(),
@@ -359,30 +375,6 @@ export class Device extends DurableObject {
       const pid = ws.deserializeAttachment()?.pid;
       if (!pid || pid !== this.current()?.pid) return;
       if (
-        m.t === "log" &&
-        Array.isArray(m.lines) &&
-        Number.isSafeInteger(m.seq)
-      ) {
-        const tx = this.stream(pid, "tx"),
-          head = await tx.head();
-        const rows = m.lines
-          .map((v, i) => ({
-            source_seq: m.seq + i,
-            at: new Date().toISOString(),
-            uptime_ms: v[0],
-            level: v[1],
-            text: String(v[2]),
-          }))
-          .filter((v) => v.source_seq > head.source);
-        if (rows.length)
-          await tx.append(rows, { source: rows.at(-1).source_seq });
-        ws.send(
-          JSON.stringify({
-            t: "ack",
-            seq: rows.at(-1)?.source_seq ?? head.source,
-          }),
-        );
-      } else if (
         m.t === "uart.poll" &&
         Number.isSafeInteger(m.after) &&
         m.after >= 0
@@ -403,6 +395,29 @@ export class Device extends DurableObject {
           if (res.records.length)
             ws.send(JSON.stringify({ t: "uart.input", ...res.records[0] }));
         }
+      } else { const ack=await this.recordFrame(pid,m); if(ack) ws.send(JSON.stringify(ack)); }
+    });
+  }
+  async recordFrame(pid,m){
+      if (
+        m.t === "log" &&
+        Array.isArray(m.lines) &&
+        Number.isSafeInteger(m.seq)
+      ) {
+        const tx = this.stream(pid, "tx"),
+          head = await tx.head();
+        const rows = m.lines
+          .map((v, i) => ({
+            source_seq: m.seq + i,
+            at: new Date().toISOString(),
+            uptime_ms: v[0],
+            level: v[1],
+            text: String(v[2]),
+          }))
+          .filter((v) => v.source_seq > head.source);
+        if (rows.length)
+          await tx.append(rows, { source: rows.at(-1).source_seq });
+        return {t:"ack",seq:rows.at(-1)?.source ?? head.source};
       } else if (m.t === "event" && typeof m.name === "string") {
         await this.stream(pid, "tx").append([
           {
@@ -411,7 +426,7 @@ export class Device extends DurableObject {
           },
         ]);
       }
-    });
+    return null;
   }
   webSocketClose(ws) {
     for (const x of this.pending.values())
