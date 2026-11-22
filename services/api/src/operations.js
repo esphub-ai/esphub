@@ -145,7 +145,7 @@ export async function internal(c, id, path, args) {
 }
 export async function operate(c, owner, name, a) {
   validate(name, a);
-  const db = c.get("sql");
+  const db = c.sql;
   if (name === "devices.create") {
     const secret = token("okl_dev_");
     const [d] =

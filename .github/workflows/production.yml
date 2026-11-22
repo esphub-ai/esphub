@@ -48,6 +48,7 @@ jobs:
     environment: production
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
       RUNTIME_DB_PASSWORD: ${{ secrets.RUNTIME_DB_PASSWORD }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -58,9 +59,12 @@ jobs:
       - run: npm ci && npm run build
       - name: Check production credentials
         run: |
-          for var in MIGRATION_DATABASE_URL RUNTIME_DB_PASSWORD CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+          for var in CLERK_SECRET_KEY MIGRATION_DATABASE_URL RUNTIME_DB_PASSWORD CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
             if [ -z "${!var}" ]; then echo "::error::Missing $var"; exit 1; fi
           done
+      - name: Check Clerk production OAuth configuration
+        run: |
+          curl -fsS --retry 3 https://clerk.esphub.ai/.well-known/oauth-authorization-server | jq -e '.issuer == "https://clerk.esphub.ai" and .client_id_metadata_document_supported == true and (.scopes_supported | contains(["devices:read","devices:write"]))'
       - name: Ensure production UART bucket exists
         run: node scripts/ensure-bucket.mjs
       - name: Deploy API and device broker
@@ -78,6 +82,7 @@ jobs:
           for host in esphub.ai www.esphub.ai app.esphub.ai; do
             curl -fsSL --retry 5 --retry-all-errors "https://$host/" | grep -q 'ESP Hub'
           done
+          curl -fsS --retry 5 --retry-all-errors https://api.esphub.ai/.well-known/oauth-protected-resource/mcp | jq -e '.resource == "https://api.esphub.ai/mcp" and .authorization_servers == ["https://clerk.esphub.ai"] and (.scopes_supported | index("devices:read")) != null'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer esh_key_invalidtestkey' https://api.esphub.ai/mcp)" = 401
           curl -fsSL https://api.esphub.ai/releases/paper-color/manifest | jq -e '.board == "paper-color"'
           curl -fsSL https://api.esphub.ai/releases/stopwatch/manifest | jq -e '.board == "stopwatch"'

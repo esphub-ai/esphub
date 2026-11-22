@@ -13,7 +13,7 @@ test(
         const users =
           await tx`INSERT INTO esphub.accounts(handle) VALUES(${crypto.randomUUID()}),(${crypto.randomUUID()}) RETURNING id`;
         const c = {
-          get: () => tx,
+          sql: tx,
           env: {
             DEVICE: {
               idFromName: (id) => id,

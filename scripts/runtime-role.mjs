@@ -13,9 +13,12 @@ try {
       await tx.unsafe(
         "CREATE ROLE esphub_runtime LOGIN PASSWORD '" + password + "'",
       );
+    await tx.unsafe(
+      "REVOKE ALL PRIVILEGES ON esphub.credentials, esphub.challenges, esphub.access_tokens FROM esphub_runtime",
+    );
     await tx.unsafe("GRANT USAGE ON SCHEMA esphub TO esphub_runtime");
     await tx.unsafe(
-      "GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA esphub TO esphub_runtime",
+      "GRANT SELECT,INSERT,UPDATE,DELETE ON esphub.accounts, esphub.devices TO esphub_runtime",
     );
   });
 } finally {
@@ -29,6 +32,13 @@ try {
 } finally {
   await probe.end();
 }
-await writeFile(process.argv[2], JSON.stringify({ DATABASE_URL: uri.href }), {
-  mode: 0o600,
-});
+await writeFile(
+  process.argv[2],
+  JSON.stringify({
+    DATABASE_URL: uri.href,
+    CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
+  }),
+  {
+    mode: 0o600,
+  },
+);

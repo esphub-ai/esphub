@@ -1,0 +1,99 @@
+import {
+  authorizationServerMetadataHandler,
+  mcpAuth,
+  protectedResourceMetadataHandler,
+  requireAdditionalScopes,
+} from "@clerk/mcp-tools/hono";
+import {
+  createMcpHandler,
+  fromJsonSchema,
+  McpServer,
+} from "@modelcontextprotocol/server";
+import { HTTPException } from "hono/http-exception";
+import { mcpEndpoint } from "../../../shared/identity.js";
+import { accountForSubject } from "./auth.js";
+import { withDatabase } from "./database.js";
+import { operate, tools } from "./operations.js";
+
+const options = {
+  resourceUrl: mcpEndpoint,
+  requiredScopes: ["devices:read"],
+  discoverable: false,
+};
+export const authenticateMcp = mcpAuth(options);
+const writeAccess = requireAdditionalScopes("devices:write");
+const readTools = new Set([
+  "devices.list",
+  "devices.get",
+  "wifi.list",
+  "wifi.scan",
+  "firmware.get",
+  "uart.sessions",
+  "uart.read",
+]);
+export function installMcpMetadata(app) {
+  const resource = protectedResourceMetadataHandler(options);
+  app.on(
+    ["GET", "OPTIONS"],
+    [
+      "/.well-known/oauth-protected-resource/mcp",
+      "/.well-known/oauth-protected-resource",
+    ],
+    resource,
+  );
+  app.on(
+    ["GET", "OPTIONS"],
+    "/.well-known/oauth-authorization-server",
+    authorizationServerMetadataHandler(),
+  );
+}
+export async function serveMcp(c) {
+  const authInfo = c.get("mcpAuth");
+  const handler = createMcpHandler(
+    () => {
+      const server = new McpServer({ name: "esphub", version: "1.0.0" });
+      for (const { name, description, inputSchema } of tools) {
+        server.registerTool(
+          name,
+          {
+            description,
+            inputSchema: fromJsonSchema(inputSchema),
+            scopeChallenge: readTools.has(name) ? undefined : writeAccess,
+          },
+          async (args) => {
+            try {
+              const result = await withDatabase(c.env, async (sql) => {
+                const { owner } = await accountForSubject(
+                  sql,
+                  authInfo.extra.userId,
+                );
+                return operate({ env: c.env, sql }, owner, name, args);
+              });
+              return {
+                content: [{ type: "text", text: JSON.stringify(result) }],
+              };
+            } catch (error) {
+              if (!(error instanceof HTTPException))
+                console.error("MCP tool failed", error.name, error.code);
+              return {
+                isError: true,
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      error instanceof HTTPException
+                        ? error.message
+                        : "Operation failed",
+                  },
+                ],
+              };
+            }
+          },
+        );
+      }
+      return server;
+    },
+    { maxRequestBodySize: 65536 },
+  );
+  return handler.fetch(c.req.raw, { authInfo });
+}

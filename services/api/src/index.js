@@ -1,12 +1,12 @@
 import { releaseResponse } from "./releases.js";
 import { Hono } from "hono";
-import postgres from "postgres";
-import { neon } from "@neondatabase/serverless";
+import { withDatabase } from "./database.js";
 import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
-import { installAuth, allowedOrigin, identify, digest, fail } from "./auth.js";
-import { operate, tools } from "./operations.js";
+import { allowedOrigin, identify, digest, fail } from "./auth.js";
+import { installMcpMetadata, serveMcp, authenticateMcp } from "./mcp.js";
+import { operate } from "./operations.js";
 export { Device } from "./device.js";
 const api = new Hono();
 api.onError((e, c) =>
@@ -17,6 +17,7 @@ api.onError((e, c) =>
     e instanceof HTTPException ? e.status : 500,
   ),
 );
+installMcpMetadata(api);
 api.get("/health", (c) => c.json({ service: "esphub-api", ok: true }));
 api.get("/releases/:board/:asset", (c) =>
   releaseResponse(
@@ -31,7 +32,15 @@ api.use(
   cors({
     origin: (origin, c) => (allowedOrigin(c, origin) ? origin : undefined),
     credentials: true,
-    allowHeaders: ["Authorization", "Content-Type"],
+    allowHeaders: [
+      "Authorization",
+      "Content-Type",
+      "MCP-Protocol-Version",
+      "Mcp-Method",
+      "Mcp-Name",
+      "Mcp-Session-Id",
+    ],
+    exposeHeaders: ["WWW-Authenticate"],
     allowMethods: ["GET", "POST", "OPTIONS"],
   }),
 );
@@ -45,24 +54,19 @@ api.use(
 api.use("*", async (c, next) => {
   const origin = c.req.header("Origin");
   if (origin && !allowedOrigin(c, origin)) fail(403, "Origin not allowed");
-  const uri = c.env.DATABASE_URL;
-  const sql = new URL(uri).hostname.endsWith(".neon.tech")
-    ? neon(uri)
-    : postgres(uri, { max: 1, prepare: false, fetch_types: false });
-  c.set("sql", sql);
-  try {
-    await next();
-  } finally {
-    if (sql.end) c.executionCtx.waitUntil(sql.end());
-  }
+  await next();
   if (c.res.status !== 101) c.header("Cache-Control", "no-store");
 });
-api.use("/auth/*", async (c, next) => {
-  if (c.req.method === "POST" && !allowedOrigin(c, c.req.header("Origin")))
-    fail(403, "Browser origin required");
-  await next();
-});
-installAuth(api);
+api.all("/mcp", authenticateMcp, serveMcp);
+api.use("*", (c, next) =>
+  withDatabase(c.env, (sql) => {
+    c.set("sql", sql);
+    return next();
+  }),
+);
+api.get("/auth/me", async (c) =>
+  c.json({ handle: (await identify(c)).handle }),
+);
 api.get("/api/device/connect", async (c) => {
   if (c.req.header("Upgrade")?.toLowerCase() !== "websocket")
     fail(426, "WebSocket upgrade required");
@@ -81,64 +85,15 @@ api.get("/api/device/connect", async (c) => {
 });
 api.post("/operations/:name", async (c) => {
   const user = await identify(c);
-  if (user.kind === "session" && !allowedOrigin(c, c.req.header("Origin")))
+  if (!allowedOrigin(c, c.req.header("Origin")))
     fail(403, "Browser origin required");
   return c.json(
-    await operate(c, user.owner, c.req.param("name"), await c.req.json()),
+    await operate(
+      { env: c.env, sql: c.get("sql") },
+      user.owner,
+      c.req.param("name"),
+      await c.req.json(),
+    ),
   );
 });
-api.post("/mcp", async (c) => {
-  const user = await identify(c, false),
-    m = await c.req.json();
-  const error = (code, message) =>
-    c.json({ jsonrpc: "2.0", id: m?.id ?? null, error: { code, message } });
-  if (!m || m.jsonrpc !== "2.0" || typeof m.method !== "string")
-    return error(-32600, "Invalid request");
-  if (m.id === undefined) return c.body(null, 202);
-  let result;
-  switch (m.method) {
-    case "initialize":
-      result = {
-        protocolVersion: ["2025-03-26", "2025-06-18", "2025-11-25"].includes(
-          m.params?.protocolVersion,
-        )
-          ? m.params.protocolVersion
-          : "2025-11-25",
-        capabilities: { tools: {} },
-        serverInfo: { name: "esphub", version: "1.0.0" },
-      };
-      break;
-    case "ping":
-      result = {};
-      break;
-    case "tools/list":
-      result = { tools };
-      break;
-    case "tools/call":
-      try {
-        const value = await operate(
-          c,
-          user.owner,
-          m.params?.name,
-          m.params?.arguments ?? {},
-        );
-        result = { content: [{ type: "text", text: JSON.stringify(value) }] };
-      } catch (e) {
-        result = {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: e instanceof HTTPException ? e.message : "Operation failed",
-            },
-          ],
-        };
-      }
-      break;
-    default:
-      return error(-32601, "Method not found");
-  }
-  return c.json({ jsonrpc: "2.0", id: m.id, result });
-});
-api.get("/mcp", (c) => c.body(null, 405, { Allow: "POST" }));
 export default api;
