@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy policy · EspHub</title>
+  <link rel="icon" href="/home/esphub-icon-c27fe59cec.svg">
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.65; }
+    body { max-width: 44rem; margin: auto; padding: 2rem 1.25rem 4rem; }
+    h1, h2 { line-height: 1.2; } h1 { margin-bottom: .25rem; }
+    h2 { margin: 2rem 0 .5rem; font-size: 1.35rem; } p { margin: .5rem 0 1rem; }
+  </style>
+</head>
+<body>
+  <nav aria-label="Home"><a href="/">EspHub</a></nav>
+  <main>
+    <h1>Privacy policy</h1>
+    <p>Effective <time datetime="2026-11-22">November 22, 2026</time></p>
+    <p>This policy explains how Okou (Max &amp; Zoe, Inc.) handles personal information when you use the EspHub website, device console, API, or MCP connector.</p>
+    <h2>When you sign in</h2>
+    <p>Clerk handles sign-in, session cookies, and OAuth consent. EspHub uses your account identifier to associate boards with your account and check access. When you connect an MCP client such as Claude, the consent screen shows which permissions it requests.</p>
+    <h2>When you connect a board</h2>
+    <p>EspHub processes the device name, model, identifiers, firmware version, connection status, boot history, and serial input and output. Wi-Fi operations can include nearby and saved network names and a password you supply to configure a board. Commands, serial records, and files can contain personal information depending on what you or your software put in them.</p>
+    <p>We use this information to register and authenticate devices, route commands, deliver software, and make device history available for troubleshooting. We use access and diagnostic information to secure and operate the service. If you contact us, we use the details you provide to respond.</p>
+    <h2>What a connected client can see and change</h2>
+    <p>EspHub receives the tool name and arguments that your client sends and returns results to that client. For example, a serial-read request can return text printed by your board. Write permission also enables operations such as configuring Wi-Fi, sending serial input, or installing firmware. The client provider handles information it receives under its own privacy policy. Disconnecting a client does not erase results already returned to it.</p>
+    <h2>Service providers and file downloads</h2>
+    <p>Clerk provides identity services. Neon stores account and device registration records. Cloudflare hosts the service, coordinates device connections, and stores serial records and staged files. GitHub hosts public firmware releases. If you supply a download URL, the board contacts that host to retrieve the file. Our providers may process information outside your country.</p>
+    <h2>How long information is available</h2>
+    <p>Private programs and firmware files staged through EspHub expire after 24 hours. This limit applies to the staged copy. Software installed on your board remains there until replaced or erased. Account, registration, and serial history are separate records used for access control and troubleshooting. Removing a device revokes its device token. Contact us to request deletion of associated history.</p>
+    <h2>Your choices and privacy requests</h2>
+    <p>You can choose which OAuth permissions to grant, disconnect your MCP client, and remove registered devices. Depending on where you live, you may have rights to access, correct, delete, or obtain a copy of personal information, object to or restrict processing, or complain to a local data protection authority.</p>
+    <p>For privacy questions or requests, email <a href="mailto:ethan@okou.ai">ethan@okou.ai</a> with the account email and the information your request concerns. We may ask you to verify ownership. Please keep passwords, device tokens, and private serial logs out of your request.</p>
+    <h2>Changes to this policy</h2>
+    <p>We will publish updates on this page and revise the effective date above.</p>
+  </main>
+</body>
+</html>
