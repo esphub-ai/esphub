@@ -174,11 +174,12 @@ static void command(cJSON *request, cJSON *reply)
     } else if (op && !strcmp(op, "wifi.join")) {
         const char *ssid = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(request, "ssid"));
         const char *pass = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(request, "password"));
-        if (!pass || okou_wifi_add(ssid, pass, cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(request,"hidden"))) != ESP_OK)
+        if (!pass || !okou_wifi_join(ssid, pass, cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(request,"hidden"))))
             cJSON_AddStringToObject(reply, "error", "invalid network");
-        else cJSON_AddBoolToObject(reply, "saved", true);
+        else cJSON_AddBoolToObject(reply, "joining", true);
     } else if (op && !strcmp(op, "wifi.status")) {
         char current[33];
+        cJSON_AddStringToObject(reply, "state", okou_wifi_join_state());
         cJSON_AddStringToObject(reply, "connected", okou_wifi_current(current, sizeof(current)) ? current : "");
         cJSON_AddBoolToObject(reply, "hub", okou_ws_connected());
     } else cJSON_AddStringToObject(reply, "error", "unknown operation");
@@ -195,6 +196,11 @@ static void tls_session(void)
     mbedtls_ssl_conf_min_tls_version(&conf, MBEDTLS_SSL_VERSION_TLS1_3);
     mbedtls_ssl_conf_max_tls_version(&conf, MBEDTLS_SSL_VERSION_TLS1_3);
     mbedtls_ssl_conf_tls13_key_exchange_modes(&conf, MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_PSK_EPHEMERAL);
+    static const int suites[] = {MBEDTLS_TLS1_3_AES_128_GCM_SHA256, 0};
+    mbedtls_ssl_conf_ciphersuites(&conf, suites);
+#if defined(MBEDTLS_SSL_SESSION_TICKETS)
+    mbedtls_ssl_conf_new_session_tickets(&conf, 0);
+#endif
     mbedtls_ssl_conf_rng(&conf, rng, NULL);
     if (mbedtls_ssl_conf_psk(&conf, session_key, 32, (const unsigned char *)"wifi", 4) || mbedtls_ssl_setup(&ssl, &conf)) goto end;
     mbedtls_ssl_set_bio(&ssl, NULL, push, pull, NULL);
@@ -212,7 +218,10 @@ static void tls_session(void)
         cJSON *request = cJSON_Parse(line), *reply = cJSON_CreateObject();
         if (!request || !reply) { cJSON_Delete(request); cJSON_Delete(reply); goto end; }
         xSemaphoreTake(key_lock, portMAX_DELAY);
-        if (okou_ble_generation() == scan_generation && connection != NO_CONN) command(request, reply);
+        uint8_t live_key[32];
+        if (read_key(live_key) == scan_generation && !memcmp(live_key, root_key, 32) && connection != NO_CONN) command(request, reply);
+        else cJSON_AddStringToObject(reply, "error", "credential revoked");
+        mbedtls_platform_zeroize(live_key, sizeof(live_key));
         xSemaphoreGive(key_lock);
         cJSON_Delete(request);
         char *result = cJSON_PrintUnformatted(reply);
@@ -264,13 +273,14 @@ static void on_sync(void) { synced = ble_hs_id_infer_auto(0, &address_type) == 0
 static void on_reset(int reason) { synced = false; connection = NO_CONN; }
 static void host_task(void *arg) { nimble_port_run(); nimble_port_freertos_deinit(); }
 
-void okou_ble_start(void)
+static void launch_nimble(void *arg)
 {
-    key_lock = xSemaphoreCreateMutex();
+    // Fresh kits receive the key over USB after the launcher has started.
+    while (!okou_ble_generation()) vTaskDelay(pdMS_TO_TICKS(500));
     rx = xStreamBufferCreate(4096, 1);
     tx = xStreamBufferCreate(4096, 1);
     if (!key_lock || !rx || !tx || psa_crypto_init() != PSA_SUCCESS || nimble_port_init() != ESP_OK) {
-        ESP_LOGE("ble_wifi", "BLE initialization failed"); return;
+        ESP_LOGE("ble_wifi", "BLE initialization failed"); vTaskDelete(NULL); return;
     }
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.reset_cb = on_reset;
@@ -278,7 +288,15 @@ void okou_ble_start(void)
     ble_svc_gatt_init();
     if (ble_gatts_count_cfg(services) || ble_gatts_add_svcs(services) ||
         xTaskCreate(radio, "ble_wifi", 10240, NULL, 3, NULL) != pdPASS) {
-        ESP_LOGE("ble_wifi", "BLE provisioning unavailable"); return;
+        ESP_LOGE("ble_wifi", "BLE provisioning unavailable"); vTaskDelete(NULL); return;
     }
     nimble_port_freertos_init(host_task);
+    vTaskDelete(NULL);
+}
+
+void okou_ble_start(void)
+{
+    key_lock = xSemaphoreCreateMutex();
+    if (!key_lock || xTaskCreate(launch_nimble, "ble_init", 4096, NULL, 3, NULL) != pdPASS)
+        ESP_LOGE("ble_wifi", "cannot start BLE initialization");
 }

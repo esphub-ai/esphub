@@ -80,6 +80,9 @@ struct okou_req {
 static QueueHandle_t s_rxq, s_txq, s_pollq;
 static esp_websocket_client_handle_t s_ws;
 static volatile uint32_t s_gen;
+#if CONFIG_OKOU_BLE_WIFI
+static bool s_ble_sync_needed;
+#endif
 static volatile bool s_ws_up, s_hello_acked, s_ws_broken, s_reload;
 static int64_t s_conn_start_us, s_up_since_us, s_last_rx_us, s_last_ping_us, s_last_flush_us, s_next_connect_us;
 static uint32_t s_backoff_ms = 1000;
@@ -558,9 +561,6 @@ static void send_hello(void)
     cJSON *o = cJSON_CreateObject();
     cJSON_AddStringToObject(o, "t", "hello");
     hello_fill(o);
-#if CONFIG_OKOU_BLE_WIFI
-    cJSON_AddNumberToObject(o, "ble_generation", okou_ble_generation());
-#endif
     char *s = cJSON_PrintUnformatted(o);
     cJSON_Delete(o);
     if (s) {
@@ -1071,7 +1071,8 @@ static void handle_text(char *s, size_t len)
         } else if (strcmp(t->valuestring, "ble.rotate") == 0) {
             const cJSON *g = cJSON_GetObjectItemCaseSensitive(root, "generation");
             const cJSON *key = cJSON_GetObjectItemCaseSensitive(root, "secret");
-            if (cJSON_IsNumber(g) && g->valueint > 1 && cJSON_IsString(key) &&
+            if (okou_ble_busy()) { s_ble_sync_needed = true; }
+            else if (cJSON_IsNumber(g) && g->valueint > 1 && cJSON_IsString(key) &&
                 okou_ble_install((unsigned)g->valueint, key->valuestring, false) == ESP_OK) {
                 char ack[80];
                 snprintf(ack, sizeof(ack), "{\"t\":\"ble.installed\",\"generation\":%d}", g->valueint);
@@ -1109,6 +1110,9 @@ static void agent_task(void *arg)
                 ESP_LOGI(TAG, "hub connected");
                 s_ws_up = true;
                 s_hello_acked = false;
+#if CONFIG_OKOU_BLE_WIFI
+                s_ble_sync_needed = true;
+#endif
                 s_up_since_us = s_last_rx_us = s_last_ping_us = now_us();
                 okou_log_rewind();
                 send_hello();
@@ -1142,6 +1146,15 @@ static void agent_task(void *arg)
             }
         } else {
             drain_txq();
+#if CONFIG_OKOU_BLE_WIFI
+            if (okou_ble_busy()) s_ble_sync_needed = true;
+            else if (s_hello_acked && s_ble_sync_needed) {
+                unsigned generation = okou_ble_generation();
+                char report[80];
+                snprintf(report, sizeof(report), "{\"t\":\"ble.installed\",\"generation\":%u}", generation);
+                if (!generation || send_text(report, strlen(report))) s_ble_sync_needed = false;
+            }
+#endif
             if (s_hello_acked && now - last_uart_poll >= 1500000) {
                 char poll[80];
                 int n = snprintf(poll, sizeof(poll), "{\"t\":\"uart.poll\",\"after\":%lu}", (unsigned long)uart_cursor);

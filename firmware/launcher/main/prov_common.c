@@ -49,6 +49,21 @@ bool prov_apply(const char *line, char *err, size_t n)
             dtok = tok->valuestring;
         }
     }
+#if CONFIG_OKOU_BLE_WIFI
+    const cJSON *ble = cJSON_GetObjectItemCaseSensitive(j, "ble_secret");
+    if (ok && ble && (!dtok || !cJSON_IsString(ble) || strlen(ble->valuestring) != 64 ||
+                      strspn(ble->valuestring, "0123456789abcdef") != 64)) {
+        snprintf(err, n, "invalid BLE bootstrap");
+        ok = false;
+    }
+    if (ok && dtok) {
+        char previous[96];
+        if (okou_nvs_get_str(OKOU_KEY_TOKEN, previous, sizeof(previous)) != ESP_OK || strcmp(dtok, previous)) {
+            ok = okou_nvs_erase("ble_key") == ESP_OK;
+            if (!ok) snprintf(err, n, "BLE credential reset failed");
+        }
+    }
+#endif
     if (ok && dtok && !hub) hub = "api.esphub.ai";
     if (ok && ssid && ssid[0]) { /* adds to the saved networks (up to OKOU_WIFI_MAX), never replaces them */
         bool hidden = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(wifi, "hidden"));
@@ -68,8 +83,7 @@ bool prov_apply(const char *line, char *err, size_t n)
         }
     }
 #if CONFIG_OKOU_BLE_WIFI
-    const cJSON *ble = cJSON_GetObjectItemCaseSensitive(j, "ble_secret");
-    if (ok && ble && (!dtok || !cJSON_IsString(ble) || okou_ble_install(1, ble->valuestring, true) != ESP_OK)) {
+    if (ok && ble && okou_ble_install(1, ble->valuestring, true) != ESP_OK) {
         snprintf(err, n, "invalid BLE bootstrap or NVS write failed");
         ok = false;
     }

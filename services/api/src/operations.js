@@ -233,9 +233,11 @@ export async function operate(c, owner, name, a) {
     return withSources({ ...d, ...(await internal(c, d.id, "summary")) });
   if (name === "devices.reissue") {
     const secret = token("okl_dev_");
-    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)} WHERE owner=${owner} AND id=${d.id}`;
+    const bleSecret = d.board === "paper-color" ? newBleSecret() : null;
+    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, ble_generation=1,
+      ble_secret=${bleSecret}, ble_pending=NULL, ble_issued=false WHERE owner=${owner} AND id=${d.id}`;
     await internal(c, d.id, "revoke");
-    return { token: secret };
+    return { token: secret, ...(bleSecret ? { ble_secret: bleSecret } : {}) };
   }
   if (name === "devices.delete") {
     await db`DELETE FROM esphub.devices WHERE id=${d.id} AND owner=${owner}`;

@@ -392,7 +392,7 @@ async function action(k) {
         await fleet();
         credential(
           "USB provisioning",
-          JSON.stringify({ hub: d.hub, token: d.token }, null, 2),
+          JSON.stringify({ hub: d.hub, token: d.token, ble_secret: d.ble_secret }, null, 2),
         );
       },
     );
@@ -408,8 +408,10 @@ async function action(k) {
       "Replace USB token",
       "<p>This revokes the existing device credential. Write the new token over USB.</p>",
       "Replace",
-      async () =>
-        credential("USB token", (await op("devices.reissue", id)).token),
+      async () => {
+        const result = await op("devices.reissue", id);
+        credential("USB provisioning", JSON.stringify(result, null, 2));
+      },
     );
     return;
   }
@@ -599,7 +601,7 @@ async function start() {
     );
     docs(
       "USB provisioning",
-      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install EspHub with MicroPython. Use the matching board kit from GitHub Releases and follow INSTALL.txt. In the USB console, run <code>wifi scan</code>, choose a network or enter a hidden SSID, then send the provisioning line below. For a hidden network set <code>hidden</code> to true.</p></div><div class="panel"><h3>3. Verify</h3><p>Wait for OKL-PROVISION-OK and check devices.get for the online MicroPython application. Stage the hello program with programs.publish. Enter launcher mode, install its URL with ota.install, then check the new boot for the hello message.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","wifi":{"ssid":"&lt;ssid&gt;","pass":"&lt;password&gt;","hidden":false}}</pre><h2>Board packages</h2><div class="flex">' +
+      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install EspHub with MicroPython. Use the matching board kit from GitHub Releases and follow INSTALL.txt. In the USB console, run <code>wifi scan</code>, choose a network or enter a hidden SSID, then send the provisioning line below. For a hidden network set <code>hidden</code> to true.</p></div><div class="panel"><h3>3. Verify</h3><p>Wait for OKL-PROVISION-OK and check devices.get for the online MicroPython application. Stage the hello program with programs.publish. Enter launcher mode, install its URL with ota.install, then check the new boot for the hello message.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","wifi":{"ssid":"&lt;ssid&gt;","pass":"&lt;password&gt;","hidden":false}}</pre><p class="doccopy">Paper Color also supports BLE Wi-Fi setup. Send the token and ble_secret from registration over USB once, then use the Mac provisioning tool for the first network and subsequent changes.</p><h2>Board packages</h2><div class="flex">' +
         profiles
           .map(([board, name]) => {
             const base = "https://api.esphub.ai/releases/" + board + "/";

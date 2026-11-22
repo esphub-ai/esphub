@@ -101,9 +101,9 @@ async function authenticatedDevice(c) {
   if (!t) fail(401, "Device token required");
   const sql = c.get("sql"),
     [d] =
-      await sql`SELECT id FROM esphub.devices WHERE token_hash=${await digest(t)}`;
+      await sql`SELECT id,token_hash FROM esphub.devices WHERE token_hash=${await digest(t)}`;
   if (!d) fail(401, "Invalid device token");
-  return { id: d.id, stub: c.env.DEVICE.get(c.env.DEVICE.idFromName(d.id)) };
+  return { id: d.id, tokenHash: d.token_hash, stub: c.env.DEVICE.get(c.env.DEVICE.idFromName(d.id)) };
 }
 api.get("/api/device/programs/:artifact", async (c) => {
   const { stub } = await authenticatedDevice(c);
@@ -114,9 +114,9 @@ api.get("/api/device/programs/:artifact", async (c) => {
 api.get("/api/device/connect", async (c) => {
   if (c.req.header("Upgrade")?.toLowerCase() !== "websocket")
     fail(426, "WebSocket upgrade required");
-  const { id, stub } = await authenticatedDevice(c);
+  const { id, tokenHash, stub } = await authenticatedDevice(c);
   return stub.fetch("https://device/connect", {
-    headers: { Upgrade: "websocket", "X-Device-ID": id },
+    headers: { Upgrade: "websocket", "X-Device-ID": id, "X-Device-Token-Hash": tokenHash },
   });
 });
 api.post("/operations/:name", async (c) => {
