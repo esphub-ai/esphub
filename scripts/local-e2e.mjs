@@ -1,3 +1,4 @@
+import { generateKeyPair, exportSPKI, exportPKCS8 } from "jose";
 import { readFile, writeFile, rm } from "node:fs/promises";
 import { spawn, execFileSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
@@ -7,15 +8,20 @@ if (!db || !["localhost", "127.0.0.1"].includes(new URL(db).hostname))
 const port = Number(process.env.TEST_PORT || 18787),
   base = "http://localhost:" + port;
 const configs = [];
+const keys = await generateKeyPair("RS256", { extractable: true });
+const jwtKey = await exportSPKI(keys.publicKey);
+const testPrivateKey = await exportPKCS8(keys.privateKey);
 for (const worker of ["web", "api"]) {
   const root = "services/" + worker + "/",
     cfg = JSON.parse(await readFile(root + "wrangler.jsonc", "utf8"));
   delete cfg.routes;
   if (worker === "api")
     cfg.vars = {
-      APP_ORIGIN: base,
       DATABASE_URL: db,
-      CLERK_ISSUER: "http://127.0.0.1:" + (port + 1),
+      ...cfg.vars,
+      APP_ORIGIN: base,
+      CLERK_SECRET_KEY: "sk_test_local_fixture",
+      CLERK_JWT_KEY: jwtKey,
     };
   const file = root + "wrangler.e2e.json";
   await writeFile(file, JSON.stringify(cfg), { mode: 0o600 });
@@ -32,7 +38,7 @@ const child = spawn(
     String(port),
     "--show-interactive-dev-session=false",
   ],
-  { stdio: "ignore", detached: true },
+  { stdio: process.env.DEBUG_WORKERS ? "inherit" : "ignore", detached: true },
 );
 try {
   let ready = false;
@@ -51,7 +57,11 @@ try {
     execFileSync(process.execPath, [script], {
       stdio: "inherit",
       timeout: 120000,
-      env: { ...process.env, TEST_SITE_URL: base },
+      env: {
+        ...process.env,
+        TEST_SITE_URL: base,
+        TEST_SIGNING_KEY: testPrivateKey,
+      },
     });
 } finally {
   try {

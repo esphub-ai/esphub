@@ -7,3 +7,4 @@ export const browserOrigins = [
   application,
   "https://api.esphub.ai",
 ];
+export const mcpEndpoint = "https://api.esphub.ai/mcp";

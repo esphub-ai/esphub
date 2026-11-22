@@ -1,8 +1,7 @@
 import { chromium } from "playwright-core";
 import WebSocket from "ws";
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { importPKCS8, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
 const origin = process.env.TEST_SITE_URL;
 if (!origin || !["localhost", "127.0.0.1"].includes(new URL(origin).hostname))
@@ -11,29 +10,23 @@ const browser = await chromium.launch({
   executablePath: process.env.CHROME_BIN || "/usr/bin/google-chrome",
   args: ["--no-sandbox", "--no-proxy-server"],
 });
-const issuer = "http://127.0.0.1:" + (Number(new URL(origin).port) + 1);
-const keys = await generateKeyPair("RS256", { extractable: true });
-const jwk = {
-  ...(await exportJWK(keys.publicKey)),
-  kid: "test",
+const issuer = "https://clerk.esphub.ai";
+const privateKey = await importPKCS8(process.env.TEST_SIGNING_KEY, "RS256");
+// Match the signed session-token category enforced by the Clerk SDK.
+const sessionHeader = {
   alg: "RS256",
-  use: "sig",
+  kid: "test",
+  typ: "JWT",
+  cat: "cl_B7d4PD111AAA",
 };
-const server = createServer((req, res) => {
-  res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ keys: [jwk] }));
-});
-await new Promise((resolve) =>
-  server.listen(Number(new URL(issuer).port), "127.0.0.1", resolve),
-);
 const session = { sid: "sess_qa", azp: origin };
 const jwt = await new SignJWT(session)
-  .setProtectedHeader({ alg: "RS256", kid: "test" })
+  .setProtectedHeader(sessionHeader)
   .setSubject("user_" + randomUUID().replaceAll("-", ""))
   .setIssuer(issuer)
   .setIssuedAt()
   .setExpirationTime("5m")
-  .sign(keys.privateKey);
+  .sign(privateKey);
 let ws;
 try {
   const page = await browser.newPage({
@@ -51,12 +44,12 @@ try {
     "https://untrusted.esphub.ai",
   ]) {
     const t = await new SignJWT({ sid: "sess_fixture", azp })
-      .setProtectedHeader({ alg: "RS256", kid: "test" })
+      .setProtectedHeader(sessionHeader)
       .setSubject(subject)
       .setIssuer(issuer)
       .setIssuedAt()
       .setExpirationTime("2m")
-      .sign(keys.privateKey);
+      .sign(privateKey);
     const result = await fetch(origin + "/backend/auth/me", {
       headers: {
         Origin: "https://www.esphub.ai",
@@ -115,7 +108,7 @@ try {
   await setup.getByRole("button", { name: "Copy configuration" }).click();
   assert.equal(
     await page.evaluate(() => navigator.clipboard.readText()),
-    "codex mcp add esphub --url https://api.esphub.ai/mcp --bearer-token-env-var ESPHUB_MCP_KEY",
+    "codex mcp add esphub --url https://api.esphub.ai/mcp\ncodex mcp login esphub",
   );
   await setup.getByLabel("MCP client").selectOption("claude");
   await setup.getByRole("button", { name: "Copy configuration" }).click();
@@ -125,33 +118,17 @@ try {
   assert.deepEqual(entry, {
     type: "http",
     url: "https://api.esphub.ai/mcp",
-    headers: { Authorization: "Bearer ${ESPHUB_MCP_KEY}" },
   });
   await setup.getByRole("button", { name: "Copy prompt" }).click();
   assert.equal(
     await page.evaluate(() => navigator.clipboard.readText()),
     await setup.locator("blockquote").textContent(),
   );
-  await setup.getByRole("button", { name: "Issue MCP key" }).click();
-  await page.getByRole("button", { name: "Issue key", exact: true }).click();
-  const developerKey = await page.locator("dialog pre").textContent();
-  const toolsReply = await fetch(origin + "/backend/mcp", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + developerKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: { name: "devices.list", arguments: {} },
-    }),
-  });
-  const toolsResult = await toolsReply.json();
-  assert.equal(toolsReply.status, 200);
-  assert.deepEqual(JSON.parse(toolsResult.result.content[0].text), []);
-  await page.getByRole("button", { name: "Close", exact: true }).click();
+  assert.equal(
+    await setup.getByRole("button", { name: /issue.*key/i }).count(),
+    0,
+  );
+  assert.match(await setup.locator("blockquote").textContent(), /OAuth/);
   await setup.getByLabel("MCP client").selectOption("codex");
   if (process.env.QA_MCP_SCREENSHOT)
     await page.screenshot({
@@ -254,5 +231,4 @@ try {
 } finally {
   ws?.close();
   await browser.close();
-  server.close();
 }

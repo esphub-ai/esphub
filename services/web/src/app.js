@@ -1,4 +1,4 @@
-import { issuer, portal, application } from "../../../shared/identity.js";
+import { issuer, portal, application, mcpEndpoint } from "../../../shared/identity.js";
 let clerk;
 async function loadClerk() {
   const script = document.createElement("script");
@@ -163,22 +163,20 @@ function row(d) {
     "</span><span>↗</span></a>"
   );
 }
-const mcpEndpoint = "https://api.esphub.ai/mcp";
-const setupPrompt = `Connect my MCP client to ESP Hub. Add a server named esphub using Streamable HTTP at ${mcpEndpoint}. Read my developer key from ESPHUB_MCP_KEY and send it as an Authorization bearer token. If the variable is missing, show me how to set it privately before starting the client. Preserve my other MCP servers. Once connected, call devices.list and show me my registered devices.`;
+const setupPrompt = `Connect my MCP client to ESP Hub. Add a server named esphub using Streamable HTTP at ${mcpEndpoint}. Use browser-based OAuth. Open the ESP Hub sign-in and consent page when prompted. Preserve my other MCP servers. Once connected, call devices.list and show me my registered devices.`;
 const mcpClients = {
   codex: {
-    instruction: "Run this command in your terminal.",
-    config: `codex mcp add esphub --url ${mcpEndpoint} --bearer-token-env-var ESPHUB_MCP_KEY`,
+    instruction: "Run these commands in your terminal, then sign in to ESP Hub in your browser.",
+    config: `codex mcp add esphub --url ${mcpEndpoint}\ncodex mcp login esphub`,
   },
   claude: {
-    instruction: "Merge this entry into your project’s .mcp.json file.",
+    instruction: "Merge this entry into your project’s .mcp.json file. In Claude Code, open /mcp, select esphub, and authenticate.",
     config: JSON.stringify(
       {
         mcpServers: {
           esphub: {
             type: "http",
             url: mcpEndpoint,
-            headers: { Authorization: "Bearer ${ESPHUB_MCP_KEY}" },
           },
         },
       },
@@ -189,8 +187,8 @@ const mcpClients = {
 };
 function mcpSetup() {
   return `<section class="mcp-setup" aria-labelledby="mcp-title">
-    <div class="toolbar"><h2 id="mcp-title">Connect an MCP client</h2>${button("key", "Issue MCP key")}</div>
-    <p>Set <code>ESPHUB_MCP_KEY</code> to your ESP Hub developer key in the environment where your client runs, then restart the client. <a href="/mcp">MCP reference ↗</a></p>
+    <div class="toolbar"><h2 id="mcp-title">Connect an MCP client</h2></div>
+    <p>Connect using your ESP Hub account. Approve device access in the browser when your client asks. If you previously set a bearer token for this connection, remove it from your client configuration first. <a href="/mcp">MCP reference ↗</a></p>
     <div class="mcp-grid">
       <div class="panel"><div class="toolbar"><h3>Client configuration</h3><select id="mcp-client" aria-label="MCP client"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
         <p id="mcp-instruction"></p><pre id="mcp-config"></pre>${button("copy-config", "Copy configuration")}</div>
@@ -453,16 +451,6 @@ async function action(k) {
     await clerk.signOut({ redirectUrl: "https://esphub.ai/" });
     return;
   }
-  if (k === "key") {
-    dialog(
-      "Issue developer key",
-      "<p>Replaces your previous MCP developer key. Valid for 90 days.</p>",
-      "Issue key",
-      async () =>
-        credential("MCP developer key", (await api("/auth/key", {})).key),
-    );
-    return;
-  }
   const id = { device_id: device.id };
   if (k === "reissue") {
     dialog(
@@ -661,8 +649,8 @@ async function start() {
     const ref = await (await fetch("/tools.json")).json();
     docs(
       "MCP reference",
-      '<p class="lead">Connect a Streamable HTTP MCP client with a developer key from your account.</p><pre>POST https://api.esphub.ai/mcp\nAuthorization: Bearer &lt;developer-key&gt;</pre>' +
-        link("/account", "Manage developer key →") +
+      '<p class="lead">Connect your MCP client to ESP Hub with OAuth. The first sign-in grants read access. Device changes and serial input require additional permission.</p><pre>https://api.esphub.ai/mcp</pre>' +
+        link("/devices", "Client setup →") +
         " " +
         link("/explorer", "Open tool explorer ↗", true) +
         "<h2>Tools</h2><table><tr><th>Name</th><th>Capability</th></tr>" +
@@ -747,7 +735,6 @@ async function start() {
             user.handle,
         ) +
         '</p><div class="actions">' +
-        button("key", "Issue MCP key", true) +
         button("logout", "Sign out") +
         "</div>",
     );

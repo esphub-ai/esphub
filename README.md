@@ -7,7 +7,7 @@ ESP Hub provisions ESP32 devices over USB and manages them through the web and M
 | esphub.ai and www.esphub.ai | Website Worker, landing and setup |
 | app.esphub.ai | Same website Worker, authenticated device console |
 | api.esphub.ai | Separate Hono Worker, device WebSocket and authenticated API |
-| api.esphub.ai/mcp | Streamable HTTP JSON-RPC using an account developer key |
+| api.esphub.ai/mcp | Streamable HTTP JSON-RPC using Clerk OAuth |
 
 ## Devices and releases
 
@@ -23,15 +23,17 @@ Wait for OKL-PROVISION-OK and the real device hello. The token is accepted only 
 
 ## Console and authentication
 
-Browser sign-in and sign-up use the Clerk production Account Portal at accounts.esphub.ai. Clerk manages sessions across the esphub.ai root domain. The API checks the token signature against clerk.esphub.ai, issuer, expiry and an exact allowed browser origin before mapping a Clerk user ID to a Neon account. The website forwards same-origin requests through its API Worker binding. Issue a developer bearer key from Account to use MCP. Reissuing a key revokes the previous key. A device token cannot access operator tools.
+Browser sign-in and sign-up use the Clerk production Account Portal at accounts.esphub.ai. Clerk manages sessions across the esphub.ai root domain. The API checks the token signature against clerk.esphub.ai, issuer, expiry and an exact allowed browser origin before mapping a Clerk user ID to a Neon account. The website forwards same-origin requests through its API Worker binding. Connect a remote MCP client from the Devices page and sign in through Clerk. For an existing connection, remove its static Authorization header or bearer-token environment setting before signing in. MCP accepts audience-bound OAuth access tokens for https://api.esphub.ai/mcp. Reading devices requires devices:read. Device changes and serial input additionally require devices:write. Clerk handles consent, token issuance and renewal. A device token cannot access operator tools.
 
-Neon stores registrations, hashed credentials and ownership. Each device has a Durable Object coordinating the active WebSocket and serial writes. R2 stores RX and TX at devices/{device UUID}/{boot ID}/uart/{rx,tx}. Each small manifest points to the committed record count in bounded 64-record pages. The device polls its RX cursor over its authenticated socket. TX clients poll independently. Writes have an idempotency key and target one live boot. An old boot is read-only. A queued record is not proof of command success. The launcher executes complete command lines; a MicroPython application must include the terminal hook in the application runtime.
+In the ESP Hub production Clerk instance, register https://api.esphub.ai/mcp under Agents → MCP servers and allow public clients to connect with CIMD. Under OAuth applications, create and advertise `devices:read` and `devices:write`. Set the dynamic-client default to `devices:read` and allow `devices:read`, `devices:write`, and `offline_access` so clients can request additional access or refresh tokens. Use the instance's secret key for the API Worker.
+
+Neon stores registrations, hashed USB device tokens and device ownership. Each device has a Durable Object coordinating the active WebSocket and serial writes. R2 stores RX and TX at devices/{device UUID}/{boot ID}/uart/{rx,tx}. Each small manifest points to the committed record count in bounded 64-record pages. The device polls its RX cursor over its authenticated socket. TX clients poll independently. Writes have an idempotency key and target one live boot. An old boot is read-only. A queued record is not proof of command success. The launcher executes complete command lines; a MicroPython application must include the terminal hook in the application runtime.
 
 ## Delivery
 
 Install dependencies with npm ci. npm run build bundles browser code and generates the MCP reference from server tool schemas. npm test runs unit tests, and TEST_DATABASE_URL enables the PostgreSQL ownership test. npm run migrate takes MIGRATION_DATABASE_URL and serializes checksum-verified, additive migrations under an advisory lock.
 
-Pushes to main run verification on an ephemeral PostgreSQL instance, migrate production Neon, deploy the Hono API then the website, and check public domains and authentication boundaries. Required repository secrets are MIGRATION_DATABASE_URL, RUNTIME_DB_PASSWORD (64 lowercase hex characters), and CLOUDFLARE_API_TOKEN. CLOUDFLARE_ACCOUNT_ID is a repository variable. CI ensures the esphub-production R2 bucket exists. The migration role creates a restricted runtime role; only the runtime URL is sent to the API Worker. Configure the production environment to suit the organization's deployment policy.
+Pushes to main run verification on an ephemeral PostgreSQL instance, migrate production Neon, deploy the Hono API then the website, and check public domains and authentication boundaries. Required repository secrets are CLERK_SECRET_KEY (ESP Hub production instance), MIGRATION_DATABASE_URL, RUNTIME_DB_PASSWORD (64 lowercase hex characters), and CLOUDFLARE_API_TOKEN. CLOUDFLARE_ACCOUNT_ID is a repository variable. CI ensures the esphub-production R2 bucket exists. The migration role creates a restricted runtime role; the API Worker receives the runtime database URL and the Clerk credential. Configure the production environment to suit the organization's deployment policy.
 
 Firmware changes build on ESP-IDF 5.4.1. A GitHub release is published only after both hardware profiles build. GitHub Releases hosts all firmware packages. The API resolves board-specific assets from GitHub and pins each OTA command to the release tag and its SHA-256. R2 is reserved for UART streams.
 
