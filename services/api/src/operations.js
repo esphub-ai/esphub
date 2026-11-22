@@ -1,3 +1,4 @@
+import { releaseAsset } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
 const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
@@ -210,19 +211,20 @@ export async function operate(c, owner, name, a) {
         409,
         "Start a launcher reporting the registered board profile first",
       );
-    const obj = await c.env.UART.get("releases/latest.json");
-    if (!obj) fail(503, "Release catalog unavailable");
-    const release = (await obj.json())[d.board];
-    if (!release || release.chip !== status.info.chip)
-      fail(409, "Release target mismatch");
+    const { asset, tag, version } = await releaseAsset(c.env, d.board, "ota");
+    if (
+      status.info.chip !== "esp32s3" ||
+      !/^sha256:[a-f0-9]{64}$/.test(asset.digest)
+    )
+      fail(409, "Release target or digest unavailable");
     op = "install";
     args = {
       kind: "launcher",
       board: d.board,
-      url: "https://api.esphub.ai/releases/" + d.board + "/ota",
-      sha256: release.ota.sha256,
-      size: release.ota.size,
-      version: release.version,
+      url: "https://api.esphub.ai/releases/" + d.board + "/ota?tag=" + tag,
+      sha256: asset.digest.slice(7),
+      size: asset.size,
+      version,
     };
   }
   if (name === "firmware.install") {

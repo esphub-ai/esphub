@@ -33,7 +33,7 @@ Install dependencies with npm ci. npm run build bundles browser code and generat
 
 Pushes to main run verification on an ephemeral PostgreSQL instance, migrate production Neon, deploy the Hono API then the website, and check public domains and authentication boundaries. Required repository secrets are MIGRATION_DATABASE_URL, RUNTIME_DB_PASSWORD (64 lowercase hex characters), and CLOUDFLARE_API_TOKEN. CLOUDFLARE_ACCOUNT_ID is a repository variable. CI ensures the esphub-production R2 bucket exists. The migration role creates a restricted runtime role; only the runtime URL is sent to the API Worker. Configure the production environment to suit the organization's deployment policy.
 
-Firmware changes build on ESP-IDF 5.4.1. A GitHub release is published only after both hardware profiles build. The downloads workflow verifies asset digests, uploads the files to R2, then replaces the latest catalog. The website serves board-specific download links through the API.
+Firmware changes build on ESP-IDF 5.4.1. A GitHub release is published only after both hardware profiles build. GitHub Releases hosts all firmware packages. The API resolves board-specific assets from GitHub and pins each OTA command to the release tag and its SHA-256. R2 is reserved for UART streams.
 
 ## Origin
 

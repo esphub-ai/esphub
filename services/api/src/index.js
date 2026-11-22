@@ -1,3 +1,4 @@
+import { releaseResponse } from "./releases.js";
 import { Hono } from "hono";
 import postgres from "postgres";
 import { bodyLimit } from "hono/body-limit";
@@ -15,29 +16,14 @@ api.onError((e, c) =>
   ),
 );
 api.get("/health", (c) => c.json({ service: "esphub-api", ok: true }));
-api.get("/releases/:board/:asset", async (c) => {
-  const { board, asset } = c.req.param();
-  if (
-    !["paper-color", "stopwatch"].includes(board) ||
-    !["usb", "ota", "manifest"].includes(asset)
-  )
-    fail(404, "Unknown release asset");
-  const index = await c.env.UART.get("releases/latest.json");
-  if (!index) fail(404, "Launcher builds are not yet available");
-  const manifest = (await index.json())[board];
-  if (asset === "manifest") return c.json(manifest);
-  const obj = await c.env.UART.get("releases/" + manifest[asset].file);
-  if (!obj) fail(503, "Incomplete release");
-  return new Response(obj.body, {
-    headers: {
-      "Content-Type": "application/octet-stream",
-      "Content-Length": String(obj.size),
-      "Content-Disposition":
-        'attachment; filename="' + manifest[asset].file + '"',
-      ETag: obj.httpEtag,
-    },
-  });
-});
+api.get("/releases/:board/:asset", (c) =>
+  releaseResponse(
+    c.env,
+    c.req.param("board"),
+    c.req.param("asset"),
+    c.req.query("tag"),
+  ),
+);
 api.use(
   "*",
   bodyLimit({
