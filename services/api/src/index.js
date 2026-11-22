@@ -1,6 +1,7 @@
 import { releaseResponse } from "./releases.js";
 import { Hono } from "hono";
 import postgres from "postgres";
+import { neon } from "@neondatabase/serverless";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { installAuth, identify, digest, fail } from "./auth.js";
@@ -34,22 +35,15 @@ api.use(
 api.use("*", async (c, next) => {
   const origin = c.req.header("Origin");
   if (origin && origin !== c.env.APP_ORIGIN) fail(403, "Origin not allowed");
-  const sql = postgres(c.env.DATABASE_URL, {
-    max: 1,
-    prepare: false,
-    connect_timeout: 8,
-    idle_timeout: 5,
-    fetch_types: false,
-  });
+  const uri = c.env.DATABASE_URL;
+  const sql = new URL(uri).hostname.endsWith(".neon.tech")
+    ? neon(uri)
+    : postgres(uri, { max: 1, prepare: false, fetch_types: false });
   c.set("sql", sql);
   try {
     await next();
   } finally {
-    try {
-      c.executionCtx.waitUntil(sql.end());
-    } catch {
-      await sql.end();
-    }
+    if (sql.end) c.executionCtx.waitUntil(sql.end());
   }
   if (c.res.status !== 101) c.header("Cache-Control", "no-store");
 });

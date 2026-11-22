@@ -78,5 +78,7 @@ jobs:
           for host in esphub.ai www.esphub.ai app.esphub.ai; do
             curl -fsSL --retry 5 --retry-all-errors "https://$host/" | grep -q 'ESP Hub'
           done
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST https://api.esphub.ai/mcp)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer esh_key_invalidtestkey' https://api.esphub.ai/mcp)" = 401
+          curl -fsSL https://api.esphub.ai/releases/paper-color/manifest | jq -e '.board == "paper-color"'
+          curl -fsSL https://api.esphub.ai/releases/stopwatch/manifest | jq -e '.board == "stopwatch"'
           test "$(curl -s -o /dev/null -w '%{http_code}' https://app.esphub.ai/backend/auth/me)" = 401

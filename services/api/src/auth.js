@@ -89,13 +89,16 @@ export function installAuth(app) {
       const result = await verifyRegistrationResponse(opts).catch(() => null);
       if (!result?.verified) fail(401, "Passkey verification failed");
       const cred = result.registrationInfo.credential;
-      owner = await sql.begin(async (tx) => {
-        const [a] =
-          await tx`INSERT INTO esphub.accounts(handle) VALUES(${row.handle}) ON CONFLICT DO NOTHING RETURNING id`;
-        if (!a) fail(409, "Handle already registered");
-        await tx`INSERT INTO esphub.credentials(id,owner,public_key,counter) VALUES(${cred.id},${a.id},${Buffer.from(cred.publicKey).toString("base64url")},${cred.counter})`;
-        return a.id;
-      });
+      const [registration] = await sql`
+        WITH account AS (
+          INSERT INTO esphub.accounts(handle) VALUES(${row.handle})
+          ON CONFLICT DO NOTHING RETURNING id
+        )
+        INSERT INTO esphub.credentials(id,owner,public_key,counter)
+        SELECT ${cred.id},id,${Buffer.from(cred.publicKey).toString("base64url")},${cred.counter} FROM account
+        RETURNING owner`;
+      if (!registration) fail(409, "Handle already registered");
+      owner = registration.owner;
     } else {
       const [cred] =
         await sql`SELECT k.* FROM esphub.credentials k JOIN esphub.accounts a ON a.id=k.owner WHERE k.id=${response.id} AND a.handle=${row.handle}`;
@@ -144,10 +147,10 @@ export function installAuth(app) {
     if (who.kind !== "session") fail(403, "Sign in with your passkey");
     const sql = c.get("sql"),
       key = token("esh_key_");
-    await sql.begin(async (tx) => {
-      await tx`DELETE FROM esphub.access_tokens WHERE owner=${who.owner} AND kind='developer'`;
-      await tx`INSERT INTO esphub.access_tokens(digest,owner,kind,expires_at) VALUES(${await digest(key)},${who.owner},'developer',now()+interval '90 days')`;
-    });
+    await sql`INSERT INTO esphub.access_tokens(digest,owner,kind,expires_at)
+        VALUES(${await digest(key)},${who.owner},'developer',now()+interval '90 days')
+        ON CONFLICT (owner) WHERE kind='developer' DO UPDATE SET
+          digest=excluded.digest, expires_at=excluded.expires_at, created_at=now()`;
     return c.json({ key, expires_in_days: 90 });
   });
 }
