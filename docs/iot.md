@@ -52,3 +52,18 @@ stops once the device is settled. A six-hour indexed sweep recovers interrupted
 alarms and certificate revocations. A token replacement invalidates pending
 commands and schedules deactivation of the old certificate. No D1 database is
 required.
+
+## Buffered logs
+
+MQTT firmware batches ordinary logs in RAM every ten minutes. An empty buffer
+sends nothing. Command receipts and OTA events are sent independently, and a
+normal reboot attempts a final upload. Successful TLS verification messages
+stay on the local serial console. Power loss discards any unacknowledged RAM logs.
+
+Select **Fetch device logs** in the current boot's serial console to request a
+batch early. MCP clients can call `logs.flush` with the device and process IDs
+when `devices.get` reports `info.log_flush`. Read the receipt with `commands.get`.
+`last_acked_seq` is the last device log sequence acknowledged for this boot.
+`dropped_lines` counts lines discarded due to a full buffer since boot. Use
+the cursor returned by `uart.read` to page the stored stream, which also includes
+device events. WebSocket firmware continues streaming logs live.

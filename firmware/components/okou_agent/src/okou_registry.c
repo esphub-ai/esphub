@@ -486,12 +486,11 @@ static int cmd_wifi(int argc, char **argv, okou_out_t *out)
 
 static int cmd_logstat(int argc, char **argv, okou_out_t *out)
 {
-    uint32_t next, sent, acked, dropped;
-    size_t used, cap;
-    okou_log_stats(&next, &sent, &acked, &dropped, &used, &cap);
+    okou_log_stats_t stats = okou_log_stats();
     okou_outf(out, "next_seq %" PRIu32 " sent_upto %" PRIu32 " acked_upto %" PRIu32 " dropped %" PRIu32
               " buffered %u/%u\n",
-              next - 1, sent - 1, acked - 1, dropped, (unsigned)used, (unsigned)cap);
+              stats.last_written, stats.last_sent, stats.last_acked, stats.dropped,
+              (unsigned)stats.used, (unsigned)stats.capacity);
     return 0;
 }
 

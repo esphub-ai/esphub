@@ -95,8 +95,10 @@ async function op(name,args={}) {
   if(!value.command_id || name==="commands.get" || name==="uart.write") return value;
   const command_id=value.command_id;
   notify("Command queued");
-  for(let n=0;n<30;n++) {
-    await new Promise(resolve=>setTimeout(resolve,1000));
+  const logRecall = name === "logs.flush";
+  const deadline = Date.now() + (logRecall ? 390000 : 30000);
+  while (Date.now() < deadline) {
+    await new Promise(resolve=>setTimeout(resolve,logRecall ? 3000 : 1000));
     value=await api("/operations/commands.get",{device_id:args.device_id,command_id});
     if(["accepted","succeeded"].includes(value.state)) return {...value.result,process_id:value.process_id};
     if(["failed","expired","unknown"].includes(value.state)) throw Error(value.result?.error || "Command "+value.state);
@@ -287,8 +289,26 @@ async function refresh() {
         .join("") +
       '</select><div class="kv cursor-value">Device RX cursor <b id="rx">' +
       selected.rx_cursor +
-      '</b></div><div class="kv cursor-value">Browser TX cursor <b id="tx">0</b></div><a class="crumb" href="/streams">Stream protocol ↗</a></div></div>';
+      '</b></div><div class="kv cursor-value">Browser TX cursor <b id="tx">0</b></div><button id="flush" hidden>Fetch device logs</button><p id="flush-result" role="status"></p><a class="crumb" href="/streams">Stream protocol ↗</a></div></div>';
+    const flushButton = $("#flush");
+    const flushResult = $("#flush-result");
+    flushButton.onclick = async () => {
+      flushButton.disabled = true;
+      flushResult.textContent = "Waiting for device logs…";
+      try {
+        const receipt = await op("logs.flush", {
+          device_id: device.id, process_id: session, request_id: crypto.randomUUID(),
+        });
+        flushResult.textContent = "Uploaded through log #" + receipt.last_acked_seq +
+          " · " + receipt.dropped_lines + " lines dropped this boot";
+      } catch (err) {
+        flushResult.textContent = err.message;
+      } finally {
+        flushButton.disabled = false;
+      }
+    };
     const setState = (d) => {
+      flushButton.hidden = !(d.online && d.transport === "mqtt" && d.info?.log_flush === true && session === d.process_id);
       const active = d.online && session === d.process_id && d.serial_input !== false;
       $("#cmd").disabled = !active;
       $("#send button").disabled = !active;

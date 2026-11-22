@@ -42,6 +42,7 @@
 #define PONG_TIMEOUT_US (90 * 1000000LL)
 #define BACKOFF_RESET_US (60 * 1000000LL)
 #define CONNECT_TIMEOUT_US (30 * 1000000LL)
+#define MQTT_LOG_INTERVAL_US (10 * 60 * 1000000LL)
 #define FLUSH_INTERVAL_US (200 * 1000LL)
 #define BACKOFF_MAX_MS 60000
 #define RX_FRAME_MAX 8192
@@ -101,6 +102,8 @@ static bool s_ble_sync_needed;
 #endif
 static volatile bool s_ws_up, s_hello_acked, s_ws_broken, s_reload;
 static int64_t s_conn_start_us, s_up_since_us, s_last_rx_us, s_last_ping_us, s_last_flush_us, s_next_connect_us;
+static int64_t s_next_log_batch_us = MQTT_LOG_INTERVAL_US;
+static uint32_t s_log_batch_through;
 static uint32_t s_backoff_ms = 1000;
 static volatile int64_t s_reboot_at_us;
 static char s_boot_id[33];
@@ -390,6 +393,7 @@ static void hello_fill(cJSON *o)
     okou_mac_str(mac);
     const esp_partition_t *run = esp_ota_get_running_partition();
     cJSON_AddNumberToObject(o, "proto", 1);
+    if (s_iot) cJSON_AddBoolToObject(o, "log_flush", true);
 #ifdef OKOU_IMAGE_PROFILE
     cJSON_AddStringToObject(o, "image_profile", image_profile);
 #endif
@@ -652,11 +656,39 @@ static bool send_hello(void)
 static void flush_logs(void)
 {
     for (int i = 0; i < 4; i++) {
-        size_t n = okou_log_build_frame(s_txbuf, CONFIG_OKOU_TX_FRAME_MAX);
+        size_t n = okou_log_build_frame(s_txbuf, CONFIG_OKOU_TX_FRAME_MAX, UINT32_MAX);
         if (n == 0 || !send_text(s_txbuf, n)) {
             break;
         }
     }
+}
+
+// A batch stops at the sequence captured at its start, even if producers keep logging.
+static bool upload_log_frame(uint32_t through)
+{
+    size_t n = okou_log_build_frame(s_txbuf, CONFIG_OKOU_TX_FRAME_MAX, through);
+    if (n && send_text(s_txbuf, n)) {
+        okou_log_stats_t stats = okou_log_stats();
+        if (stats.last_acked == stats.last_sent) return true;
+    }
+    // The reconnect hello reconciles the cursor if the server persisted a lost ACK.
+    s_ws_broken = true;
+    return false;
+}
+
+static void service_mqtt_log_batch(int64_t now)
+{
+    if (s_ws_broken) return;
+    if (!s_log_batch_through && now >= s_next_log_batch_us) {
+        s_log_batch_through = okou_log_stats().last_written;
+        s_next_log_batch_us = now + MQTT_LOG_INTERVAL_US;
+    }
+    if (!s_log_batch_through) return;
+    if (okou_log_stats().last_acked >= s_log_batch_through) {
+        s_log_batch_through = 0;
+        return;
+    }
+    upload_log_frame(s_log_batch_through);
 }
 
 static void fmt_number(char *b, size_t n, double v)
@@ -854,7 +886,7 @@ static void handle_req(const cJSON *root)
     const cJSON *jop = cJSON_GetObjectItemCaseSensitive(root, "op");
     const cJSON *args = cJSON_GetObjectItemCaseSensitive(root, "args");
     const char *op = cJSON_IsString(jop) ? jop->valuestring : "";
-    if (s_hooks.on_request) {
+    if (s_hooks.on_request && strcmp(op, "logs.flush") != 0) {
         s_hooks.on_request(op);
     }
     cJSON *data = cJSON_CreateObject();
@@ -887,7 +919,24 @@ static void handle_req(const cJSON *root)
             return;
         }
     }
-    if (strcmp(op, "status") == 0) {
+    if (s_iot && strcmp(op, "logs.flush") == 0) {
+        okou_log_stats_t stats = okou_log_stats();
+        uint32_t through = stats.last_written;
+        while (stats.last_acked < through && upload_log_frame(through)) {
+            drain_txq(); // Prioritize queued receipts and OTA events between log frames.
+            stats = okou_log_stats();
+        }
+        if (stats.last_acked >= through) {
+            s_log_batch_through = 0;
+            s_next_log_batch_us = now_us() + MQTT_LOG_INTERVAL_US;
+            cJSON_AddNumberToObject(data, "last_acked_seq", stats.last_acked);
+            cJSON_AddNumberToObject(data, "dropped_lines", stats.dropped);
+            r = ESP_OK;
+        } else {
+            snprintf(err, sizeof(err), "Log upload was not acknowledged");
+            r = ESP_FAIL;
+        }
+    } else if (strcmp(op, "status") == 0) {
         hello_fill(data);
         okou_net_info(data);
         cJSON_AddItemToObject(data, "partitions", okou_partitions_json());
@@ -1340,9 +1389,10 @@ static void agent_task(void *arg)
                 send_text(poll, n);
                 last_uart_poll = now;
             }
+            if (s_iot) service_mqtt_log_batch(now);
             if (now - s_last_flush_us >= FLUSH_INTERVAL_US) {
                 s_last_flush_us = now;
-                flush_logs();
+                if (!s_iot) flush_logs();
                 flush_metrics();
             }
             if (!s_iot && now - s_last_ping_us >= PING_INTERVAL_US) {
@@ -1373,7 +1423,8 @@ static void agent_task(void *arg)
             portENTER_CRITICAL(&s_mmux);
             bool metrics = s_mcount != 0;
             portEXIT_CRITICAL(&s_mmux);
-            if ((metrics || okou_log_pending()) && s_last_flush_us + FLUSH_INTERVAL_US < deadline)
+            if (s_iot && s_log_batch_through && !s_ws_broken) deadline = now;
+            if ((metrics || (!s_iot && okou_log_pending())) && s_last_flush_us + FLUSH_INTERVAL_US < deadline)
                 deadline = s_last_flush_us + FLUSH_INTERVAL_US;
         }
         if (deadline > now && !uxQueueMessagesWaiting(s_rxq))

@@ -12,11 +12,14 @@
 /* ---- log ring (okou_log.c) ---- */
 esp_err_t okou_log_init(void);
 /* Builds one {"t":"log",...} frame from unsent lines; returns length, 0 when nothing to send. */
-size_t okou_log_build_frame(char *buf, size_t cap);
+size_t okou_log_build_frame(char *buf, size_t cap, uint32_t through);
 void okou_log_ack(int64_t seq);
 void okou_log_rewind(void); /* on reconnect: resend everything not yet acked */
-void okou_log_stats(uint32_t *next_seq, uint32_t *sent_seq, uint32_t *acked_seq, uint32_t *dropped,
-                    size_t *used, size_t *cap);
+typedef struct {
+    uint32_t last_written, last_sent, last_acked, dropped;
+    size_t used, capacity;
+} okou_log_stats_t;
+okou_log_stats_t okou_log_stats(void);
 
 /* ---- registry (okou_registry.c) ---- */
 typedef enum { OKOU_P_INT, OKOU_P_FLOAT, OKOU_P_BOOL } okou_ptype_t;
