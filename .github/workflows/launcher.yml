@@ -53,6 +53,7 @@ jobs:
   release:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
+    concurrency: {group: esphub-launcher-release, cancel-in-progress: false}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -69,5 +70,11 @@ jobs:
           if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" dist/* -R "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$tag" dist/* -R "$GITHUB_REPOSITORY" --verify-tag --latest --title "$tag" --notes 'Board-specific USB installation kits, launcher-only OTA binaries and SHA-256 manifests.'
+            # A slow older board matrix can finish after a newer release.
+            latest_tag="$(gh release list -R "$GITHUB_REPOSITORY" --limit 100 --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName')"
+            latest=true
+            if [[ "$latest_tag" =~ ^launcher-v1\.0\.([0-9]+)$ ]] && (( BASH_REMATCH[1] > GITHUB_RUN_NUMBER )); then
+              latest=false
+            fi
+            gh release create "$tag" dist/* -R "$GITHUB_REPOSITORY" --verify-tag --latest="$latest" --title "$tag" --notes 'Board-specific USB installation kits, launcher-only OTA binaries and SHA-256 manifests.'
           fi
