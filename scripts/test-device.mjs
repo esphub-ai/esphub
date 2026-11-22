@@ -529,6 +529,7 @@ try {
   const flushArgs = { device_id: watch.id, process_id: mqttBoot, request_id: randomUUID() };
   await assert.rejects(op("logs.flush", flushArgs), /Log recall requires/);
   await devicePost("frame", {t:"hello", board:"stopwatch", role:"app", boot_id:mqttBoot, log_flush:true});
+  await assert.rejects(op("logs.flush", {...flushArgs,process_id:randomUUID()}), /Boot, transport or request ID conflict/);
   const flush = await op("logs.flush", flushArgs);
   assert.equal((await op("logs.flush", flushArgs)).command_id, flush.command_id);
   const flushBoot = {boot_id:mqttBoot};

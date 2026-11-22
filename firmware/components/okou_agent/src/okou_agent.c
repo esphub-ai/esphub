@@ -104,6 +104,7 @@ static volatile bool s_ws_up, s_hello_acked, s_ws_broken, s_reload;
 static int64_t s_conn_start_us, s_up_since_us, s_last_rx_us, s_last_ping_us, s_last_flush_us, s_next_connect_us;
 static int64_t s_next_log_batch_us = MQTT_LOG_INTERVAL_US;
 static uint32_t s_log_batch_through;
+static cJSON *s_log_request_id;
 static uint32_t s_backoff_ms = 1000;
 static volatile int64_t s_reboot_at_us;
 static char s_boot_id[33];
@@ -663,34 +664,6 @@ static void flush_logs(void)
     }
 }
 
-// A batch stops at the sequence captured at its start, even if producers keep logging.
-static bool upload_log_frame(uint32_t through)
-{
-    size_t n = okou_log_build_frame(s_txbuf, CONFIG_OKOU_TX_FRAME_MAX, through);
-    if (n && send_text(s_txbuf, n)) {
-        okou_log_stats_t stats = okou_log_stats();
-        if (stats.last_acked == stats.last_sent) return true;
-    }
-    // The reconnect hello reconciles the cursor if the server persisted a lost ACK.
-    s_ws_broken = true;
-    return false;
-}
-
-static void service_mqtt_log_batch(int64_t now)
-{
-    if (s_ws_broken) return;
-    if (!s_log_batch_through && now >= s_next_log_batch_us) {
-        s_log_batch_through = okou_log_stats().last_written;
-        s_next_log_batch_us = now + MQTT_LOG_INTERVAL_US;
-    }
-    if (!s_log_batch_through) return;
-    if (okou_log_stats().last_acked >= s_log_batch_through) {
-        s_log_batch_through = 0;
-        return;
-    }
-    upload_log_frame(s_log_batch_through);
-}
-
 static void fmt_number(char *b, size_t n, double v)
 {
     if (!isfinite(v)) {
@@ -782,6 +755,44 @@ static void send_res(const cJSON *id, bool ok, cJSON *data, const char *err)
     if (s) {
         send_text(s, strlen(s));
         free(s);
+    }
+}
+
+// Drain a finite snapshot one frame per agent iteration. A recall may extend
+// an existing batch; urgent events, commands and scheduled reboots still run.
+static void service_mqtt_log_batch(int64_t now)
+{
+    if (s_ws_broken) return;
+    if (!s_log_request_id && !s_log_batch_through && now < s_next_log_batch_us) return;
+
+    okou_log_stats_t stats = okou_log_stats();
+    if (!s_log_batch_through && !s_log_request_id) {
+        s_log_batch_through = stats.last_written;
+        s_next_log_batch_us = now + MQTT_LOG_INTERVAL_US;
+    }
+    if (stats.last_acked < s_log_batch_through) {
+        size_t n = okou_log_build_frame(s_txbuf, CONFIG_OKOU_TX_FRAME_MAX, s_log_batch_through);
+        if (!n || !send_text(s_txbuf, n)) {
+            s_ws_broken = true;
+            return;
+        }
+        stats = okou_log_stats();
+        if (stats.last_acked != stats.last_sent) {
+            // Reconnect and replay from the acknowledged cursor.
+            s_ws_broken = true;
+            return;
+        }
+        if (stats.last_acked < s_log_batch_through) return;
+    }
+
+    s_log_batch_through = 0;
+    if (s_log_request_id) {
+        cJSON *data = cJSON_CreateObject();
+        bool ok = data && cJSON_AddNumberToObject(data, "last_acked_seq", stats.last_acked) &&
+                  cJSON_AddNumberToObject(data, "dropped_lines", stats.dropped);
+        send_res(s_log_request_id, ok, data, "Cannot allocate log receipt");
+        cJSON_Delete(s_log_request_id);
+        s_log_request_id = NULL;
     }
 }
 
@@ -920,22 +931,15 @@ static void handle_req(const cJSON *root)
         }
     }
     if (s_iot && strcmp(op, "logs.flush") == 0) {
-        okou_log_stats_t stats = okou_log_stats();
-        uint32_t through = stats.last_written;
-        while (stats.last_acked < through && upload_log_frame(through)) {
-            drain_txq(); // Prioritize queued receipts and OTA events between log frames.
-            stats = okou_log_stats();
-        }
-        if (stats.last_acked >= through) {
-            s_log_batch_through = 0;
+        s_log_request_id = cJSON_Duplicate(id, false);
+        if (s_log_request_id) {
+            s_log_batch_through = okou_log_stats().last_written;
             s_next_log_batch_us = now_us() + MQTT_LOG_INTERVAL_US;
-            cJSON_AddNumberToObject(data, "last_acked_seq", stats.last_acked);
-            cJSON_AddNumberToObject(data, "dropped_lines", stats.dropped);
-            r = ESP_OK;
-        } else {
-            snprintf(err, sizeof(err), "Log upload was not acknowledged");
-            r = ESP_FAIL;
+            cJSON_Delete(data);
+            return; // Respond after the captured sequence has been acknowledged.
         }
+        r = ESP_ERR_NO_MEM;
+        snprintf(err, sizeof(err), "Cannot allocate log receipt");
     } else if (strcmp(op, "status") == 0) {
         hello_fill(data);
         okou_net_info(data);
@@ -1378,7 +1382,7 @@ static void agent_task(void *arg)
                 } else if (!generation || send_text(report, strlen(report))) s_ble_sync_needed = false;
             }
 #endif
-            if (s_iot && s_pull_due && s_hello_acked && (!s_inflight_id[0] || now >= s_inflight_until)) {
+            if (s_iot && s_pull_due && !s_log_request_id && s_hello_acked && (!s_inflight_id[0] || now >= s_inflight_until)) {
                 s_pull_due = false;
                 pull_commands();
             }
