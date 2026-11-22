@@ -6,7 +6,7 @@ idf_component_register(
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "src"
     REQUIRES esp_partition esp_http_client json esp_event
-    PRIV_REQUIRES bt mqtt app_update nvs_flash esp_netif esp_wifi esp_eth esp_timer esp-tls mbedtls
+    PRIV_REQUIRES esp_pm bt mqtt app_update nvs_flash esp_netif esp_wifi esp_eth esp_timer esp-tls mbedtls
                   esp_app_format esp_system log heap esp_driver_gpio espressif__esp_websocket_client)
 
 if(CONFIG_OKOU_QEMU_SYSTEM_RESET)

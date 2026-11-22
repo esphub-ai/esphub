@@ -23,6 +23,7 @@
 #include "mbedtls/platform_util.h"
 #include "psa/crypto.h"
 
+#define BOOT_SCAN_MS 12000
 #define IO_CHUNK 20
 #define NO_CONN BLE_HS_CONN_HANDLE_NONE
 static const ble_uuid128_t service = BLE_UUID128_INIT(0x01, 0x21, 0x91, 0xfa, 0x24, 0x77, 0x10, 0xae, 0x1f,
@@ -70,7 +71,7 @@ static unsigned read_key(uint8_t *out)
 }
 
 unsigned okou_ble_generation(void) { return read_key(NULL); }
-bool okou_ble_busy(void) { return connection != NO_CONN; }
+bool okou_ble_busy(void) { return matched || connection != NO_CONN; }
 
 esp_err_t okou_ble_install(unsigned gen, const char *hex, bool usb)
 {
@@ -270,18 +271,22 @@ end:
 static void radio(void *unused)
 {
     worker = xTaskGetCurrentTaskHandle();
-    for (;;) {
+    const int64_t deadline = esp_timer_get_time() + BOOT_SCAN_MS * 1000LL;
+    while (esp_timer_get_time() < deadline) {
         if (!synced || !(scan_generation = read_key(root_key))) {
             vTaskDelay(pdMS_TO_TICKS(500));
             continue;
         }
         matched = false;
         struct ble_gap_disc_params scan = {.itvl = 320, .window = 48, .passive = 0};
-        if (ble_gap_disc(address_type, 3000, &scan, gap_event, NULL)) {
+        int remaining_ms = (deadline - esp_timer_get_time()) / 1000;
+        if (remaining_ms <= 0) break;
+        int scan_ms = remaining_ms < 3000 ? remaining_ms : 3000;
+        if (ble_gap_disc(address_type, scan_ms, &scan, gap_event, NULL)) {
             vTaskDelay(pdMS_TO_TICKS(500));
             continue;
         }
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(3100));
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(scan_ms + 100));
         ble_gap_disc_cancel();
         if (!matched || okou_ble_generation() != scan_generation) continue;
         xStreamBufferReset(rx);
@@ -302,8 +307,17 @@ static void radio(void *unused)
         while (connection != NO_CONN)
             vTaskDelay(pdMS_TO_TICKS(50));
         ulTaskNotifyTake(pdTRUE, 0);
-        mbedtls_platform_zeroize(session_key, sizeof(session_key));
+        break;
     }
+    // Wait for host callbacks to finish before releasing their stream buffers.
+    if (nimble_port_stop() == 0 && nimble_port_deinit() == ESP_OK) {
+        vStreamBufferDelete(rx);
+        vStreamBufferDelete(tx);
+    }
+    matched = false;
+    mbedtls_platform_zeroize(session_key, sizeof(session_key));
+    mbedtls_platform_zeroize(root_key, sizeof(root_key));
+    vTaskDelete(NULL);
 }
 
 static void on_sync(void) { synced = ble_hs_id_infer_auto(0, &address_type) == 0; }
@@ -320,9 +334,7 @@ static void host_task(void *arg)
 
 static void launch_nimble(void *arg)
 {
-    // Fresh kits receive the key over USB after the launcher has started.
-    while (!okou_ble_generation())
-        vTaskDelay(pdMS_TO_TICKS(500));
+    // The USB bootstrap key takes effect on the next boot.
     rx = xStreamBufferCreate(4096, 1);
     tx = xStreamBufferCreate(4096, 1);
     if (!key_lock || !rx || !tx || psa_crypto_init() != PSA_SUCCESS || nimble_port_init() != ESP_OK) {
@@ -347,6 +359,7 @@ static void launch_nimble(void *arg)
 void okou_ble_start(void)
 {
     key_lock = xSemaphoreCreateMutex();
+    if (!okou_ble_generation()) return;
     if (!key_lock || xTaskCreate(launch_nimble, "ble_init", 4096, NULL, 3, NULL) != pdPASS)
         ESP_LOGE("ble_wifi", "cannot start BLE initialization");
 }

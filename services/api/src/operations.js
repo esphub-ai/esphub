@@ -73,7 +73,7 @@ const defs = [
   [
     "wifi.ble_credential",
     additive,
-    "Issue a private BLE provisioning credential for the registered Paper Color. Pass directly to the local host tool; do not display or log it.",
+    "Issue a private BLE provisioning credential for the registered Paper Color. Pass privately to the local host tool. Wait for Beacon ready, then restart the board.",
     id,
   ],
   [

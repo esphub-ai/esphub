@@ -119,6 +119,7 @@ static void log_push(char level, const char *text, size_t len)
         s_dropped_total++;
     }
     portEXIT_CRITICAL_SAFE(&s_mux);
+    okou_agent_notify();
 }
 
 /* "I (1234) tag: msg\n" -> level 'I', text "tag: msg". Anything else -> 'O'. */
@@ -205,6 +206,14 @@ esp_err_t okou_log_init(void)
         s_orig = &vprintf;
     }
     return ESP_OK;
+}
+
+bool okou_log_pending(void)
+{
+    portENTER_CRITICAL(&s_mux);
+    bool pending = s_w != s_s;
+    portEXIT_CRITICAL(&s_mux);
+    return pending;
 }
 
 size_t okou_log_build_frame(char *buf, size_t cap)

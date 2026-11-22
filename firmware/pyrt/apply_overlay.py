@@ -60,7 +60,9 @@ edit("main.c", """    for (;;) {
      * enabled while the native agent remains available for OTA and recovery. */
     for (;;) {
         mp_handle_pending(false);
-        vTaskDelay(pdMS_TO_TICKS(20));
+        MP_THREAD_GIL_EXIT();
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
+        MP_THREAD_GIL_ENTER();
     }
 """)
 

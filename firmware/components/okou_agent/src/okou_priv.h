@@ -51,5 +51,7 @@ void okou_hex(const uint8_t *in, size_t n, char *out);
 cJSON *okou_partitions_json(void);
 
 /* ---- agent (okou_agent.c) ---- */
+void okou_agent_notify(void);
+bool okou_log_pending(void);
 cJSON *okou_hello_fields(void); /* hello object without "t" */
 extern okou_config_t g_okou_cfg;

@@ -106,7 +106,12 @@ async def provision(credential):
         candidates = [credential]
         if credential.get("alternate"):
             candidates.append(credential["alternate"])
-        for candidate in candidates:
+        # A board listens only at boot. Cycle the two possible key generations
+        # inside that window while the user restarts the board.
+        deadline = asyncio.get_running_loop().time() + 90
+        attempt = 0
+        while asyncio.get_running_loop().time() < deadline:
+            candidate = candidates[attempt % len(candidates)]
             beacon = uuid.UUID(hex=candidate["beacon"])
             key = bytes.fromhex(candidate["psk"])
             if len(key) != 32:
@@ -125,16 +130,19 @@ async def provision(credential):
                     await asyncio.sleep(0.05)
             if delegate.failed:
                 raise RuntimeError("macOS declined Bluetooth advertising")
+            if attempt == 0:
+                print("Beacon ready. Restart the Paper Color now.", file=sys.stderr, flush=True)
+            attempt += 1
             device = await BleakScanner.find_device_by_filter(
                 lambda _, adv: reply in adv.service_uuids,
-                timeout=20 if len(candidates) > 1 else 40,
+                timeout=3 if len(candidates) > 1 else 90,
                 service_uuids=[reply],
             )
             manager.stopAdvertising()
             if device:
                 break
         else:
-            raise RuntimeError("No matching board replied to the beacon")
+            raise RuntimeError("No matching board replied. Run again and restart the board after Beacon ready.")
         async with BleakClient(device) as ble:
             session = Channel(ble, key)
             async with asyncio.timeout(45):

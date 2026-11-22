@@ -20,6 +20,7 @@ static void signal_event(unsigned mask)
     portENTER_CRITICAL(&event_lock);
     events |= mask;
     portEXIT_CRITICAL(&event_lock);
+    okou_agent_notify();
 }
 unsigned okou_iot_events(void)
 {

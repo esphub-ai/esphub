@@ -20,6 +20,8 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_pm.h"
+#include "freertos/semphr.h"
 #include "esp_random.h"
 #include "esp_system.h"
 #include "esp_app_desc.h"
@@ -78,6 +80,19 @@ struct okou_req {
     cJSON *id;
 };
 
+// A binary semaphore latches work arriving between a state check and sleep.
+static SemaphoreHandle_t s_wake;
+void okou_agent_notify(void)
+{
+    if (!s_wake) return;
+    if (xPortInIsrContext()) {
+        BaseType_t higher = pdFALSE;
+        xSemaphoreGiveFromISR(s_wake, &higher);
+        if (higher) portYIELD_FROM_ISR();
+    } else {
+        xSemaphoreGive(s_wake);
+    }
+}
 static QueueHandle_t s_rxq, s_txq, s_pollq;
 static esp_websocket_client_handle_t s_ws;
 static volatile uint32_t s_gen;
@@ -257,6 +272,7 @@ bool okou_ws_connected(void)
 void okou_agent_reload_config(void)
 {
     s_reload = true;
+    okou_agent_notify();
 }
 
 void okou_schedule_reboot(uint32_t delay_ms)
@@ -265,6 +281,7 @@ void okou_schedule_reboot(uint32_t delay_ms)
     portENTER_CRITICAL(&s_rmux);
     s_reboot_at_us = t;
     portEXIT_CRITICAL(&s_rmux);
+    okou_agent_notify();
 }
 
 static esp_err_t op_register(const char *op, okou_op_handler_t handler, okou_op_async_handler_t ahandler)
@@ -305,6 +322,8 @@ static void txq_push(char *frame)
     if (xQueueSend(s_txq, &frame, 0) != pdTRUE) {
         free(frame);
         s_events_dropped++;
+    } else {
+        okou_agent_notify();
     }
 }
 
@@ -347,6 +366,7 @@ void okou_metric(const char *name, double value)
     s_metrics[idx].ms = ms;
     s_metrics[idx].v = value;
     portEXIT_CRITICAL_SAFE(&s_mmux);
+    okou_agent_notify();
 }
 
 /* ------------------------------------------------------------------ hello / status */
@@ -483,12 +503,14 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *event_d
     case WEBSOCKET_EVENT_CONNECTED:
         m.type = M_CONNECTED;
         xQueueSend(s_rxq, &m, 0);
+        okou_agent_notify();
         break;
     case WEBSOCKET_EVENT_DISCONNECTED:
     case WEBSOCKET_EVENT_ERROR:
     case WEBSOCKET_EVENT_CLOSED:
         m.type = M_DISCONNECTED;
         xQueueSend(s_rxq, &m, 0);
+        okou_agent_notify();
         break;
     case WEBSOCKET_EVENT_DATA:
         if (d->op_code != 0x1 && !(d->op_code == 0x0 && d->payload_offset > 0)) {
@@ -519,6 +541,8 @@ static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *event_d
                 m.data[m.len] = '\0';
                 if (xQueueSend(s_rxq, &m, 0) != pdTRUE) {
                     free(m.data);
+                } else {
+                    okou_agent_notify();
                 }
             }
             if (s_rx_acc_cap > 2048) { /* do not keep large buffers around */
@@ -1196,7 +1220,7 @@ static void agent_task(void *arg)
 {
     for (;;) {
         msg_t m;
-        if (xQueueReceive(s_rxq, &m, pdMS_TO_TICKS(50)) == pdTRUE) {
+        if (xQueueReceive(s_rxq, &m, 0) == pdTRUE) {
             if (m.gen != s_gen) {
                 free(m.data); /* stale client */
             } else if (m.type == M_CONNECTED) {
@@ -1336,9 +1360,24 @@ static void agent_task(void *arg)
         portENTER_CRITICAL(&s_rmux);
         int64_t rb = s_reboot_at_us;
         portEXIT_CRITICAL(&s_rmux);
-        if (rb && now >= rb) {
-            do_reboot();
+        if (rb && now >= rb) do_reboot();
+
+        // Housekeeping is bounded to one second. Transport and producer callbacks
+        // wake us immediately. Keep shorter deadlines for batching and delayed reboot.
+        now = now_us();
+        int64_t deadline = now + 1000000;
+        if (rb && rb < deadline) deadline = rb;
+        if (s_ws_up && !s_iot && s_hello_acked && last_uart_poll + 1500000 < deadline)
+            deadline = last_uart_poll + 1500000;
+        if (s_ws_up) {
+            portENTER_CRITICAL(&s_mmux);
+            bool metrics = s_mcount != 0;
+            portEXIT_CRITICAL(&s_mmux);
+            if ((metrics || okou_log_pending()) && s_last_flush_us + FLUSH_INTERVAL_US < deadline)
+                deadline = s_last_flush_us + FLUSH_INTERVAL_US;
         }
+        if (deadline > now && !uxQueueMessagesWaiting(s_rxq))
+            xSemaphoreTake(s_wake, pdMS_TO_TICKS((deadline - now) / 1000) + 1);
     }
 }
 
@@ -1369,6 +1408,17 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     if (cfg) {
         g_okou_cfg = *cfg;
     }
+    s_wake = xSemaphoreCreateBinary();
+    if (!s_wake) return ESP_ERR_NO_MEM;
+#if CONFIG_PM_ENABLE
+    esp_pm_config_t pm = {
+        .max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
+        .min_freq_mhz = CONFIG_XTAL_FREQ,
+        .light_sleep_enable = true,
+    };
+    esp_err_t pm_err = esp_pm_configure(&pm);
+    if (pm_err != ESP_OK) ESP_LOGW(TAG, "Power management unavailable: %s", esp_err_to_name(pm_err));
+#endif
     esp_err_t e = okou_log_init();
     if (e != ESP_OK) {
         return e;

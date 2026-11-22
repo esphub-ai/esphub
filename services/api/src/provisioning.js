@@ -9,7 +9,7 @@ export function provisioning(board) {
       ...(board === "paper-color"
         ? [
             'Send OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret>"} with a newline over USB at 115200. Use the values returned at registration. Wait for OKL-PROVISION-OK. Keep the response private.',
-            "On the Mac, pass wifi.ble_credential to tools/ble-wifi/macos.py as private JSON on stdin. Select a listed network or enter a hidden SSID, then enter its password locally.",
+            "On the Mac, pass wifi.ble_credential to tools/ble-wifi/macos.py as private JSON on stdin. Wait for Beacon ready, then have the user restart the Paper Color. Select a listed network or enter a hidden SSID, then enter its password locally.",
           ]
         : [
             "Open the launcher USB serial port at 115200 baud and send wifi scan followed by a newline. Number the device's results. Ask which number to join, or accept a hidden SSID. Collect the password privately on the host for a secured network.",

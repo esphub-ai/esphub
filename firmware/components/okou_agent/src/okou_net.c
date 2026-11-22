@@ -47,6 +47,7 @@ static void on_got_ip(void *arg, esp_event_base_t base, int32_t id, void *data)
         s_netif = ev->esp_netif;
     }
     s_has_ip = true;
+    okou_agent_notify();
     ESP_LOGI(OKOU_TAG, "got ip %s", s_ip);
 #if !CONFIG_OKOU_NET_OPENETH
     if (s_managed) {
@@ -59,6 +60,7 @@ static void on_lost_ip(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     s_has_ip = false;
     s_ip[0] = '\0';
+    okou_agent_notify();
 }
 
 #if !CONFIG_OKOU_NET_OPENETH

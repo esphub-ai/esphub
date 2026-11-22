@@ -26,4 +26,8 @@ runs:
         fi
         idf.py "${args[@]}" -DIDF_TARGET="$CHIP" -DPROJECT_VER="$VERSION" \
           -DSDKCONFIG_DEFAULTS="$defaults" build
+        config=sdkconfig
+        if [[ "$FRESH_LAYOUT" == true ]]; then config=sdkconfig.setup; fi
+        grep -Fx "CONFIG_PM_ENABLE=y" "$config"
+        grep -Fx "CONFIG_FREERTOS_USE_TICKLESS_IDLE=y" "$config"
         python ../../scripts/package-launcher.py "$BOARD" "$VERSION" "${package[@]}"

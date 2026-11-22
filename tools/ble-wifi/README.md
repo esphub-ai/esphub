@@ -16,7 +16,7 @@ python3.13 -m venv .venv
 .venv/bin/python tools/ble-wifi/macos.py --device DEVICE_UUID
 ```
 
-The host requests `wifi.ble_credential` from MCP. Alternatively, pipe that tool's private JSON response directly to the script on stdin and omit `--device`. Keep all credential responses private. Select the SSID in the terminal and enter its password at the hidden prompt. The device scans and attempts the connection itself. It reports successful association with an IP and saves the network. An unsuccessful attempt preserves the saved list and can be retried. Check `devices.get` separately for hub reachability.
+The host requests `wifi.ble_credential` from MCP. Alternatively, pipe that tool's private JSON response directly to the script on stdin and omit `--device`. Keep all credential responses private. Wait for **Beacon ready**, then restart the Paper Color. A board provisioned over USB reads the saved key at startup, scans for up to 12 seconds and powers down BLE after discovery times out or the provisioning session ends. To retry, restart the host tool and then the board. Select the SSID in the terminal and enter its password at the hidden prompt. The device scans and attempts the connection itself. It reports successful association with an IP and saves the network. An unsuccessful attempt preserves the saved list and can be retried. Check `devices.get` separately for hub reachability.
 
 ## Wire protocol
 
