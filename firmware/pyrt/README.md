@@ -7,3 +7,5 @@ The launcher accepts the device token and BLE bootstrap key over USB and provisi
 The separate StopWatch launcher-only USB kit retains the legacy storage layout. Its application slot and filesystem are incompatible with the fresh-device runtime. Use the first-time setup layout for Python OTA. The runtime accepts application data through okou.read_input() and writes print() output to USB and ESP Hub. Python deployments use launcher HTTPS OTA.
 
 In the device workspace, **Firmware** shows the launcher, interpreter and runtime build separately. On boot the runtime snapshots the selected `/flash/main.py` after staging and validation, then sends it over authenticated HTTPS after the Hub acknowledges the boot. The device owner can read that snapshot offline in Firmware or with `programs.get`. Source is limited to 32 KiB and kept out of boot metadata and serial logs. Older runtimes without snapshots report source as unavailable.
+
+The launcher leaves the board power controller in its existing state. On StopWatch, an application that arms the M5PM1 watchdog must disarm it before handing control to the launcher for an update.

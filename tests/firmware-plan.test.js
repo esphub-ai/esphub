@@ -71,7 +71,7 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   addBoard("paper-color");
   addBoard("stopwatch");
   let before = snapshot();
-  put("firmware/boards/stopwatch/launcher/board.c", "void board_init(void) {}");
+  put("firmware/boards/stopwatch/launcher/sdkconfig.defaults", "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y");
   let after = snapshot();
   assert.deepEqual(select(before, after), { stopwatch: ["launcher", "setup"] });
   before = after;

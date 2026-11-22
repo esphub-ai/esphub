@@ -59,7 +59,6 @@ static const esp_partition_t *app_partition_with_image(void)
 
 void app_main(void)
 {
-    board_init();
     ESP_ERROR_CHECK(okou_nvs_init());
     const esp_partition_t *run = esp_ota_get_running_partition();
     esp_ota_img_states_t st;
