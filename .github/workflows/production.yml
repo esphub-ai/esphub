@@ -26,9 +26,23 @@ jobs:
       - run: npm run migrate && npm run migrate
       - run: npm test && npm run build && node scripts/local-e2e.mjs
       - run: npx wrangler deploy --dry-run -c services/api/wrangler.jsonc && npx wrangler deploy --dry-run -c services/web/wrangler.jsonc
-  deploy:
+  migrate:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 24, cache: npm}
+      - run: npm ci
+      - name: Migrate production Neon database
+        run: npm run migrate
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: migrate
     runs-on: ubuntu-latest
     concurrency: {group: esphub-production, cancel-in-progress: false}
     environment: production
@@ -49,8 +63,6 @@ jobs:
           done
       - name: Ensure production UART bucket exists
         run: node scripts/ensure-bucket.mjs
-      - name: Migrate production Neon database
-        run: npm run migrate
       - name: Deploy API and device broker
         run: |
           umask 077
