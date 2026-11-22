@@ -1,7 +1,24 @@
-import {
-  startRegistration,
-  startAuthentication,
-} from "@simplewebauthn/browser";
+import { issuer, portal, application } from "../../../shared/identity.js";
+let clerk;
+async function loadClerk() {
+  const script = document.createElement("script");
+  script.src = issuer + "/npm/@clerk/clerk-js@6/dist/clerk.browser.js";
+  script.crossOrigin = "anonymous";
+  script.dataset.clerkPublishableKey =
+    "pk_live_" + btoa(new URL(issuer).host + "$");
+  await new Promise((resolve, reject) => {
+    script.onload = resolve;
+    script.onerror = () => reject(Error("Unable to load Clerk sign-in"));
+    document.head.append(script);
+  });
+  clerk = window.Clerk;
+  await clerk.load();
+}
+function hostedPage(path, returnTo) {
+  const url = new URL(path, portal);
+  url.searchParams.set("redirect_url", returnTo);
+  return url.href;
+}
 const $ = (s) => document.querySelector(s),
   main = $("#main");
 const esc = (v) =>
@@ -56,9 +73,13 @@ function notify(text) {
   timer = setTimeout(() => $("#toast").classList.add("hide"), 5000);
 }
 async function api(path, data) {
+  const jwt = await clerk?.session?.getToken();
   const r = await fetch("/backend" + path, {
     method: data === undefined ? "GET" : "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(jwt ? { Authorization: "Bearer " + jwt } : {}),
+    },
     body: data === undefined ? undefined : JSON.stringify(data),
   });
   const j = await r.json();
@@ -101,7 +122,7 @@ function hero() {
   main.innerHTML =
     '<section class="hero"><div><div class="kicker">ESP32 device operations</div><h1>Your boards.<br><span class="accent">Within reach.</span></h1><p class="lead">Provision over USB, manage firmware and open a remote serial console from your browser or an MCP client.</p><div class="actions">' +
     link("/devices", "Open the console ↗", true) +
-    link("/mcp", "MCP reference →") +
+    link(hostedPage("/sign-up", application + "/devices"), "Create account") +
     '</div></div><div class="art"><div class="halo"></div><img src="/esp32s3-e926c2315ec8.webp" alt="Espressif ESP32-S3 development board"><div class="meta"><span>HARDWARE PROFILE</span><span>ESPRESSIF</span></div><span class="caption">ESP32-S3 / DEVKITC-1</span><span class="cross">+</span></div></section><div class="strip"><a href="/setup">↳ USB provisioning</a><a href="/devices">↳ Device console</a><a href="/streams">↳ Boot-scoped UART</a><a href="/mcp">↳ MCP endpoint</a></div><section class="dash"><div class="kicker">Launcher firmware</div><h2>Supported devices</h2><div class="board">' +
     Object.entries(boardName)
       .map(
@@ -122,39 +143,6 @@ function docs(title, body) {
     "</h1>" +
     body +
     "</section>";
-}
-function login() {
-  docs(
-    "Open your workspace",
-    '<p class="lead">Use a passkey to sign in or create a workspace.</p><form id="signin" class="panel" style="max-width:420px;margin:25px 0">' +
-      field(
-        "handle",
-        "Account handle",
-        "text",
-        'required minlength="3" maxlength="48" pattern="[a-z0-9_-]+"',
-      ) +
-      '<div class="actions"><button class="primary" value="login">Sign in</button><button value="register">Create account</button></div></form>',
-  );
-  $("#signin").onsubmit = async (e) => {
-    e.preventDefault();
-    const b = e.submitter,
-      mode = b.value;
-    b.disabled = true;
-    try {
-      const handle = new FormData(e.target).get("handle"),
-        o = await api("/auth/" + mode + "/options", { handle });
-      const response =
-        mode === "login"
-          ? await startAuthentication({ optionsJSON: o.options })
-          : await startRegistration({ optionsJSON: o.options });
-      await api("/auth/" + mode + "/verify", { id: o.id, response });
-      location.reload();
-    } catch (err) {
-      notify(err.message);
-    } finally {
-      b.disabled = false;
-    }
-  };
 }
 function row(d) {
   return (
@@ -400,8 +388,7 @@ async function action(k) {
     return;
   }
   if (k === "logout") {
-    await api("/auth/logout", {});
-    location.assign("/devices");
+    await clerk.signOut({ redirectUrl: "https://esphub.ai/" });
     return;
   }
   if (k === "key") {
@@ -656,11 +643,19 @@ async function start() {
     docs("Page not found", link("/", "Back to overview"));
     return;
   }
+  await loadClerk();
+  if (!clerk.session) {
+    location.replace(hostedPage("/sign-in", location.href));
+    return;
+  }
   try {
     user = await api("/auth/me");
   } catch (e) {
     if (e.status === 401) {
-      login();
+      docs(
+        "Session expired",
+        link(hostedPage("/sign-in", location.href), "Sign in again"),
+      );
       return;
     }
     throw e;
@@ -671,7 +666,11 @@ async function start() {
     docs(
       "Account",
       '<p class="lead">Signed in as ' +
-        esc(user.handle) +
+        esc(
+          clerk.user?.primaryEmailAddress?.emailAddress ||
+            clerk.user?.username ||
+            user.handle,
+        ) +
         '</p><div class="actions">' +
         button("key", "Issue MCP key", true) +
         button("logout", "Sign out") +

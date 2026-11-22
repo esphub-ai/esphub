@@ -2,9 +2,10 @@ import { releaseResponse } from "./releases.js";
 import { Hono } from "hono";
 import postgres from "postgres";
 import { neon } from "@neondatabase/serverless";
+import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
-import { installAuth, identify, digest, fail } from "./auth.js";
+import { installAuth, allowedOrigin, identify, digest, fail } from "./auth.js";
 import { operate, tools } from "./operations.js";
 export { Device } from "./device.js";
 const api = new Hono();
@@ -27,6 +28,15 @@ api.get("/releases/:board/:asset", (c) =>
 );
 api.use(
   "*",
+  cors({
+    origin: (origin, c) => (allowedOrigin(c, origin) ? origin : undefined),
+    credentials: true,
+    allowHeaders: ["Authorization", "Content-Type"],
+    allowMethods: ["GET", "POST", "OPTIONS"],
+  }),
+);
+api.use(
+  "*",
   bodyLimit({
     maxSize: 65536,
     onError: (c) => c.json({ error: "Payload too large" }, 413),
@@ -34,7 +44,7 @@ api.use(
 );
 api.use("*", async (c, next) => {
   const origin = c.req.header("Origin");
-  if (origin && origin !== c.env.APP_ORIGIN) fail(403, "Origin not allowed");
+  if (origin && !allowedOrigin(c, origin)) fail(403, "Origin not allowed");
   const uri = c.env.DATABASE_URL;
   const sql = new URL(uri).hostname.endsWith(".neon.tech")
     ? neon(uri)
@@ -48,14 +58,8 @@ api.use("*", async (c, next) => {
   if (c.res.status !== 101) c.header("Cache-Control", "no-store");
 });
 api.use("/auth/*", async (c, next) => {
-  if (c.req.method === "POST" && c.req.header("Origin") !== c.env.APP_ORIGIN)
+  if (c.req.method === "POST" && !allowedOrigin(c, c.req.header("Origin")))
     fail(403, "Browser origin required");
-  if (c.req.path.endsWith("/options") && c.env.AUTH_LIMIT) {
-    const r = await c.env.AUTH_LIMIT.limit({
-      key: c.req.header("CF-Connecting-IP") || "unknown",
-    });
-    if (!r.success) fail(429, "Try again later");
-  }
   await next();
 });
 installAuth(api);
@@ -77,7 +81,7 @@ api.get("/api/device/connect", async (c) => {
 });
 api.post("/operations/:name", async (c) => {
   const user = await identify(c);
-  if (user.kind === "session" && c.req.header("Origin") !== c.env.APP_ORIGIN)
+  if (user.kind === "session" && !allowedOrigin(c, c.req.header("Origin")))
     fail(403, "Browser origin required");
   return c.json(
     await operate(c, user.owner, c.req.param("name"), await c.req.json()),

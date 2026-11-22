@@ -5,9 +5,12 @@ export default {
       local = ["localhost", "127.0.0.1"].includes(u.hostname);
     if (!local && !domains.has(u.hostname))
       return new Response("Unknown host", { status: 404 });
+    if (["/sign-in", "/sign-up"].includes(u.pathname)) {
+      const url = new URL(u.pathname, "https://accounts.esphub.ai");
+      url.searchParams.set("redirect_url", "https://app.esphub.ai/devices");
+      return Response.redirect(url.href, 302);
+    }
     if (u.pathname.startsWith("/backend/")) {
-      if (!local && u.hostname !== "app.esphub.ai")
-        return new Response("Not found", { status: 404 });
       u.pathname = u.pathname.slice(8);
       return env.API.fetch(new Request(u, req));
     }
@@ -32,7 +35,7 @@ export default {
     out.headers.set("X-Content-Type-Options", "nosniff");
     out.headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+      "default-src 'self'; script-src 'self' https://clerk.esphub.ai https://challenges.cloudflare.com https://*.protect.clerk.com; frame-src 'self' https://challenges.cloudflare.com https://*.protect.clerk.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://clerk.esphub.ai https://api.esphub.ai https://*.protect.clerk.com:*; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
     );
     return out;
   },

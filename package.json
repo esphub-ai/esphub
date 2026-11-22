@@ -26,9 +26,8 @@
   "private": true,
   "dependencies": {
     "@neondatabase/serverless": "^1.2.1",
-    "@simplewebauthn/browser": "^14.0.0",
-    "@simplewebauthn/server": "^14.1.0",
     "hono": "^4.13.19",
+    "jose": "^6.2.18",
     "postgres": "^4.1.1"
   },
   "devDependencies": {

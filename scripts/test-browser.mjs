@@ -1,6 +1,8 @@
 import { chromium } from "playwright-core";
 import WebSocket from "ws";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
 const origin = process.env.TEST_SITE_URL;
 if (!origin || !["localhost", "127.0.0.1"].includes(new URL(origin).hostname))
@@ -9,6 +11,29 @@ const browser = await chromium.launch({
   executablePath: process.env.CHROME_BIN || "/usr/bin/google-chrome",
   args: ["--no-sandbox", "--no-proxy-server"],
 });
+const issuer = "http://127.0.0.1:" + (Number(new URL(origin).port) + 1);
+const keys = await generateKeyPair("RS256", { extractable: true });
+const jwk = {
+  ...(await exportJWK(keys.publicKey)),
+  kid: "test",
+  alg: "RS256",
+  use: "sig",
+};
+const server = createServer((req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify({ keys: [jwk] }));
+});
+await new Promise((resolve) =>
+  server.listen(Number(new URL(issuer).port), "127.0.0.1", resolve),
+);
+const session = { sid: "sess_qa", azp: origin };
+const jwt = await new SignJWT(session)
+  .setProtectedHeader({ alg: "RS256", kid: "test" })
+  .setSubject("user_" + randomUUID().replaceAll("-", ""))
+  .setIssuer(issuer)
+  .setIssuedAt()
+  .setExpirationTime("5m")
+  .sign(keys.privateKey);
 let ws;
 try {
   const page = await browser.newPage({
@@ -16,23 +41,71 @@ try {
   });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send("WebAuthn.enable");
-  await cdp.send("WebAuthn.addVirtualAuthenticator", {
-    options: {
-      protocol: "ctap2",
-      transport: "internal",
-      hasResidentKey: true,
-      hasUserVerification: true,
-      isUserVerified: true,
-      automaticPresenceSimulation: true,
-    },
+  // Run the production origin policy against locally signed fixture sessions.
+  const subject = "user_" + randomUUID().replaceAll("-", "");
+  for (const azp of [
+    "https://esphub.ai",
+    "https://www.esphub.ai",
+    "https://app.esphub.ai",
+    "https://api.esphub.ai",
+    "https://untrusted.esphub.ai",
+  ]) {
+    const t = await new SignJWT({ sid: "sess_fixture", azp })
+      .setProtectedHeader({ alg: "RS256", kid: "test" })
+      .setSubject(subject)
+      .setIssuer(issuer)
+      .setIssuedAt()
+      .setExpirationTime("2m")
+      .sign(keys.privateKey);
+    const result = await fetch(origin + "/backend/auth/me", {
+      headers: {
+        Origin: "https://www.esphub.ai",
+        Authorization: "Bearer " + t,
+      },
+    });
+    assert.equal(result.status, azp.includes("untrusted") ? 401 : 200);
+    assert.equal(
+      result.headers.get("Access-Control-Allow-Origin"),
+      "https://www.esphub.ai",
+    );
+  }
+  const invalid = await fetch(origin + "/backend/auth/me", {
+    headers: { Cookie: "__session=" + jwt + "corrupt" },
   });
+  assert.equal(invalid.status, 401);
+  let signedIn = false;
+  await page.route("https://clerk.esphub.ai/npm/**", (route) =>
+    route.fulfill({
+      contentType: "application/javascript",
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body:
+        "window.Clerk={load:async()=>{},session:" +
+        (signedIn
+          ? "{getToken:async()=>" + JSON.stringify(jwt) + "}"
+          : "null") +
+        ",signOut:async()=>location.assign('/signed-out')}",
+    }),
+  );
+  await page.route("https://accounts.esphub.ai/**", (route) =>
+    route.fulfill({ contentType: "text/html", body: "Hosted sign-in" }),
+  );
   await page.goto(origin);
+  assert.equal(
+    new URL(
+      await page
+        .getByRole("link", { name: "Create account" })
+        .getAttribute("href"),
+    ).pathname,
+    "/sign-up",
+  );
   await page.getByText("Open the console").click();
-  const handle = "qa-" + randomUUID().slice(0, 8);
-  await page.locator("[name=handle]").fill(handle);
-  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("https://accounts.esphub.ai/sign-in?**");
+  assert.equal(
+    new URL(page.url()).searchParams.get("redirect_url"),
+    origin + "/devices",
+  );
+  signedIn = true;
+  await page.goto(origin + "/devices");
   await page.getByText("+ Add device").click();
   await page.locator("[name=name]").fill("Paper Color · integration");
   await page.getByRole("button", { name: "Register", exact: true }).click();
@@ -99,9 +172,7 @@ try {
   await page.locator("#result").filter({ hasText: "[]" }).waitFor();
   await page.goto(origin + "/account");
   await page.getByRole("button", { name: "Sign out" }).click();
-  await page.locator("[name=handle]").fill(handle);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.getByText("+ Add device").waitFor();
+  await page.waitForURL(origin + "/signed-out");
   await page.setViewportSize({ width: 390, height: 844 });
   for (const p of ["/", "/devices", "/setup", "/streams", "/mcp"]) {
     await page.goto(origin + p);
@@ -126,9 +197,10 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS browser passkey registration and sign-in, live serial round trip, tool explorer, deletion, mobile navigation",
+    "PASS hosted sign-in and sign-up routing, signed session verification, live serial round trip, tool explorer, deletion, mobile navigation",
   );
 } finally {
   ws?.close();
   await browser.close();
+  server.close();
 }

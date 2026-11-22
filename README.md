@@ -23,7 +23,7 @@ Wait for OKL-PROVISION-OK and the real device hello. The token is accepted only 
 
 ## Console and authentication
 
-Browser accounts use platform passkeys. The API verifies challenges, relying-party ID and origin, and issues a secure HTTP-only session. The website proxies same-origin API requests via a Worker service binding. Issue a developer bearer key from Account to use MCP. Reissuing a key revokes the previous key. A device token cannot access operator tools.
+Browser sign-in and sign-up use the Clerk production Account Portal at accounts.esphub.ai. Clerk manages sessions across the esphub.ai root domain. The API checks the token signature against clerk.esphub.ai, issuer, expiry and an exact allowed browser origin before mapping a Clerk user ID to a Neon account. The website forwards same-origin requests through its API Worker binding. Issue a developer bearer key from Account to use MCP. Reissuing a key revokes the previous key. A device token cannot access operator tools.
 
 Neon stores registrations, hashed credentials and ownership. Each device has a Durable Object coordinating the active WebSocket and serial writes. R2 stores RX and TX at devices/{device UUID}/{boot ID}/uart/{rx,tx}. Each small manifest points to the committed record count in bounded 64-record pages. The device polls its RX cursor over its authenticated socket. TX clients poll independently. Writes have an idempotency key and target one live boot. An old boot is read-only. A queued record is not proof of command success. The launcher executes complete command lines; a MicroPython application must include the terminal hook in the application runtime.
 

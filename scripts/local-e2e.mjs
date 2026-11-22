@@ -11,7 +11,12 @@ for (const worker of ["web", "api"]) {
   const root = "services/" + worker + "/",
     cfg = JSON.parse(await readFile(root + "wrangler.jsonc", "utf8"));
   delete cfg.routes;
-  if (worker === "api") cfg.vars = { APP_ORIGIN: base, DATABASE_URL: db };
+  if (worker === "api")
+    cfg.vars = {
+      APP_ORIGIN: base,
+      DATABASE_URL: db,
+      CLERK_ISSUER: "http://127.0.0.1:" + (port + 1),
+    };
   const file = root + "wrangler.e2e.json";
   await writeFile(file, JSON.stringify(cfg), { mode: 0o600 });
   configs.push(file);
