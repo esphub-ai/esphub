@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include "esp_err.h"
+#include "okou_hub.h"
 #include "esp_partition.h"
 #include "esp_http_client.h"
 #include "cJSON.h"
@@ -72,9 +73,9 @@ void okou_event_json(const char *name, cJSON *data);
 /* Last validated launcher slot (okl/lslot), else factory/launcher_a/launcher_b with an image. */
 const esp_partition_t *okou_launcher_partition(void);
 
-/* Hub base URL for HTTP downloads: "https://<host>" or "http://host:port" (dev mode). */
+/* Builds https://<host> from the registered plain hostname. */
 esp_err_t okou_hub_http_base(char *buf, size_t len);
-/* Adds CF-Access-* (or X-Dev-Client-Id in dev mode) headers to an HTTP request. */
+/* Adds the registered device bearer token to a hub HTTPS request. */
 void okou_http_apply_auth(esp_http_client_handle_t client);
 
 /* Graceful reboot from the agent task after `delay_ms` (flushes logs, closes the socket). */

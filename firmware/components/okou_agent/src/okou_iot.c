@@ -59,7 +59,7 @@ static esp_err_t receive(esp_http_client_event_t *e)
 static cJSON *post(const char *operation, cJSON *body, int *status)
 {
     char base[160], url[224];
-    if (!body || okou_hub_http_base(base, sizeof(base)) != ESP_OK || strncmp(base, "https://", 8))
+    if (!body || okou_hub_http_base(base, sizeof(base)) != ESP_OK)
         return NULL;
     snprintf(url, sizeof(url), "%s/api/device/%s", base, operation);
     response_t r = {.limit = !strcmp(operation, "ble/sync") ? 256 : 16384};

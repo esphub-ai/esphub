@@ -122,7 +122,7 @@ void app_main(void)
      * leaving would close the setup window. The app starts after the first hub ack instead. */
     char *p_hub = okou_nvs_get_str_alloc("hub");
     char *p_tok = okou_nvs_get_str_alloc(OKOU_KEY_TOKEN);
-    bool provisioned = p_hub && p_hub[0] && p_tok && p_tok[0];
+    bool provisioned = okou_hub_host_valid(p_hub) && p_tok && p_tok[0];
     free(p_tok);
     free(p_hub);
     bool autostart = app && provisioned && !has_pending && !s_stay && !hold && !setup && !s_need_validate;

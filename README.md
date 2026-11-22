@@ -25,6 +25,8 @@ Connect the board over USB and call `devices.create`. Download and flash the mat
 OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret>"}
 ```
 
+The USB `hub` setting takes a plain hostname such as `api.esphub.ai`. A scheme, port or path is rejected. An existing URL-valued setting requires writing the hostname over USB. OTA artifacts still use full HTTPS URLs.
+
 After `OKL-PROVISION-OK`, start the Mac BLE tool, wait for **Beacon ready**, restart the board, and choose a network or enter a hidden SSID and password locally. Then wait for the online MicroPython app and use the OTA procedure to install the returned verification program. Check the new boot for its board-specific hello message.
 
 On an online device, use `wifi.add` with an SSID and optional password to save a network remotely. Read `commands.get` for the result. First-time and offline setup use the [Mac BLE tool](tools/ble-wifi/README.md).

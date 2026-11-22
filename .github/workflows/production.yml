@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: 24, cache: npm}
       - run: npm ci
-      - run: sudo apt-get update -qq && sudo apt-get install -y mosquitto mosquitto-clients
+      - run: sudo apt-get update -qq && sudo apt-get install -y mosquitto mosquitto-clients pkg-config libcjson-dev
       - run: npm run migrate && npm run migrate
       - run: npm test && npm run build && node scripts/local-e2e.mjs
       - run: npx wrangler deploy --dry-run -c services/api/wrangler.jsonc && npx wrangler deploy --dry-run -c services/web/wrangler.jsonc

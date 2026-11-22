@@ -1,6 +1,6 @@
 # Physical device protocol
 
-The launcher and MicroPython share one device agent. Firmware keeps a single authenticated MQTT session with AWS IoT Core in us-west-2. A device needs its registration token and P-256 key to enroll. USB installs the initial registration token and BLE bootstrap key. The virtual ESP32 has no device credentials or network transport.
+The launcher and MicroPython share one device agent. Firmware keeps a single authenticated MQTT session with AWS IoT Core in us-west-2. A device needs its registration token and P-256 key to enroll. USB installs the initial registration token and BLE bootstrap key. The SDK stores a plain ASCII hostname in `okl/hub` (up to 99 bytes). It builds HTTPS request URLs internally. USB rejects a scheme, port, path, query or fragment before writing any part of the registration. Replace old URL-valued settings by sending `OKL-PROVISION {"hub":"api.esphub.ai"}` over USB. The virtual ESP32 has no device credentials or network transport.
 
 | Operation | Device path | Evidence of completion |
 | --- | --- | --- |
@@ -36,4 +36,4 @@ Hello, command receipts, install outcomes and log batches request an application
 
 ## Local verification
 
-`node scripts/local-e2e.mjs` requires an isolated PostgreSQL database, Chromium, Mosquitto and its command-line clients. It exercises real MQTT QoS 1 traffic over loopback, the production Worker handlers, PostgreSQL and local R2. The fixture emulates AWS enrollment, principal projection and connectivity. Cloud policy enforcement and physical radio behavior require a deployed canary.
+`node scripts/local-e2e.mjs` requires an isolated PostgreSQL database, Chromium, Mosquitto and its command-line clients. The native USB test in `npm test` uses a C compiler, pkg-config and the cJSON development package. It exercises real MQTT QoS 1 traffic over loopback, the production Worker handlers, PostgreSQL and local R2. The fixture emulates AWS enrollment, principal projection and connectivity. Cloud policy enforcement and physical radio behavior require a deployed canary.

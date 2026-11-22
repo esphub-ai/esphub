@@ -40,7 +40,11 @@ bool prov_apply(const char *line, char *err, size_t n)
     }
     const cJSON *tok = cJSON_GetObjectItemCaseSensitive(j, "token");
     const char *hub = NULL, *name = NULL, *dtok = NULL;
-    bool ok = str_field(j, "hub", 99, &hub, err, n) && str_field(j, "name", 32, &name, err, n);
+    bool ok = str_field(j, "hub", OKOU_HUB_HOST_MAX, &hub, err, n) && str_field(j, "name", 32, &name, err, n);
+    if (ok && hub && !okou_hub_host_valid(hub)) {
+        snprintf(err, n, "hub must be a hostname such as api.esphub.ai");
+        ok = false;
+    }
     if (ok && tok && !cJSON_IsString(tok)) {
         snprintf(err, n, "expected a device token");
         ok = false;

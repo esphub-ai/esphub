@@ -97,7 +97,7 @@ static char s_inflight_id[37];
 static int64_t s_inflight_until;
 static bool s_iot_started, s_pull_due;
 static bool s_started, s_cfg_ok;
-static char s_hub[100], s_tok[96];
+static char s_hub[OKOU_HUB_HOST_MAX + 1], s_tok[96];
 static op_t s_ops[MAX_OPS];
 static int s_nops;
 static uint32_t s_events_dropped;
@@ -140,25 +140,17 @@ static void ensure_queues(void)
 static bool load_config(void)
 {
     s_hub[0] = s_tok[0] = 0;
-    okou_nvs_get_str("hub", s_hub, sizeof(s_hub));
-    okou_nvs_get_str(OKOU_KEY_TOKEN, s_tok, sizeof(s_tok));
-    return s_hub[0] && s_tok[0];
+    if (okou_nvs_get_str("hub", s_hub, sizeof(s_hub)) != ESP_OK || !okou_hub_host_valid(s_hub)) {
+        s_hub[0] = 0;
+        return false;
+    }
+    return okou_nvs_get_str(OKOU_KEY_TOKEN, s_tok, sizeof(s_tok)) == ESP_OK && s_tok[0];
 }
 
 esp_err_t okou_hub_http_base(char *buf, size_t len)
 {
-    if (!s_hub[0])
-        return ESP_ERR_INVALID_STATE;
-    // Older registrations sometimes stored a full secure WebSocket URL.
-    const char *host = s_hub;
-    if (!strncmp(host, "wss://", 6))
-        host += 6;
-    else if (!strncmp(host, "https://", 8))
-        host += 8;
-    size_t n = strcspn(host, "/");
-    if (!n || memchr(host, '@', n) || memchr(host, '?', n))
-        return ESP_ERR_INVALID_ARG;
-    int written = snprintf(buf, len, "https://%.*s", (int)n, host);
+    if (!s_hub[0]) return ESP_ERR_INVALID_STATE;
+    int written = snprintf(buf, len, "https://%s", s_hub);
     return written >= 0 && (size_t)written < len ? ESP_OK : ESP_ERR_INVALID_SIZE;
 }
 

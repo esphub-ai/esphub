@@ -204,7 +204,7 @@ static void send_program(const char *boot_id)
 
     char base[160], url[240];
     bool saved = false;
-    if (okou_hub_http_base(base, sizeof(base)) == ESP_OK && !strncmp(base, "https://", 8)) {
+    if (okou_hub_http_base(base, sizeof(base)) == ESP_OK) {
         snprintf(url, sizeof(url), "%s/api/device/program/%s", base, boot_id);
         esp_http_client_config_t cfg = {.url=url, .method=HTTP_METHOD_PUT, .timeout_ms=5000,
             .crt_bundle_attach=esp_crt_bundle_attach, .disable_auto_redirect=true};
