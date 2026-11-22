@@ -7,7 +7,7 @@ export default {
      if(!local&&u.hostname!=='app.esphub.ai')return new Response('Not found',{status:404});
      u.pathname=u.pathname.slice(8);return env.API.fetch(new Request(u,req));
    }
-   if(!local&&/^\/(devices?|account)(\/|$)/.test(u.pathname)&&u.hostname!=='app.esphub.ai'){
+   if(!local&&/^\/(devices?|account|explorer)(\/|$)/.test(u.pathname)&&u.hostname!=='app.esphub.ai'){
      u.hostname='app.esphub.ai';return Response.redirect(u,302)
    }
    let res=await env.ASSETS.fetch(req);
