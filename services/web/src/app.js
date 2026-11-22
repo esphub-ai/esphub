@@ -163,7 +163,7 @@ function row(d) {
     "</span><span>↗</span></a>"
   );
 }
-const setupPrompt = `Connect my MCP client to ESP Hub. Add a server named esphub using Streamable HTTP at ${mcpEndpoint}. Use browser-based OAuth. Open the ESP Hub sign-in and consent page when prompted. Preserve my other MCP servers. Once connected, call devices.list and show me my registered devices.`;
+const setupPrompt = `Connect my MCP client to ESP Hub. Add a server named esphub using Streamable HTTP at ${mcpEndpoint}. Use browser-based OAuth and request devices:read and devices:write. Open the ESP Hub sign-in and consent page when prompted. Preserve my other MCP servers. Once connected, call devices.list and show me my registered devices.`;
 const mcpClients = {
   codex: {
     instruction: "Run these commands in your terminal, then sign in to ESP Hub in your browser.",
@@ -188,7 +188,7 @@ const mcpClients = {
 function mcpSetup() {
   return `<section class="mcp-setup" aria-labelledby="mcp-title">
     <div class="toolbar"><h2 id="mcp-title">Connect an MCP client</h2></div>
-    <p>Connect using your ESP Hub account. Approve device access in the browser when your client asks. If you previously set a bearer token for this connection, remove it from your client configuration first. <a href="/mcp">MCP reference ↗</a></p>
+    <p>Connect using your ESP Hub account. Your client requests read and write access by default. Review both permissions in your browser. If you previously set a bearer token for this connection, remove it from your client configuration first. <a href="/mcp">MCP reference ↗</a></p>
     <div class="mcp-grid">
       <div class="panel"><div class="toolbar"><h3>Client configuration</h3><select id="mcp-client" aria-label="MCP client"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
         <p id="mcp-instruction"></p><pre id="mcp-config"></pre>${button("copy-config", "Copy configuration")}</div>
@@ -649,7 +649,7 @@ async function start() {
     const ref = await (await fetch("/tools.json")).json();
     docs(
       "MCP reference",
-      '<p class="lead">Connect your MCP client to ESP Hub with OAuth. The first sign-in grants read access. Device changes and serial input require additional permission.</p><pre>https://api.esphub.ai/mcp</pre>' +
+      '<p class="lead">Connect your MCP client to ESP Hub with OAuth. Clients request read and write access by default. Read access covers device details, saved Wi-Fi networks, firmware information and serial output. Write access covers device management, Wi-Fi scans and changes, firmware installation and serial input.</p><pre>https://api.esphub.ai/mcp</pre>' +
         link("/devices", "Client setup →") +
         " " +
         link("/explorer", "Open tool explorer ↗", true) +

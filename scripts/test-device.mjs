@@ -50,15 +50,15 @@ async function message(response) {
       : body,
   );
 }
-async function call(method, params) {
-  const r = await request(method, params);
+async function call(method, params, accessToken) {
+  const r = await request(method, params, accessToken);
   const msg = await message(r);
   assert.equal(r.status, 200, JSON.stringify(msg));
   assert.ok(!msg.error, JSON.stringify(msg));
   return msg.result;
 }
-async function op(name, args) {
-  const r = await call("tools/call", { name, arguments: args });
+async function op(name, args, accessToken) {
+  const r = await call("tools/call", { name, arguments: args }, accessToken);
   assert.ok(!r.isError, JSON.stringify(r));
   return JSON.parse(r.content[0].text);
 }
@@ -69,7 +69,11 @@ try {
     await fetch(base + "/backend/.well-known/oauth-protected-resource/mcp")
   ).json();
   assert.equal(discovery.resource, endpoint);
-  assert.deepEqual(discovery.scopes_supported, ["devices:read", "offline_access"]);
+  assert.deepEqual(discovery.scopes_supported, [
+    "devices:read",
+    "devices:write",
+    "offline_access",
+  ]);
   assert.deepEqual(discovery.authorization_servers, [issuer]);
   const read = await issue("devices:read");
   for (const invalid of [
@@ -82,6 +86,11 @@ try {
   ]) {
     const denied = await request("tools/list", {}, invalid);
     assert.equal(denied.status, 401);
+    if (invalid === null)
+      assert.match(
+        denied.headers.get("WWW-Authenticate"),
+        /scope="devices:read devices:write offline_access"/,
+      );
     assert.match(
       denied.headers.get("WWW-Authenticate"),
       /oauth-protected-resource/,
@@ -103,7 +112,6 @@ try {
     "devices.list",
     "devices.get",
     "wifi.list",
-    "wifi.scan",
     "firmware.get",
     "uart.sessions",
     "uart.read",
@@ -202,10 +210,10 @@ try {
   send({ t: "log", seq: 1, lines: [[121, "I", "boot log"]] });
   await take((f) => f.t === "ack" && f.seq === 1);
   assert.equal(
-    (await op("uart.read", { ...session, after: 0 })).records[0].text,
+    (await op("uart.read", { ...session, after: 0 }, read)).records[0].text,
     "boot log",
   );
-  assert.equal((await op("devices.get", id)).online, true);
+  assert.equal((await op("devices.get", id, read)).online, true);
   const data = { ...session, text: "help\n", request_id: randomUUID() };
   assert.equal((await op("uart.write", data)).sequence, 1);
   assert.equal((await op("uart.write", data)).sequence, 1);
@@ -218,7 +226,9 @@ try {
     (await op("uart.read", { ...session, after: 1 })).records[0].text,
     "help response",
   );
-  assert.equal((await op("uart.sessions", id))[0].rx_cursor, 1);
+  assert.equal((await op("uart.sessions", id, read))[0].rx_cursor, 1);
+  await op("wifi.list", id, read);
+  await op("firmware.get", id, read);
   assert.equal((await op("wifi.scan", id)).output, "test Wi-Fi network");
   send({
     t: "hello",

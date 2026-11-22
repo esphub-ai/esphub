@@ -18,7 +18,7 @@ import { operate, tools } from "./operations.js";
 const options = {
   resourceUrl: mcpEndpoint,
   requiredScopes: ["devices:read"],
-  challengeScopes: ["offline_access"],
+  challengeScopes: ["devices:write", "offline_access"],
   discoverable: false,
 };
 export const authenticateMcp = mcpAuth(options);
@@ -27,7 +27,6 @@ const readTools = new Set([
   "devices.list",
   "devices.get",
   "wifi.list",
-  "wifi.scan",
   "firmware.get",
   "uart.sessions",
   "uart.read",
