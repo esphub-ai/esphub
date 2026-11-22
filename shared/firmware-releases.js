@@ -32,7 +32,12 @@ export function assetNames(board, chip, kind, version) {
   return { micropython: `esphub-${board}-micropython-${version}.bin` };
 }
 
-export async function publishedFirmware(boards, request = fetch, token) {
+export async function publishedFirmware(
+  boards,
+  request = fetch,
+  token,
+  repository = "okou-ai/esphub",
+) {
   const index = Object.fromEntries(Object.keys(boards).map((id) => [id, {}]));
   const headers = {
     "User-Agent": "ESPHub-firmware",
@@ -40,7 +45,7 @@ export async function publishedFirmware(boards, request = fetch, token) {
   };
   if (token) headers.Authorization = "Bearer " + token;
   for (let page = 1; ; page++) {
-    const url = `https://api.github.com/repos/okou-ai/esphub/releases?per_page=100&page=${page}`;
+    const url = `https://api.github.com/repos/${repository}/releases?per_page=100&page=${page}`;
     const res = await request(url, {
       headers,
       cf: { cacheEverything: true, cacheTtl: 120 },

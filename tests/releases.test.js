@@ -54,6 +54,23 @@ test("the latest version is selected independently by board and component across
   );
 });
 
+test("a fork checks its own published components", async () => {
+  const request = async (url) => {
+    assert.equal(
+      new URL(url).pathname,
+      "/repos/firmware-user/custom-boards/releases",
+    );
+    return Response.json([]);
+  };
+  const releases = await publishedFirmware(
+    { stopwatch: { chip: "esp32s3" } },
+    request,
+    undefined,
+    "firmware-user/custom-boards",
+  );
+  assert.deepEqual(releases, { stopwatch: {} });
+});
+
 test("pinned old and board-scoped downloads resolve to immutable GitHub artifacts", async () => {
   for (const [kind, tag, asset] of [
     ["setup", "setup-v1.0.1", "esphub-stopwatch-esp32s3-1.0.1-setup.zip"],

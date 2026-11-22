@@ -25,10 +25,24 @@ After `OKL-PROVISION-OK`, wait for the online MicroPython app and use the OTA pr
 
 1. For generated Python, call `programs.publish` with the device ID and UTF-8 source (up to 32 KiB). It returns a private HTTPS URL valid for 24 hours. An existing HTTPS URL also works.
 2. Call `launcher.enter` with the device ID. Wait for `devices.get` to report an online launcher. Older launchers can upgrade once with `launcher.install`.
-3. Call `ota.install` with `device_id`, `kind` and `url`. Use a matching ESP Hub OTA binary from GitHub Releases for `launcher` or `micropython`, or a plain UTF-8 main.py file for `python`. Boot the matching OTA-capable runtime once to initialize its data volume before installing a program.
+3. Call `ota.install` with `device_id`, `kind` and `url`. Use a matching official or custom-built OTA binary for `launcher` or `micropython`, or a plain UTF-8 main.py file for `python`. Boot the matching OTA-capable runtime once to initialize its data volume before installing a program.
 4. Read `uart.read` from the returned boot and cursor. Match `install.done` or `install.failed` to the transfer ID. After the reboot, verify the new firmware identity or the program's startup output. A syntax error produces `program.rejected` and preserves the previous main.py.
 
 The launcher validates the HTTPS certificate and hostname and streams in 4 KiB blocks. It checks the board and image type before writing firmware. Launcher updates use the inactive launcher slot. Runtime updates write the application slot, so a failed runtime download may require a retry in launcher mode. Python writes a temporary LittleFS file. The runtime compiles it and atomically replaces main.py before executing it. A program can still fail after it starts. The hub's private artifact endpoint requires the device token. External downloads follow HTTPS redirects without that token.
+
+### Build your own update
+
+Call `devices.get` to get `sources.launcher`, `sources.micropython` and `sources.python` for the registered board, including when it is offline. These are starting points in the official repository. The Python link opens the board's starter program. Keep your own modified source in your repository.
+
+| OTA kind | What to edit | What to send |
+| --- | --- | --- |
+| `launcher` | Launcher in `firmware/launcher/`, hardware configuration in the board's `launcher/` directory, and the shared hub protocol in `firmware/components/okou_agent/` | The board's `*-ota.bin` release asset |
+| `micropython` | Runtime integration in `firmware/pyrt/`, the board's `micropython/` directory and the linked UIFlow MicroPython upstream. To build a modified upstream, set the repository and commit in `firmware/pyrt/upstream.json`. | The board's `esphub-<board>-micropython-<version>.bin` release asset |
+| `python` | Start from the linked `hello.py` or write your own UTF-8 `main.py`. | The script itself, ready to run without compilation |
+
+For either binary, fork this repository, enable GitHub Actions in the fork, and commit your changes. Run **Actions → Board firmware → Run workflow** on your fork's `main` branch and enter the board directory name (for example, `paper-color`). The workflow builds missing or changed components, checks their board and image profiles, and publishes them to your fork's Releases. A main-branch push that touches firmware also starts this workflow. The build needs permission to write repository contents. Preserve the target chip, existing partition layout and `ESPHUB1/<kind>/<board>` image descriptor. Retain the hub connection and launcher-entry protocol if you want to manage the new firmware remotely.
+
+Copy the binary's **download URL** from the public release. If you built locally, upload the same OTA binary to your own GitHub Release. For a script, either use a direct HTTPS file URL or pass the source to `programs.publish` for private staging. Enter launcher mode, then call `ota.install` with the registered device ID, the table's `kind` and that download URL. The launcher fetches the file directly. Use the receipt's `transfer_id`, `process_id` and `after` to verify the transfer and the next boot as described above.
 
 ## Console and authentication
 

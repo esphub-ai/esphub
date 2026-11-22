@@ -3,10 +3,15 @@ description: Apply the board overlay and compile the MicroPython image.
 runs:
   using: composite
   steps:
+    - name: Read the MicroPython source revision
+      id: upstream
+      shell: bash
+      run: |
+        jq -er '"repository=" + .repository, "ref=" + .ref' firmware/pyrt/upstream.json >> "$GITHUB_OUTPUT"
     - uses: actions/checkout@v4
       with:
-        repository: m5stack/uiflow-micropython
-        ref: a61a29409f09f1f4bebae05e15c4bd6dcc4956b6
+        repository: ${{ steps.upstream.outputs.repository }}
+        ref: ${{ steps.upstream.outputs.ref }}
         path: uiflow
     - uses: actions/setup-python@v5
       id: python

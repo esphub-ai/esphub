@@ -22,10 +22,10 @@ runs:
         app="esphub-$BOARD-micropython-$MICROPYTHON_VERSION"
         if [[ "$VARIANT" == fresh-usb ]]; then manifest="$base-fresh-usb.sha256"; else manifest="$base.json"; fi
         if [[ "$LOCAL_LAUNCHER" == false ]]; then
-          gh release download "$LAUNCHER_TAG" -p "$kit" -p "$manifest" -D components/launcher
+          gh release download "$LAUNCHER_TAG" -R "$GITHUB_REPOSITORY" -p "$kit" -p "$manifest" -D components/launcher
         fi
         if [[ "$LOCAL_MICROPYTHON" == false ]]; then
-          gh release download "$MICROPYTHON_TAG" -p "$app.bin" -p "$app.sha256" -D components/micropython
+          gh release download "$MICROPYTHON_TAG" -R "$GITHUB_REPOSITORY" -p "$app.bin" -p "$app.sha256" -D components/micropython
         fi
         if [[ "$VARIANT" == fresh-usb ]]; then
           (cd components/launcher && sha256sum -c "$manifest")

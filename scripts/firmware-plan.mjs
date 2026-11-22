@@ -15,6 +15,7 @@ const sharedInputs = {
   ],
   micropython: [
     "firmware/pyrt/overlay/**",
+    "firmware/pyrt/upstream.json",
     "firmware/pyrt/apply_overlay.py",
     "firmware/components/okou_agent/**",
     ".github/actions/build-micropython/**",
@@ -156,7 +157,12 @@ if (
   const options = {
     manual,
     board: event.inputs?.board ?? "",
-    version: "1.1." + process.env.GITHUB_RUN_NUMBER,
+    // A fork may inherit official tags while starting its own run counter at one.
+    version:
+      "1.1." +
+      (process.env.GITHUB_REPOSITORY === "okou-ai/esphub"
+        ? process.env.GITHUB_RUN_NUMBER
+        : process.env.GITHUB_RUN_ID),
   };
   let plans = boardPlans(before, after, {}, options);
   if (plans.length) {
@@ -164,6 +170,7 @@ if (
       after,
       fetch,
       process.env.GH_TOKEN,
+      process.env.GITHUB_REPOSITORY,
     );
     plans = boardPlans(before, after, releases, options);
   }

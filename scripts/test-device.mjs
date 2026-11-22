@@ -159,6 +159,10 @@ try {
     d.setup_manifest,
     "https://api.esphub.ai/releases/paper-color/setup-manifest",
   );
+  assert.deepEqual(Object.keys(d.sources).sort(), ["launcher", "micropython", "python"]);
+  const offline = await op("devices.get", id, read);
+  assert.equal(offline.online, false);
+  assert.deepEqual(offline.sources, d.sources);
   const watch = await op("devices.create", {
     board: "stopwatch",
     name: "Watch",
@@ -246,10 +250,11 @@ try {
   );
   assert.equal((await op("uart.sessions", id, read))[0].rx_cursor, 1);
   await op("wifi.list", id, read);
-  await op("firmware.get", id, read);
+  assert.deepEqual((await op("firmware.get", id, read)).sources, d.sources);
   assert.equal((await op("wifi.scan", id)).output, "test Wi-Fi network");
   const source = d.verification_source + "# " + "é".repeat(3500) + "\n";
   const staged = await op("programs.publish", { ...id, source });
+  assert.deepEqual(staged.sources, d.sources);
   const artifactUrl = base + "/backend" + new URL(staged.url).pathname;
   assert.equal((await fetch(artifactUrl)).status, 401);
   const download = token => fetch(artifactUrl, { headers: { Authorization: "Bearer " + token } });
@@ -273,11 +278,15 @@ try {
   await report("launcher", "ESPHUB1/launcher/stopwatch", "stopwatch");
   assert.equal((await attempt("ota.install", ota)).isError, true);
   const boot = await report("launcher", "ESPHUB1/launcher/paper-color");
-  assert.equal((await op("launcher.enter", id)).mode, "launcher");
+  const entered = await op("launcher.enter", id);
+  assert.equal(entered.mode, "launcher");
+  assert.deepEqual(entered.sources, d.sources);
   for (const kind of ["python","launcher","micropython"]) {
     const url = kind === "python" ? staged.url : "https://example.org/" + kind + ".bin";
     const receipt = await op("ota.install", { ...id, kind, url });
     assert.equal(receipt.accepted, true);
+    assert.deepEqual(receipt.sources, d.sources);
+    assert.equal(receipt.custom_build_guide_url, d.custom_build_guide_url);
     assert.equal(receipt.process_id, boot);
     const wire = await take(f => f.op === "install");
     assert.deepEqual(wire.args, {kind, url, board:"paper-color", transfer_id:receipt.transfer_id});

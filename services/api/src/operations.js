@@ -1,4 +1,5 @@
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
+import { updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
 import { launcherManifest } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
@@ -17,7 +18,11 @@ const defs = [
       board: { enum: Object.keys(boards), type: "string" },
     },
   ],
-  ["devices.get", "Show device identity and live connection status.", id],
+  [
+    "devices.get",
+    "Show device identity, connection status and GitHub source directories for all three customizable OTA layers, even while offline.",
+    id,
+  ],
   [
     "devices.reissue",
     "Issue a replacement USB token and close the previous connection.",
@@ -52,10 +57,14 @@ const defs = [
     "Enter launcher mode for OTA. Wait for devices.get to report an online launcher.",
     id,
   ],
-  ["firmware.get", "Read firmware metadata from the board.", id],
+  [
+    "firmware.get",
+    "Read live firmware metadata and get the official GitHub sources for customizing this board.",
+    id,
+  ],
   [
     "ota.install",
-    "In launcher mode, stream an HTTPS artifact for the registered board. Use https://api.esphub.ai/releases/{board}/ota for the official launcher or /releases/{board}/micropython for its runtime. For python, use a plain UTF-8 main.py URL. Follow install.done or install.failed in the returned UART session, then verify the next boot.",
+    "In launcher mode, stream an HTTPS artifact for the registered board. Supply your own board-compatible build or use https://api.esphub.ai/releases/{board}/ota for the official launcher or /releases/{board}/micropython for its runtime. For python, use a plain UTF-8 main.py URL. The receipt includes GitHub sources for all three layers. Follow install.done or install.failed in the returned UART session, then verify the next boot.",
     {
       ...id,
       kind: { type: "string", enum: ["launcher", "micropython", "python"] },
@@ -181,6 +190,7 @@ export async function operate(c, owner, name, a) {
       token: secret,
       hub: "api.esphub.ai",
       ...provisioning(d.board),
+      ...updateSources(d.board),
     };
   }
   if (name === "devices.list") {
@@ -193,8 +203,9 @@ export async function operate(c, owner, name, a) {
   const [d] =
     await db`SELECT id,name,board FROM esphub.devices WHERE id=${a.device_id} AND owner=${owner}`;
   if (!d) fail(404, "Device not found");
+  const withSources = (result) => ({ ...result, ...updateSources(d.board) });
   if (name === "devices.get")
-    return { ...d, ...(await internal(c, d.id, "summary")) };
+    return withSources({ ...d, ...(await internal(c, d.id, "summary")) });
   if (name === "devices.reissue") {
     const secret = token("okl_dev_");
     await db`UPDATE esphub.devices SET token_hash=${await digest(secret)} WHERE owner=${owner} AND id=${d.id}`;
@@ -207,15 +218,19 @@ export async function operate(c, owner, name, a) {
     return { deleted: true };
   }
   if (name === "programs.publish")
-    return internal(c, d.id, "publish", { source: a.source });
+    return withSources(
+      await internal(c, d.id, "publish", { source: a.source }),
+    );
   if (name === "launcher.enter")
-    return internal(c, d.id, "enter", { board: d.board });
+    return withSources(await internal(c, d.id, "enter", { board: d.board }));
   if (name === "ota.install")
-    return internal(c, d.id, "ota", {
-      board: d.board,
-      kind: a.kind,
-      url: a.url,
-    });
+    return withSources(
+      await internal(c, d.id, "ota", {
+        board: d.board,
+        kind: a.kind,
+        url: a.url,
+      }),
+    );
   if (name === "uart.sessions") return internal(c, d.id, "sessions");
   if (name === "uart.read")
     return internal(c, d.id, "read", {
@@ -269,5 +284,8 @@ export async function operate(c, owner, name, a) {
       version: manifest.version,
     };
   }
-  return (await internal(c, d.id, "rpc", { op, args })).data;
+  const { data } = await internal(c, d.id, "rpc", { op, args });
+  return name === "firmware.get" || name === "launcher.install"
+    ? withSources(data)
+    : data;
 }

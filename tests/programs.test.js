@@ -1,8 +1,50 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
+import { readFileSync, statSync } from "node:fs";
+import boards from "../shared/boards.generated.json" with { type: "json" };
+import { updateSources } from "../services/api/src/update-sources.js";
 import { provisioning } from "../services/api/src/provisioning.js";
 import { validate } from "../services/api/src/operations.js";
+
+test("each board links to the actual source, build recipes and provisioning example", () => {
+  const { repository, ref } = JSON.parse(
+    readFileSync("firmware/pyrt/upstream.json"),
+  );
+  function localPath(url, view) {
+    const prefix = "https://github.com/okou-ai/esphub/" + view + "/main/";
+    assert.ok(url.startsWith(prefix), url);
+    return url.slice(prefix.length);
+  }
+  for (const board of Object.keys(boards)) {
+    const { sources, custom_build_guide_url } = updateSources(board);
+    for (const [kind, layer] of Object.entries(sources)) {
+      assert.ok(statSync(localPath(layer.directory_url, "tree")).isDirectory());
+      if (kind === "python") {
+        assert.equal(
+          readFileSync(localPath(layer.starter_file_url, "blob"), "utf8"),
+          provisioning(board).verification_source,
+        );
+        continue;
+      }
+      const expected = `firmware/boards/${board}/${kind}`;
+      assert.equal(localPath(layer.board_directory_url, "tree"), expected);
+      assert.equal(
+        localPath(layer.build_action_url, "blob"),
+        expected + "/action.yml",
+      );
+      assert.ok(statSync(expected + "/action.yml").isFile());
+    }
+    assert.equal(
+      sources.micropython.upstream_directory_url,
+      `https://github.com/${repository}/tree/${ref}`,
+    );
+    assert.equal(
+      localPath(custom_build_guide_url, "blob"),
+      "README.md#build-your-own-update",
+    );
+  }
+});
 
 test("Paper Color and StopWatch verification programs draw the measured status and greeting in a single frame", () => {
   for (const [board, model] of [

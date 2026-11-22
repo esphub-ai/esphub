@@ -45,8 +45,9 @@ esptool.py --chip {chip} --port PORT write_flash {erase}@flash_args
 Open the launcher's USB console at 115200 baud and send: wifi scan
 """)
 
+repository = os.environ.get("GITHUB_REPOSITORY", "okou-ai/esphub")
 manifest = dict(board=args.board, chip=chip, version=version, **recipe, file=kit.name,
-                download_url=f"https://github.com/okou-ai/esphub/releases/download/{recipe['tag']}/{kit.name}",
+                download_url=f"https://github.com/{repository}/releases/download/{recipe['tag']}/{kit.name}",
                 sha256=hashlib.sha256(kit.read_bytes()).hexdigest(),
                 runtime_sha256=hashlib.sha256(image).hexdigest(), runtime_size=len(image))
 kit.with_suffix(".json").write_text(json.dumps(manifest, indent=2) + "\n")
