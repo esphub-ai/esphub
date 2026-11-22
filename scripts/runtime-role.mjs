@@ -15,7 +15,7 @@ try {
       );
     await tx.unsafe("GRANT USAGE ON SCHEMA esphub TO esphub_runtime");
     await tx.unsafe(
-      "GRANT SELECT,INSERT,UPDATE,DELETE ON esphub.accounts, esphub.devices, esphub.device_commands, esphub.iot_revocations TO esphub_runtime",
+      "GRANT SELECT,INSERT,UPDATE,DELETE ON esphub.accounts, esphub.devices, esphub.virtual_boots, esphub.device_commands, esphub.iot_revocations TO esphub_runtime",
     );
   });
 } finally {

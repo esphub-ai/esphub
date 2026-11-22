@@ -8,6 +8,7 @@ import { updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
 import { launcherManifest } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
+import { createVirtual, operateVirtual } from "./virtual-device.js";
 const programByteLimit = 32 * 1024;
 const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
@@ -34,9 +35,15 @@ const defs = [
     },
   ],
   [
+    "devices.create_virtual",
+    additive,
+    "Create or return the account’s private Virtual ESP32 for simulated reboots, firmware inspection and boot logs.",
+    {},
+  ],
+  [
     "devices.get",
     readOnly,
-    "Show device identity, connection status and GitHub source directories for all three customizable OTA layers, even while offline.",
+    "Show device kind, identity and connection status. Physical boards include GitHub source directories for all three OTA layers, even while offline.",
     id,
   ],
   [
@@ -63,7 +70,12 @@ const defs = [
     "Erase provisioning and saved networks on the device; USB setup is required again.",
     id,
   ],
-  ["wifi.ble_credential", additive, "Issue a private BLE provisioning credential for the registered Paper Color. Pass directly to the local host tool; do not display or log it.", id],
+  [
+    "wifi.ble_credential",
+    additive,
+    "Issue a private BLE provisioning credential for the registered Paper Color. Pass directly to the local host tool; do not display or log it.",
+    id,
+  ],
   [
     "wifi.list",
     readOnly,
@@ -103,7 +115,7 @@ const defs = [
   [
     "firmware.get",
     readOnly,
-    "Read live firmware metadata and get the official GitHub sources for customizing this board.",
+    "Read firmware metadata for a physical or virtual board. Physical boards include official GitHub sources.",
     id,
   ],
   [
@@ -129,7 +141,7 @@ const defs = [
   [
     "programs.publish",
     additive,
-    "Stage main.py privately for this device for 24 hours. Pass the returned HTTPS URL to ota.install with kind python.",
+    "Stage main.py privately for this device for 24 hours. Physical boards can install the returned URL with ota.install. Virtual boards only stage the source.",
     {
       ...id,
       source: {
@@ -279,6 +291,13 @@ export async function internal(c, id, path, args) {
   return j;
 }
 async function summary(c, d) {
+  if (d.kind === "virtual")
+    return {
+      online: true,
+      process_id: d.boot_id,
+      info: d.boot_info,
+      serial_input: false,
+    };
   if (d.transport !== "mqtt") return internal(c, d.id, "summary");
   const [online, broker] = await Promise.all([connected(c.env, d.id), internal(c, d.id, "summary")]);
   return {
@@ -292,11 +311,12 @@ async function summary(c, d) {
 export async function operate(c, owner, name, a) {
   validate(name, a);
   const db = c.sql;
+  if (name === "devices.create_virtual") return createVirtual(db, owner);
   if (name === "devices.create") {
     const secret = token("okl_dev_");
     const bleSecret = a.board === "paper-color" ? newBleSecret() : null;
     const [d] =
-      await db`INSERT INTO esphub.devices(owner,name,board,token_hash,ble_secret) VALUES(${owner},${a.name.trim()},${a.board},${await digest(secret)},${bleSecret}) RETURNING id,name,board`;
+      await db`INSERT INTO esphub.devices(owner,name,board,token_hash,ble_secret) VALUES(${owner},${a.name.trim()},${a.board},${await digest(secret)},${bleSecret}) RETURNING id,name,board,kind`;
     return {
       ...d,
       token: secret,
@@ -306,33 +326,53 @@ export async function operate(c, owner, name, a) {
       ...updateSources(d.board),
     };
   }
+  const ds =
+    await db`SELECT d.id,d.name,d.board,d.kind,d.created_at,d.transport,d.boot_info,
+      CASE WHEN d.kind='virtual' THEN (
+        SELECT process_id FROM esphub.virtual_boots WHERE device_id=d.id ORDER BY sequence DESC LIMIT 1
+      ) ELSE d.boot_id END AS boot_id
+    FROM esphub.devices d WHERE d.owner=${owner} AND (${name === "devices.list"}::boolean OR d.id=${a.device_id ?? null})
+    ORDER BY d.created_at`;
   if (name === "devices.list") {
-    const ds =
-      await db`SELECT id,name,board,created_at,transport,boot_id,boot_info FROM esphub.devices WHERE owner=${owner} ORDER BY created_at`;
     return await Promise.all(
       ds.map(async (d) => ({
         id: d.id,
         name: d.name,
         board: d.board,
+        kind: d.kind,
         created_at: d.created_at,
         transport: d.transport,
         ...(await summary(c, d)),
       })),
     );
   }
-  const [d] =
-    await db`SELECT id,name,board,transport,boot_id,boot_info FROM esphub.devices WHERE id=${a.device_id} AND owner=${owner}`;
+  const [d] = ds;
   if (!d) fail(404, "Device not found");
   const withSources = (result) => ({ ...result, ...updateSources(d.board) });
-  if (name === "wifi.ble_credential") return issueBle(db, owner, d.id);
   if (name === "devices.get")
-    return withSources({
+    return {
       id: d.id,
       name: d.name,
       board: d.board,
+      kind: d.kind,
       transport: d.transport,
       ...(await summary(c, d)),
-    });
+      ...(d.kind === "physical" ? updateSources(d.board) : {}),
+    };
+  if (name === "devices.delete") {
+    await db`DELETE FROM esphub.devices WHERE id=${d.id} AND owner=${owner}`;
+    if (d.kind === "physical")
+      await internal(c, d.id, "revoke", { device: d.id });
+    return { deleted: true };
+  }
+  if (name === "programs.publish") {
+    const staged = await internal(c, d.id, "publish", { source: a.source });
+    return d.kind === "virtual"
+      ? { ...staged, kind: "virtual", status: "staged", executable: false }
+      : withSources(staged);
+  }
+  if (d.kind === "virtual") return operateVirtual(db, d, name, a);
+  if (name === "wifi.ble_credential") return issueBle(db, owner, d.id);
   if (name === "programs.get") return internal(c, d.id, "program");
   if (name === "commands.get") {
     const [row] =
@@ -348,17 +388,8 @@ export async function operate(c, owner, name, a) {
     await internal(c, d.id, "revoke", { device: d.id });
     return { token: secret, ...(bleSecret ? { ble_secret: bleSecret } : {}) };
   }
-  if (name === "devices.delete") {
-    await db`DELETE FROM esphub.devices WHERE id=${d.id} AND owner=${owner}`;
-    await internal(c, d.id, "revoke", { device: d.id });
-    return { deleted: true };
-  }
   if (name === "ota.prepare_upload")
     return withSources(await internal(c, d.id, "prepare-upload", a));
-  if (name === "programs.publish")
-    return withSources(
-      await internal(c, d.id, "publish", { source: a.source }),
-    );
   const key = a.request_id ?? crypto.randomUUID();
   const queue = (op, args, boot = null) =>
     internal(c, d.id, "enqueue", { device: d.id, op, args, boot, key });
