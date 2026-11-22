@@ -1,17 +1,7 @@
-/*
- * Streaming firmware install (docs/protocol.md "install" + "Install rules").
- *
- * The image is streamed from the hub straight into the target partition while hashing.
- * The first 4 KiB (image header) are held back in RAM and written only after size,
- * SHA-256 and chip id check out, so a rejected or partial download can never be booted (the
- * header sector stays erased). Transport security is HTTPS to the hub; there is no
- * application-layer signature (a `sig` argument from older hubs is ignored).
- *
- * SPDX-License-Identifier: MIT
- */
+/* Streaming HTTPS OTA. SPDX-License-Identifier: MIT */
+#include <stdio.h>
 #include <string.h>
 #include <strings.h>
-#include <ctype.h>
 #include <inttypes.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -21,348 +11,270 @@
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_app_format.h"
-#include "mbedtls/sha256.h"
-#include "mbedtls/pk.h"
-#include "mbedtls/base64.h"
+#include "esp_app_desc.h"
+#include "esp_littlefs.h"
 #include "okou_agent.h"
 #include "okou_agent_ext.h"
 #include "launcher.h"
 #include "sdkconfig.h"
 
-static const char *TAG = "install";
-
-
-#define HOLD_SZ 4096
 #define CHUNK 4096
+#define PROGRAM_LIMIT (32 * 1024)
+#define STAGING "/flash/.esphub-download"
+#define CANDIDATE "/flash/.esphub-next.py"
 #define MAX_ATTEMPTS 3
+#define PROFILE_OFFSET (sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) + sizeof(esp_app_desc_t))
+#if CONFIG_OKL_BOARD_M5_STOPWATCH
+#define BOARD "stopwatch"
+#else
+#define BOARD "paper-color"
+#endif
 
+static const char *TAG = "install";
 typedef struct {
-    char kind[10];
-    char sha[65];
-    char url[256];
-    char version[32];
-    uint32_t size;
+    char kind[16];
+    char url[1025];
+    char id[37];
 } inst_t;
-
 static volatile bool s_running;
-
-bool install_running(void)
-{
-    return s_running;
-}
+bool install_running(void) { return s_running; }
 
 const esp_partition_t *launcher_inactive_slot(void)
 {
     const esp_partition_t *run = esp_ota_get_running_partition();
-    const char *other = NULL;
-    if (strcmp(run->label, "launcher_a") == 0) {
-        other = "launcher_b";
-    } else if (strcmp(run->label, "launcher_b") == 0) {
-        other = "launcher_a";
-    }
+    const char *other = !strcmp(run->label, "launcher_a") ? "launcher_b" :
+                        !strcmp(run->label, "launcher_b") ? "launcher_a" : NULL;
     return other ? esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY, other) : NULL;
 }
 
 static const esp_partition_t *target_for(const char *kind)
 {
-    if (strcmp(kind, "app") == 0) {
-        return esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY, "app");
-    }
-    return launcher_inactive_slot();
+    if (!strcmp(kind, "launcher")) return launcher_inactive_slot();
+    return esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY, "app");
 }
 
-static void str_arg(const cJSON *a, const char *k, char *dst, size_t n)
+static bool https_url(const char *url)
 {
-    const cJSON *v = cJSON_GetObjectItemCaseSensitive(a, k);
-    dst[0] = '\0';
-    if (cJSON_IsString(v)) {
-        strlcpy(dst, v->valuestring, n);
-    }
+    if (!url || strncmp(url, "https://", 8) || strpbrk(url, "\r\n\t \\#")) return false;
+    const char *host = url + 8;
+    size_t len = strcspn(host, "/?");
+    return len > 0 && !memchr(host, '@', len);
 }
 
-static bool parse_args(const cJSON *a, inst_t *o, char *err, size_t n)
+static bool parse_args(const cJSON *a, inst_t *in, char *err, size_t n)
 {
-    memset(o, 0, sizeof(*o));
-    str_arg(a, "kind", o->kind, sizeof(o->kind));
-    str_arg(a, "sha256", o->sha, sizeof(o->sha));
-    str_arg(a, "url", o->url, sizeof(o->url));
-    str_arg(a, "version", o->version, sizeof(o->version));
-    const cJSON *size = cJSON_GetObjectItemCaseSensitive(a, "size");
-    if (strcmp(o->kind, "app") && strcmp(o->kind, "launcher")) {
-        snprintf(err, n, "kind must be app or launcher");
-        return false;
+    memset(in, 0, sizeof(*in));
+    const char *kind = cJSON_GetStringValue(cJSON_GetObjectItem(a, "kind"));
+    const char *board = cJSON_GetStringValue(cJSON_GetObjectItem(a, "board"));
+    const char *url = cJSON_GetStringValue(cJSON_GetObjectItem(a, "url"));
+    const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(a, "transfer_id"));
+    if (!kind || (strcmp(kind, "launcher") && strcmp(kind, "micropython") && strcmp(kind, "python"))) {
+        snprintf(err, n, "Expected launcher, micropython or python"); return false;
     }
-    if (strcmp(o->kind, "launcher") == 0) {
-        const cJSON *board = cJSON_GetObjectItemCaseSensitive(a, "board");
-#if CONFIG_OKL_BOARD_M5_STOPWATCH
-        const char *expected = "stopwatch";
-#else
-        const char *expected = "paper-color";
-#endif
-        if (!cJSON_IsString(board) || strcmp(board->valuestring, expected) != 0) {
-            snprintf(err, n, "launcher package must match board %s", expected);
-            return false;
-        }
+    if (!board || strcmp(board, BOARD)) { snprintf(err, n, "Expected board %s", BOARD); return false; }
+    if (!https_url(url) || strlen(url) >= sizeof(in->url)) {
+        snprintf(err, n, "Expected HTTPS URL (up to 1024 bytes)"); return false;
     }
-    if (strlen(o->sha) != 64) {
-        snprintf(err, n, "sha256 must be 64 hex chars");
-        return false;
-    }
-    for (int i = 0; i < 64; i++) {
-        if (!isxdigit((unsigned char)o->sha[i])) {
-            snprintf(err, n, "sha256 must be 64 hex chars");
-            return false;
-        }
-        o->sha[i] = (char)tolower((unsigned char)o->sha[i]);
-    }
-    if (cJSON_IsNumber(size)) {
-        if (size->valuedouble <= 0 || size->valuedouble > 16 * 1024 * 1024) {
-            snprintf(err, n, "bad size");
-            return false;
-        }
-        o->size = (uint32_t)size->valuedouble;
-    }
-    const esp_partition_t *t = target_for(o->kind);
-    if (!t) {
-        snprintf(err, n, strcmp(o->kind, "launcher") == 0
-                             ? "launcher self-update not supported on this partition layout (USB only)"
-                             : "no app partition");
-        return false;
-    }
-    if (o->size && o->size > t->size) {
-        snprintf(err, n, "image (%" PRIu32 " B) larger than partition %s (%" PRIu32 " B)", o->size, t->label,
-                 t->size);
-        return false;
-    }
+    strlcpy(in->kind, kind, sizeof(in->kind));
+    strlcpy(in->url, url, sizeof(in->url));
+    if (id) strlcpy(in->id, id, sizeof(in->id));
     return true;
+}
+
+static cJSON *receipt(const inst_t *in)
+{
+    cJSON *d = cJSON_CreateObject();
+    cJSON_AddStringToObject(d, "kind", in->kind);
+    if (*in->id) cJSON_AddStringToObject(d, "transfer_id", in->id);
+    return d;
 }
 
 static void emit_failed(const inst_t *in, const char *msg)
 {
-    ESP_LOGE(TAG, "install %.12s failed: %s", in->sha, msg);
-    cJSON *d = cJSON_CreateObject();
-    cJSON_AddStringToObject(d, "sha256", in->sha);
+    ESP_LOGE(TAG, "%s OTA: %s", in->kind, msg);
+    cJSON *d = receipt(in);
     cJSON_AddStringToObject(d, "error", msg);
     okou_event_json("install.failed", d);
     okou_nvs_erase(OKOU_KEY_PENDING);
     okou_set_install_state("failed");
 }
 
-static void emit_progress(const inst_t *in, uint32_t written, uint32_t size)
+static esp_err_t on_header(esp_http_client_event_t *e)
 {
-    cJSON *d = cJSON_CreateObject();
-    cJSON_AddStringToObject(d, "sha256", in->sha);
-    cJSON_AddNumberToObject(d, "written", written);
-    cJSON_AddNumberToObject(d, "size", size);
-    okou_event_json("install.progress", d);
+    if (e->event_id == HTTP_EVENT_ON_HEADER && !strcasecmp(e->header_key, "Location")) {
+        *(bool *)e->user_data = https_url(e->header_value) ||
+            (e->header_value[0] == '/' && e->header_value[1] != '/' && !strchr(e->header_value, '\\'));
+    }
+    return ESP_OK;
 }
 
-static void run_install(inst_t *in)
+static bool is_private_program(const char *url)
 {
-    char err[160];
+    char base[192];
+    if (okou_hub_http_base(base, sizeof(base)) != ESP_OK) return false;
+    size_t n = strlen(base);
+    const char prefix[] = "/api/device/programs/";
+    return !strncmp(url, base, n) && !strncmp(url + n, prefix, sizeof(prefix) - 1);
+}
+
+static const char *open_download(esp_http_client_handle_t c, bool private_program, bool *safe_redirect,
+                                 int64_t *length)
+{
+    if (private_program) okou_http_apply_auth(c);
+    for (int hop = 0; hop <= 5; hop++) {
+        *safe_redirect = false;
+        if (esp_http_client_open(c, 0) != ESP_OK) return "HTTPS connection failed";
+        *length = esp_http_client_fetch_headers(c);
+        int status = esp_http_client_get_status_code(c);
+        if (*length < 0) return "Invalid HTTPS response headers";
+        if (status == 200) return NULL;
+        if (private_program || !*safe_redirect || hop == 5 ||
+            (status != 301 && status != 302 && status != 303 && status != 307 && status != 308)) {
+            return "Download refused or invalid redirect";
+        }
+        esp_http_client_close(c);
+        if (esp_http_client_set_redirection(c) != ESP_OK) return "Invalid redirect URL";
+    }
+    return "Too many redirects";
+}
+
+static bool valid_header(const uint8_t *header, const char *kind)
+{
+    const esp_image_header_t *ih = (const esp_image_header_t *)header;
+    char expected[48];
+    snprintf(expected, sizeof(expected), "ESPHUB1/%s/%s", kind, BOARD);
+    return ih->magic == ESP_IMAGE_HEADER_MAGIC && ih->chip_id == CONFIG_IDF_FIRMWARE_CHIP_ID &&
+           !memcmp(header + PROFILE_OFFSET, expected, strlen(expected) + 1);
+}
+
+static bool compatible_runtime(const esp_partition_t *app)
+{
+    const char expected[] = "ESPHUB1/micropython/" BOARD;
+    char profile[sizeof(expected)];
+    esp_app_desc_t desc;
+    return esp_ota_get_partition_description(app, &desc) == ESP_OK &&
+           esp_partition_read(app, PROFILE_OFFSET, profile, sizeof(profile)) == ESP_OK &&
+           !memcmp(profile, expected, sizeof(profile));
+}
+
+/* Firmware retains the first sector until the entire response is received. A Python
+ * download writes only a temporary file. The runtime compiles the candidate on boot. */
+static bool run_install(inst_t *in)
+{
     const esp_partition_t *target = target_for(in->kind);
-    if (!target) {
-        emit_failed(in, "no target partition");
-        return;
-    }
-    /* Credentials are only ever sent to our own hub: /device/images/<sha> URLs are
-     * fetched from the configured hub base regardless of the host in `url`. */
-    char base[128] = "";
-    char url[320];
-    bool to_hub = true;
-    okou_hub_http_base(base, sizeof(base));
-    const char *path = in->url[0] ? strstr(in->url, "/device/images/") : NULL;
-    if (!in->url[0]) {
-        snprintf(url, sizeof(url), "%s/device/images/%s", base, in->sha);
-    } else if (path) {
-        snprintf(url, sizeof(url), "%s%s", base, path);
-    } else {
-        strlcpy(url, in->url, sizeof(url));
-        to_hub = false;
-    }
-    ESP_LOGI(TAG, "install %s %.12s... -> %s from %s", in->kind, in->sha, target->label, url);
-    okou_set_install_state("downloading");
-
-    esp_http_client_config_t hc = {
-        .url = url,
-        .timeout_ms = 20000,
-        .buffer_size = 2048,
-        .buffer_size_tx = 1024,
+    bool script = !strcmp(in->kind, "python");
+    bool private_program = is_private_program(in->url), safe_redirect = false;
+    esp_http_client_config_t config = {
+        .url = in->url, .crt_bundle_attach = esp_crt_bundle_attach, .timeout_ms = 20000,
+        .transport_type = HTTP_TRANSPORT_OVER_SSL, .buffer_size = 2048, .buffer_size_tx = 4096,
+        .disable_auto_redirect = true, .event_handler = on_header, .user_data = &safe_redirect,
     };
-    if (strncmp(url, "https://", 8) == 0) {
-        hc.crt_bundle_attach = esp_crt_bundle_attach;
-    }
-    esp_http_client_handle_t c = esp_http_client_init(&hc);
-    if (!c) {
-        emit_failed(in, "http client init failed");
-        return;
-    }
-    if (to_hub) {
-        okou_http_apply_auth(c);
-    }
-    uint8_t *buf = malloc(CHUNK);
-    uint8_t *hold = malloc(HOLD_SZ);
-    mbedtls_sha256_context sha;
-    mbedtls_sha256_init(&sha);
-    esp_ota_handle_t h = 0;
-    bool ota_open = false;
+    esp_http_client_handle_t c = esp_http_client_init(&config);
+    esp_ota_handle_t ota = 0;
+    bool ota_open = false, mounted = false;
+    uint8_t *buf = malloc(CHUNK), *header = script ? NULL : malloc(CHUNK);
+    FILE *file = NULL;
+    int64_t length = 0;
+    uint32_t written = 0, next_progress = 0;
     const char *fail = NULL;
-    uint32_t written = 0, hold_len = 0, size = 0;
-
-    esp_err_t e = (buf && hold) ? esp_http_client_open(c, 0) : ESP_ERR_NO_MEM;
-    if (e != ESP_OK) {
-        snprintf(err, sizeof(err), "download failed: %s", esp_err_to_name(e));
-        fail = err;
-        goto out;
+    if (!c || !buf || (!script && !header)) { fail = "Out of memory"; goto out; }
+    if (!target) { fail = "Incompatible partition layout"; goto out; }
+    if (script && !compatible_runtime(target)) {
+        fail = "Install the matching URL OTA MicroPython runtime first"; goto out;
     }
-    int64_t cl = esp_http_client_fetch_headers(c);
-    int status = esp_http_client_get_status_code(c);
-    if (status != 200) {
-        snprintf(err, sizeof(err), "download failed: HTTP %d", status);
-        fail = err;
-        goto out;
-    }
-    size = in->size ? in->size : (cl > 0 ? (uint32_t)cl : 0);
-    if (in->size && cl > 0 && (uint32_t)cl != in->size) {
-        snprintf(err, sizeof(err), "size mismatch: Content-Length %lld, expected %" PRIu32, (long long)cl, in->size);
-        fail = err;
-        goto out;
-    }
-    if (size == 0 || size > target->size) {
-        snprintf(err, sizeof(err), "bad image size %" PRIu32 " for %s (%" PRIu32 ")", size, target->label,
-                 target->size);
-        fail = err;
-        goto out;
-    }
-    e = esp_ota_begin(target, size, &h); /* erases [0, size) up front */
-    if (e != ESP_OK) {
-        snprintf(err, sizeof(err), "esp_ota_begin: %s", esp_err_to_name(e));
-        fail = err;
-        goto out;
-    }
-    ota_open = true;
-    mbedtls_sha256_starts(&sha, 0);
-    bool chip_ok = false;
-    uint32_t next_pct = 10;
-    while (written < size) {
-        uint32_t want = size - written < CHUNK ? size - written : CHUNK;
-        int r = esp_http_client_read(c, (char *)buf, (int)want);
-        if (r < 0) {
-            snprintf(err, sizeof(err), "read error after %" PRIu32 " bytes", written);
-            fail = err;
-            goto out;
+    uint32_t limit = script ? PROGRAM_LIMIT : target->size;
+    okou_set_install_state("downloading");
+    fail = open_download(c, private_program, &safe_redirect, &length);
+    if (fail) goto out;
+    if (length > limit) { fail = "Download exceeds target size"; goto out; }
+    if (script) {
+        esp_vfs_littlefs_conf_t fs = {.base_path = "/flash", .partition_label = "data", .format_if_mount_failed = false};
+        if (esp_vfs_littlefs_register(&fs) != ESP_OK) {
+            fail = "Cannot mount data partition. Boot the matching runtime once on the setup layout"; goto out;
         }
-        if (r == 0) {
-            snprintf(err, sizeof(err), "size mismatch: stream ended at %" PRIu32 " of %" PRIu32, written, size);
-            fail = err;
-            goto out;
-        }
-        mbedtls_sha256_update(&sha, buf, (size_t)r);
-        uint32_t off = 0;
-        if (written < HOLD_SZ) {
-            off = (uint32_t)r < HOLD_SZ - written ? (uint32_t)r : HOLD_SZ - written;
-            memcpy(hold + written, buf, off);
-            hold_len = written + off;
-            if (!chip_ok && hold_len >= sizeof(esp_image_header_t)) {
-                const esp_image_header_t *ih = (const esp_image_header_t *)hold;
-                if (ih->magic != ESP_IMAGE_HEADER_MAGIC) {
-                    fail = "not an ESP app image (bad magic)";
-                    goto out;
+        mounted = true;
+        file = fopen(STAGING, "wb");
+        if (!file) { fail = "Cannot create staging file"; goto out; }
+    }
+    for (;;) {
+        int n = esp_http_client_read(c, (char *)buf, CHUNK);
+        if (n < 0) { fail = "HTTPS read failed"; goto out; }
+        if (!n) break;
+        if ((uint32_t)n > limit - written) { fail = "Download exceeds target size"; goto out; }
+        if (script) {
+            if (memchr(buf, 0, n) || fwrite(buf, 1, n, file) != (size_t)n) {
+                fail = "Invalid Python source or staging write failed"; goto out;
+            }
+        } else {
+            uint32_t off = 0;
+            if (written < CHUNK) {
+                off = (uint32_t)n < CHUNK - written ? (uint32_t)n : CHUNK - written;
+                memcpy(header + written, buf, off);
+                if (written + off == CHUNK) {
+                    if (!valid_header(header, in->kind)) { fail = "Firmware type, board or chip mismatch"; goto out; }
+                    if (esp_ota_begin(target, length > 0 ? (size_t)length : OTA_SIZE_UNKNOWN, &ota) != ESP_OK) {
+                        fail = "Cannot open target partition"; goto out;
+                    }
+                    ota_open = true;
                 }
-                if (ih->chip_id != CONFIG_IDF_FIRMWARE_CHIP_ID) {
-                    snprintf(err, sizeof(err), "chip id mismatch: image %u, device %u", (unsigned)ih->chip_id,
-                             (unsigned)CONFIG_IDF_FIRMWARE_CHIP_ID);
-                    fail = err;
-                    goto out;
-                }
-                chip_ok = true;
+            }
+            if ((uint32_t)n > off && esp_ota_write_with_offset(ota, buf + off, n - off, written + off) != ESP_OK) {
+                fail = "Flash write failed"; goto out;
             }
         }
-        if ((uint32_t)r > off) {
-            e = esp_ota_write_with_offset(h, buf + off, (uint32_t)r - off, written + off);
-            if (e != ESP_OK) {
-                snprintf(err, sizeof(err), "flash write: %s", esp_err_to_name(e));
-                fail = err;
-                goto out;
-            }
-        }
-        written += (uint32_t)r;
-        uint32_t pct = (uint32_t)((uint64_t)written * 100 / size);
-        if (pct >= next_pct) {
-            emit_progress(in, written, size);
-            next_pct = (pct / 10 + 1) * 10;
+        written += n;
+        if (written >= next_progress) {
+            cJSON *d = receipt(in);
+            cJSON_AddNumberToObject(d, "written", written);
+            if (length > 0) cJSON_AddNumberToObject(d, "size", length);
+            okou_event_json("install.progress", d);
+            next_progress = written + (length > 0 ? (uint32_t)length / 10 : 65536);
         }
     }
-    if (!chip_ok) {
-        fail = "image too small";
-        goto out;
-    }
-    uint8_t digest[32];
-    char hex[65];
-    mbedtls_sha256_finish(&sha, digest);
-    for (int i = 0; i < 32; i++) {
-        snprintf(hex + 2 * i, 3, "%02x", digest[i]);
-    }
-    if (strcmp(hex, in->sha) != 0) {
-        snprintf(err, sizeof(err), "sha256 mismatch: got %.16s...", hex);
-        fail = err;
-        goto out;
+    if (!written || (length > 0 && written != length) || !esp_http_client_is_complete_data_received(c)) {
+        fail = "Incomplete download"; goto out;
     }
     okou_set_install_state("verifying");
-    e = esp_ota_write_with_offset(h, hold, hold_len, 0);
-    if (e != ESP_OK) {
-        snprintf(err, sizeof(err), "flash write (header): %s", esp_err_to_name(e));
-        fail = err;
-        goto out;
+    if (script) {
+        int flushed = fflush(file), closed = fclose(file);
+        file = NULL;
+        if (flushed || closed || rename(STAGING, CANDIDATE)) { fail = "Cannot commit staged program"; goto out; }
+    } else {
+        if (!ota_open || esp_ota_write_with_offset(ota, header, CHUNK, 0) != ESP_OK) { fail = "Invalid image header"; goto out; }
+        ota_open = false;
+        if (esp_ota_end(ota) != ESP_OK) { fail = "ESP image validation failed"; goto out; }
     }
-    ota_open = false;
-    e = esp_ota_end(h);
-    if (e != ESP_OK) {
-        snprintf(err, sizeof(err), "image validation failed: %s", esp_err_to_name(e));
-        fail = err;
-        goto out;
-    }
-    e = esp_ota_set_boot_partition(target);
-    if (e != ESP_OK) {
-        snprintf(err, sizeof(err), "set boot partition: %s", esp_err_to_name(e));
-        fail = err;
-        goto out;
+    if (esp_ota_set_boot_partition(target) != ESP_OK) {
+        if (script) remove(CANDIDATE);
+        fail = "Cannot select boot partition"; goto out;
     }
 
 out:
-    if (ota_open) {
-        esp_ota_abort(h);
+    if (ota_open) esp_ota_abort(ota);
+    if (file) fclose(file);
+    if (mounted) {
+        if (fail) remove(STAGING);
+        esp_vfs_littlefs_unregister("data");
     }
-    mbedtls_sha256_free(&sha);
-    esp_http_client_close(c);
-    esp_http_client_cleanup(c);
+    if (c) esp_http_client_cleanup(c);
     free(buf);
-    free(hold);
-    if (fail) {
-        /* The header sector was never written, so nothing bootable is left behind. */
-        emit_failed(in, fail);
-        return;
-    }
-    ESP_LOGI(TAG, "install %.12s done (%" PRIu32 " bytes) -> rebooting into %s", in->sha, written, target->label);
-    cJSON *d = cJSON_CreateObject();
-    cJSON_AddStringToObject(d, "sha256", in->sha);
-    cJSON_AddStringToObject(d, "version", in->version);
-    cJSON_AddStringToObject(d, "kind", in->kind);
+    free(header);
+    if (fail) { emit_failed(in, fail); return false; }
+    cJSON *d = receipt(in);
+    cJSON_AddNumberToObject(d, "bytes", written);
     okou_event_json("install.done", d);
     okou_nvs_erase(OKOU_KEY_PENDING);
     okou_set_install_state("done");
-    if (strcmp(in->kind, "app") == 0) {
-        okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);
-    }
+    if (strcmp(in->kind, "launcher")) okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);
     okou_schedule_reboot(1500);
+    return true;
 }
-
 static void install_task(void *arg)
 {
     inst_t *in = arg;
-    run_install(in);
+    bool rebooting = run_install(in);
     free(in);
-    s_running = false;
+    if (!rebooting) s_running = false;
     vTaskDelete(NULL);
 }
 
@@ -397,9 +309,12 @@ esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen)
     cJSON_AddNumberToObject(p, "attempts", 1);
     char *s = cJSON_PrintUnformatted(p);
     cJSON_Delete(p);
-    if (s) {
-        okou_nvs_set_str(OKOU_KEY_PENDING, s);
-        free(s);
+    esp_err_t saved = s ? okou_nvs_set_str(OKOU_KEY_PENDING, s) : ESP_ERR_NO_MEM;
+    free(s);
+    if (saved != ESP_OK) {
+        free(in);
+        snprintf(err, errlen, "Cannot persist pending update");
+        return saved;
     }
     okou_set_install_state("queued");
     if (!start_task(in)) {
@@ -445,7 +360,7 @@ void install_resume_pending(void)
             okou_nvs_set_str(OKOU_KEY_PENDING, s);
             free(s);
         }
-        ESP_LOGI(TAG, "resuming pending install %.12s (attempt %d)", in->sha, attempts + 1);
+        ESP_LOGI(TAG, "resuming pending install %.12s (attempt %d)", in->kind, attempts + 1);
         cJSON_Delete(j);
         if (start_task(in)) {
             return;

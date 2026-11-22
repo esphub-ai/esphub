@@ -26,6 +26,6 @@ okou.event("py.hello", '{"screen":"hello"}')
 print("hello screen drawn")
 
 n = 0
-while True:  # a running script: py.exec still works between its bytecodes
+while True:
     n += 1
     time.sleep(5)

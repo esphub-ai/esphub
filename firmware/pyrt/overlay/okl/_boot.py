@@ -23,6 +23,21 @@ if _p:
         vfs.mount(_p[0], "/flash")
     os.chdir("/flash")
     sys.path.append("/flash/lib")
+    # LittleFS rename atomically replaces the old program after a syntax check.
+    try:
+        staged = open(".esphub-next.py", "r")
+    except OSError as exc:
+        if exc.errno != 2:
+            raise
+    else:
+        try:
+            with staged:
+                compile(staged.read(), "main.py", "exec")
+            os.rename(".esphub-next.py", "main.py")
+            print("program.applied main.py")
+        except (SyntaxError, ValueError, MemoryError) as exc:
+            os.remove(".esphub-next.py")
+            print("program.rejected", exc)
 del _p
 
 micropython.alloc_emergency_exception_buf(256)

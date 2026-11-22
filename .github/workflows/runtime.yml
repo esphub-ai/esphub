@@ -66,6 +66,7 @@ jobs:
       - name: Verify and package the board runtime
         run: |
           image="uiflow/m5stack/build-${{ matrix.target }}/micropython.bin"
+          python3 -c 'import sys; assert open(sys.argv[1], "rb").read(340)[288:].startswith(("ESPHUB1/micropython/" + sys.argv[2] + "\0").encode())' "$image" "${{ matrix.board }}"
           test "$(stat -c %s "$image")" -le 4194304
           grep -Fx 'CONFIG_OKOU_BOARD_PROFILE="${{ matrix.board }}"' "uiflow/m5stack/build-${{ matrix.target }}/sdkconfig"
           mkdir out

@@ -78,4 +78,8 @@ menu "okou agent (esp-launcher SDK)"
         range 0 20
         default 3
 
+    config OKOU_MICROPYTHON_RUNTIME
+        bool "ESP Hub MicroPython runtime"
+        default n
+
 endmenu

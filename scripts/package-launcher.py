@@ -22,6 +22,7 @@ assert (("CONFIG_OKL_BOARD_M5_STOPWATCH=y" in Path("sdkconfig.setup" if setup_ba
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 image = (build / "esp-launcher.bin").read_bytes()
+assert image[288:].startswith(f"ESPHUB1/launcher/{board}\0".encode()), "Invalid OTA image profile"
 ota = f"{prefix}-ota.bin"
 (out / ota).write_bytes(image)
 usb = f"{prefix}-usb.zip"

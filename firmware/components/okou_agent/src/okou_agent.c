@@ -342,6 +342,21 @@ void okou_metric(const char *name, double value)
 
 /* ------------------------------------------------------------------ hello / status */
 
+/* IDF places this directly after esp_app_desc_t in the first image segment.
+ * The launcher can check the artifact type and board before erasing a slot. */
+#if CONFIG_OKL_URL_OTA
+#if CONFIG_OKL_BOARD_M5_STOPWATCH
+#define OKOU_IMAGE_PROFILE "ESPHUB1/launcher/stopwatch"
+#else
+#define OKOU_IMAGE_PROFILE "ESPHUB1/launcher/paper-color"
+#endif
+#elif CONFIG_OKOU_MICROPYTHON_RUNTIME
+#define OKOU_IMAGE_PROFILE "ESPHUB1/micropython/" CONFIG_OKOU_BOARD_PROFILE
+#endif
+#ifdef OKOU_IMAGE_PROFILE
+static const char image_profile[] __attribute__((section(".rodata_custom_desc"), aligned(4))) = OKOU_IMAGE_PROFILE;
+#endif
+
 static void hello_fill(cJSON *o)
 {
     const esp_app_desc_t *d = esp_app_get_description();
@@ -350,6 +365,9 @@ static void hello_fill(cJSON *o)
     okou_mac_str(mac);
     const esp_partition_t *run = esp_ota_get_running_partition();
     cJSON_AddNumberToObject(o, "proto", 1);
+#ifdef OKOU_IMAGE_PROFILE
+    cJSON_AddStringToObject(o, "image_profile", image_profile);
+#endif
 #if CONFIG_OKL_BOARD_M5_STOPWATCH
     cJSON_AddStringToObject(o, "board", "stopwatch");
 #elif CONFIG_OKL_BOARD_GENERIC && CONFIG_IDF_TARGET_ESP32S3
@@ -374,9 +392,11 @@ static void hello_fill(cJSON *o)
     cJSON *pj = pending ? cJSON_Parse(pending) : NULL;
     free(pending);
     const cJSON *psha = cJSON_GetObjectItemCaseSensitive(pj, "sha256");
-    if (cJSON_IsString(psha)) {
+    if (cJSON_IsObject(pj)) {
         cJSON *pi = cJSON_AddObjectToObject(o, "pending_install");
-        cJSON_AddStringToObject(pi, "sha256", psha->valuestring);
+        if (cJSON_IsString(psha)) cJSON_AddStringToObject(pi, "sha256", psha->valuestring);
+        const cJSON *kind = cJSON_GetObjectItemCaseSensitive(pj, "kind");
+        if (cJSON_IsString(kind)) cJSON_AddStringToObject(pi, "kind", kind->valuestring);
         cJSON_AddStringToObject(pi, "state", s_install_state);
     } else {
         cJSON_AddNullToObject(o, "pending_install");
@@ -756,59 +776,6 @@ static esp_err_t op_reboot(const cJSON *args, cJSON *data, char *err, size_t err
     return ESP_OK;
 }
 
-static bool is_hex64(const char *s)
-{
-    if (!s || strlen(s) != 64) {
-        return false;
-    }
-    for (int i = 0; i < 64; i++) {
-        char c = s[i];
-        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
-            return false;
-        }
-    }
-    return true;
-}
-
-/* Rule 1: the app stores the install args in okl/pending and reboots into the launcher. */
-static esp_err_t op_install_handoff(const cJSON *args, cJSON *data, char *err, size_t errlen)
-{
-    const cJSON *kind = cJSON_GetObjectItemCaseSensitive(args, "kind");
-    const cJSON *sha = cJSON_GetObjectItemCaseSensitive(args, "sha256");
-    const cJSON *sig = cJSON_GetObjectItemCaseSensitive(args, "sig");
-    if (!cJSON_IsString(kind) || (strcmp(kind->valuestring, "app") && strcmp(kind->valuestring, "launcher"))) {
-        snprintf(err, errlen, "kind must be app or launcher");
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (!cJSON_IsString(sha) || !is_hex64(sha->valuestring) || !cJSON_IsString(sig)) {
-        snprintf(err, errlen, "sha256 (64 hex) and sig are required");
-        return ESP_ERR_INVALID_ARG;
-    }
-    const esp_partition_t *lp = okou_launcher_partition();
-    if (!lp) {
-        snprintf(err, errlen, "no launcher partition");
-        return ESP_ERR_NOT_FOUND;
-    }
-    cJSON *p = cJSON_Duplicate(args, true);
-    cJSON_AddNumberToObject(p, "attempts", 0);
-    char *s = cJSON_PrintUnformatted(p);
-    cJSON_Delete(p);
-    esp_err_t e = s ? okou_nvs_set_str(OKOU_KEY_PENDING, s) : ESP_ERR_NO_MEM;
-    free(s);
-    if (e == ESP_OK) {
-        e = esp_ota_set_boot_partition(lp);
-    }
-    if (e != ESP_OK) {
-        okou_nvs_erase(OKOU_KEY_PENDING);
-        snprintf(err, errlen, "handoff to launcher failed: %s", esp_err_to_name(e));
-        return e;
-    }
-    ESP_LOGW(TAG, "install %.12s...: handing off to launcher (%s)", sha->valuestring, lp->label);
-    cJSON_AddBoolToObject(data, "accepted", true);
-    okou_schedule_reboot(300);
-    return ESP_OK;
-}
-
 static void handle_req(const cJSON *root)
 {
     const cJSON *id = cJSON_GetObjectItemCaseSensitive(root, "id");
@@ -924,7 +891,7 @@ static void handle_req(const cJSON *root)
     } else if (strcmp(op, "reboot") == 0) {
         r = op_reboot(args, data, err, sizeof(err));
     } else if (strcmp(op, "install") == 0 && g_okou_cfg.role == OKOU_ROLE_APP) {
-        r = op_install_handoff(args, data, err, sizeof(err));
+        snprintf(err, sizeof(err), "Enter launcher mode before OTA");
     } else {
         snprintf(err, sizeof(err), "unknown op: %s", op);
     }
@@ -1202,6 +1169,24 @@ static void agent_task(void *arg)
     }
 }
 
+#if CONFIG_OKL_URL_OTA || CONFIG_OKOU_MICROPYTHON_RUNTIME
+#include "esp_netif_sntp.h"
+static void sntp_task(void *arg)
+{
+    /* Validate TLS certificate dates after a cold boot. */
+    while (!okou_net_has_ip()) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+    esp_sntp_config_t c = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    esp_err_t e = esp_netif_sntp_init(&c);
+    if (e != ESP_OK) {
+        ESP_LOGW(TAG, "SNTP start failed: %s", esp_err_to_name(e));
+    }
+    vTaskDelete(NULL);
+}
+
+#endif
+
 esp_err_t okou_agent_start(const okou_config_t *cfg)
 {
     if (s_started) {
@@ -1284,5 +1269,8 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     if (xTaskCreate(agent_task, "okou_agent", CONFIG_OKOU_TASK_STACK, NULL, CONFIG_OKOU_TASK_PRIO, NULL) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
+#if CONFIG_OKL_URL_OTA || CONFIG_OKOU_MICROPYTHON_RUNTIME
+    xTaskCreate(sntp_task, "okl_sntp", 3072, NULL, 3, NULL);
+#endif
     return ESP_OK;
 }
