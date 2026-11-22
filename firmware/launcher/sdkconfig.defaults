@@ -20,3 +20,8 @@ CONFIG_MQTT_TRANSPORT_WEBSOCKET_SECURE=n
 # Wi-Fi only joins existing networks.
 CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
 CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n
+
+# The launcher streams USB bytes with a fixed console configuration and log level.
+CONFIG_VFS_SUPPORT_TERMIOS=n
+CONFIG_LOG_TAG_LEVEL_IMPL_NONE=y
+CONFIG_LOG_DYNAMIC_LEVEL_CONTROL=n

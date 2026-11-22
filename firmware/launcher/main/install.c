@@ -1,5 +1,8 @@
 /* Streaming HTTPS OTA. SPDX-License-Identifier: MIT */
 #include <stdio.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <string.h>
 #include <strings.h>
 #include <inttypes.h>
@@ -20,8 +23,7 @@
 
 #define CHUNK 4096
 #define PROGRAM_LIMIT (32 * 1024)
-#define STAGING "/flash/.esphub-download"
-#define CANDIDATE "/flash/.esphub-next.py"
+#define PROGRAM "/flash/main.py"
 #define MAX_ATTEMPTS 3
 #define PROFILE_OFFSET (sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) + sizeof(esp_app_desc_t))
 #define BOARD CONFIG_OKOU_BOARD_PROFILE
@@ -153,8 +155,7 @@ static bool compatible_runtime(const esp_partition_t *app)
            !memcmp(profile, expected, sizeof(profile));
 }
 
-/* Firmware retains the first sector until the entire response is received. A Python
- * download writes only a temporary file. The runtime compiles the candidate on boot. */
+/* Write the firmware header last so a partial image cannot boot. */
 static bool run_install(inst_t *in)
 {
     const esp_partition_t *target = target_for(in->kind);
@@ -167,9 +168,9 @@ static bool run_install(inst_t *in)
     };
     esp_http_client_handle_t c = esp_http_client_init(&config);
     esp_ota_handle_t ota = 0;
-    bool ota_open = false, mounted = false;
+    bool ota_open = false, mounted = false, partial_program = false;
     uint8_t *buf = malloc(CHUNK), *header = script ? NULL : malloc(CHUNK);
-    FILE *file = NULL;
+    int fd = -1;
     int64_t length = 0;
     uint32_t written = 0, next_progress = 0;
     const char *fail = NULL;
@@ -189,8 +190,13 @@ static bool run_install(inst_t *in)
             fail = "Cannot mount data partition. Boot the matching runtime once on the setup layout"; goto out;
         }
         mounted = true;
-        file = fopen(STAGING, "wb");
-        if (!file) { fail = "Cannot create staging file"; goto out; }
+        /* An older launcher may have left a pending script for the runtime. */
+        if (unlink("/flash/.esphub-next.py") && errno != ENOENT) {
+            fail = "Cannot clear pending script"; goto out;
+        }
+        fd = open(PROGRAM, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        if (fd < 0) { fail = "Cannot open main.py"; goto out; }
+        partial_program = true;
     }
     for (;;) {
         int n = esp_http_client_read(c, (char *)buf, CHUNK);
@@ -198,8 +204,8 @@ static bool run_install(inst_t *in)
         if (!n) break;
         if ((uint32_t)n > limit - written) { fail = "Download exceeds target size"; goto out; }
         if (script) {
-            if (memchr(buf, 0, n) || fwrite(buf, 1, n, file) != (size_t)n) {
-                fail = "Invalid Python source or staging write failed"; goto out;
+            if (memchr(buf, 0, n) || write(fd, buf, n) != n) {
+                fail = "Invalid Python source or main.py write failed"; goto out;
             }
         } else {
             uint32_t off = 0;
@@ -232,24 +238,24 @@ static bool run_install(inst_t *in)
     }
     okou_set_install_state("verifying");
     if (script) {
-        int flushed = fflush(file), closed = fclose(file);
-        file = NULL;
-        if (flushed || closed || rename(STAGING, CANDIDATE)) { fail = "Cannot commit staged program"; goto out; }
+        int closed = close(fd);
+        fd = -1;
+        if (closed) { fail = "Cannot finish main.py"; goto out; }
+        partial_program = false;
     } else {
         if (!ota_open || esp_ota_write_with_offset(ota, header, CHUNK, 0) != ESP_OK) { fail = "Invalid image header"; goto out; }
         ota_open = false;
         if (esp_ota_end(ota) != ESP_OK) { fail = "ESP image validation failed"; goto out; }
     }
     if (esp_ota_set_boot_partition(target) != ESP_OK) {
-        if (script) remove(CANDIDATE);
         fail = "Cannot select boot partition"; goto out;
     }
 
 out:
     if (ota_open) esp_ota_abort(ota);
-    if (file) fclose(file);
+    if (fd >= 0) close(fd);
     if (mounted) {
-        if (fail) remove(STAGING);
+        if (partial_program) unlink(PROGRAM);
         esp_vfs_littlefs_unregister("data");
     }
     if (c) esp_http_client_cleanup(c);

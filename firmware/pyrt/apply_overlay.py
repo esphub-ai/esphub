@@ -42,6 +42,13 @@ edit("main.c", "void MICROPY_ESP_IDF_ENTRY(void) {",
 edit("main.c", "    MICROPY_BOARD_STARTUP();\n",
      "    MICROPY_BOARD_STARTUP();\n    okl_runtime_start(); /* okou_agent owns Wi-Fi and the hub link */\n")
 
+# pyexec prints the exception and traceback through dupterm. Report its outcome
+# to the Hub immediately even if the periodic log batch is still pending.
+edit("main.c", '#include "py/runtime.h"', '#include "py/runtime.h"\n#include "okou_agent.h"')
+for script, indent in (("boot.py", "    "), ("main.py", "        ")):
+    call = f'int ret = pyexec_file_if_exists("{script}");'
+    edit("main.c", call, call + f'\n{indent}if (ret == PYEXEC_UNHANDLED_EXCEPTION) okou_event("program.failed", "{script}");')
+
 # Keep raw and friendly REPL upload modes out of the production USB console.
 edit("main.c", """    for (;;) {
         if (pyexec_mode_kind == PYEXEC_MODE_RAW_REPL) {

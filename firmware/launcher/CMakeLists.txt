@@ -17,3 +17,7 @@ if(NOT DEFINED SDKCONFIG_DEFAULTS)
 endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(esp-launcher)
+
+# Let the SDK omit app-only command and boot paths from the launcher image.
+idf_component_get_property(agent_library okou_agent COMPONENT_LIB)
+target_compile_definitions(${agent_library} PRIVATE OKOU_LAUNCHER_BUILD)
