@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_pm.h"
 #include "esp_crt_bundle.h"
 #include "esp_timer.h"
 #include "freertos/message_buffer.h"
@@ -230,6 +231,19 @@ static void send_program(const char *boot_id)
 }
 
 /* ------------------------------------------------------------------ start hook */
+
+// Called by the TinyUSB task for native USB-OTG boards. USB-Serial/JTAG
+// has its own cable-aware IDF power lock.
+void okl_usb_bus_active(bool active)
+{
+    static esp_pm_lock_handle_t usb_lock;
+    static bool held;
+    if (active == held) return;
+    if (!usb_lock && esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "usb-otg", &usb_lock) != ESP_OK)
+        return;
+    esp_err_t result = active ? esp_pm_lock_acquire(usb_lock) : esp_pm_lock_release(usb_lock);
+    if (result == ESP_OK) held = active;
+}
 
 void okl_runtime_start(void)
 {

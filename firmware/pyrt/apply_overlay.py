@@ -66,6 +66,14 @@ edit("main.c", """    for (;;) {
     }
 """)
 
+# Keep the native USB-OTG link awake while it enumerates or carries traffic.
+# TinyUSB dispatches bus events on the VM task, so this needs no USB polling.
+for source in ("mp_usbd.c", "mp_usbd_runtime.c"):
+    edit("../micropython/shared/tinyusb/" + source, "    tud_task_ext(0, false);",
+         "    tud_task_ext(0, false);\n"
+         "    extern void okl_usb_bus_active(bool active);\n"
+         "    okl_usb_bus_active(tud_connected() && !tud_suspended());")
+
 # 3. Board: our sdkconfig fragment last, our frozen manifest, no Japanese/Korean 24 px fonts.
 bdir = f"boards/{board}"
 extra_manifest = fw / "boards" / profile / "micropython/manifest.py"
