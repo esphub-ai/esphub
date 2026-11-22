@@ -96,12 +96,20 @@ async function op(name,args={}) {
   const command_id=value.command_id;
   notify("Command queued");
   const logRecall = name === "logs.flush";
-  const deadline = Date.now() + (logRecall ? 390000 : 30000);
+  const deadline =
+    Date.now() + (name === "ota.install" ? 600000 : logRecall ? 390000 : 90000);
   while (Date.now() < deadline) {
-    await new Promise(resolve=>setTimeout(resolve,logRecall ? 3000 : 1000));
-    value=await api("/operations/commands.get",{device_id:args.device_id,command_id});
-    if(["accepted","succeeded"].includes(value.state)) return {...value.result,process_id:value.process_id};
-    if(["failed","expired","unknown"].includes(value.state)) throw Error(value.result?.error || "Command "+value.state);
+    await new Promise((resolve) =>
+      setTimeout(resolve, logRecall ? 3000 : 1000),
+    );
+    value = await api("/operations/commands.get", {
+      device_id: args.device_id,
+      command_id,
+    });
+    if (value.state === "succeeded")
+      return { ...value.result, process_id: value.process_id };
+    if (["failed", "expired", "unknown"].includes(value.state))
+      throw Error(value.result?.error || "Command " + value.state);
   }
   throw Error("Command "+command_id+" is "+value.state+". Check commands.get for its receipt.");
 }
@@ -287,9 +295,7 @@ async function refresh() {
             "</option>",
         )
         .join("") +
-      '</select><div class="kv cursor-value">Device RX cursor <b id="rx">' +
-      selected.rx_cursor +
-      '</b></div><div class="kv cursor-value">Browser TX cursor <b id="tx">0</b></div><button id="flush" hidden>Fetch device logs</button><p id="flush-result" role="status"></p><a class="crumb" href="/streams">Stream protocol ↗</a></div></div>';
+      '</select><div class="kv cursor-value">Browser TX cursor <b id="tx">0</b></div><button id="flush" hidden>Fetch device logs</button><p id="flush-result" role="status"></p><a class="crumb" href="/streams">Stream protocol ↗</a></div></div>';
     const flushButton = $("#flush");
     const flushResult = $("#flush-result");
     flushButton.onclick = async () => {
@@ -363,8 +369,6 @@ async function refresh() {
             op("uart.sessions", { device_id: device.id }),
           ]);
           if (currentView !== view) return;
-          $("#rx").textContent =
-            ss.find((s) => s.process_id === session)?.rx_cursor ?? 0;
           $("#connection").textContent = ds.online ? "● Online" : "○ Offline";
           setState(ds);
           if (ss.length !== sessions.length) {
@@ -544,10 +548,10 @@ async function action(k) {
       "<p>Install the latest verified release for this specific board. The connected launcher must report a matching board profile.</p>",
       "Install launcher",
       async () => {
-        await op("launcher.install", id);
+        await op("ota.install", { ...id, kind: "launcher" });
         tab = "Serial";
         await refresh();
-        notify("Launcher update accepted");
+        notify("Launcher image installed");
       },
     );
     return;
@@ -561,7 +565,7 @@ async function action(k) {
       async (a) => {
         const receipt = await op("ota.install", { ...id, ...a });
         session = receipt.process_id;
-        notify("Download accepted. Follow progress in Serial.");
+        notify("Install completed. Verify the next boot in Serial.");
         tab = "Serial";
         await refresh();
       },
@@ -664,7 +668,6 @@ async function explorer() {
           "wifi.remove",
           "launcher.enter",
           "ota.install",
-          "launcher.install",
           "uart.write",
         ].includes(name)
       )

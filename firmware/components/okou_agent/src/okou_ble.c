@@ -198,7 +198,7 @@ static void command(cJSON *request, cJSON *reply)
         cJSON_AddStringToObject(reply, "state", okou_wifi_join_state());
         cJSON_AddStringToObject(reply, "connected",
                                 okou_wifi_current(current, sizeof(current)) ? current : "");
-        cJSON_AddBoolToObject(reply, "hub", okou_ws_connected());
+        cJSON_AddBoolToObject(reply, "hub", okou_mqtt_connected());
     } else
         cJSON_AddStringToObject(reply, "error", "unknown operation");
 }

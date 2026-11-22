@@ -14,8 +14,7 @@ void coredump_ops_register(void);
 
 /* Store a provisioning JSON object (BLE bootstrap key/hub/token/name) in NVS namespace okl. */
 bool prov_apply(const char *line, char *err, size_t n);
-/* {"op":"scan"} / {"op":"saved"} requests from the setup page; NULL for a provisioning payload. */
-const char *prov_request_op(const char *line);
+
 /* USB-serial provisioning: a console line "OKL-PROVISION <json>" applies the same payload. */
 void prov_serial_start(void);
 /* Board bring-up that must run before anything else (power hold etc.). */

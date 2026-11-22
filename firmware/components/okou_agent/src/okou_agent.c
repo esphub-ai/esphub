@@ -1,11 +1,8 @@
 /*
  * okou agent core: hub connection, framing and request dispatch (docs/protocol.md v1).
  *
- * Threads:
- *  - esp_websocket_client task: only copies received text frames into s_rxq (never blocks).
- *  - agent task (low priority): the only writer to the socket. Sends hello, batches logs and
- *    metrics every 200 ms, drains s_txq (events/async responses), keep-alive, reconnects.
- *  - any task: okou_metric/okou_event/ESP_LOG only touch bounded buffers with timeout 0.
+ * The agent task owns MQTT publishing, HTTPS requests and command dispatch.
+ * Producer tasks only write bounded queues.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -27,8 +24,6 @@
 #include "esp_app_desc.h"
 #include "esp_idf_version.h"
 #include "esp_ota_ops.h"
-#include "esp_crt_bundle.h"
-#include "esp_websocket_client.h"
 #include "esp_heap_caps.h"
 #include "driver/gpio.h"
 #include "sdkconfig.h"
@@ -38,26 +33,15 @@
 
 #define TAG OKOU_TAG
 #define US_PER_MS 1000LL
-#define PING_INTERVAL_US (30 * 1000000LL)
-#define PONG_TIMEOUT_US (90 * 1000000LL)
 #define BACKOFF_RESET_US (60 * 1000000LL)
 #define CONNECT_TIMEOUT_US (30 * 1000000LL)
 #define MQTT_LOG_INTERVAL_US (10 * 60 * 1000000LL)
 #define FLUSH_INTERVAL_US (200 * 1000LL)
 #define BACKOFF_MAX_MS 60000
-#define RX_FRAME_MAX 8192
 #define METRIC_RING 32
 #define MAX_OPS 8
 
 okou_config_t g_okou_cfg = OKOU_CONFIG_DEFAULT();
-
-typedef enum { M_CONNECTED, M_DISCONNECTED, M_TEXT } mtype_t;
-typedef struct {
-    uint8_t type;
-    uint32_t gen;
-    char *data;
-    size_t len;
-} msg_t;
 
 typedef struct {
     cJSON *id;
@@ -94,41 +78,30 @@ void okou_agent_notify(void)
         xSemaphoreGive(s_wake);
     }
 }
-static QueueHandle_t s_rxq, s_txq, s_pollq;
-static esp_websocket_client_handle_t s_ws;
-static volatile uint32_t s_gen;
+static QueueHandle_t s_txq, s_pollq;
 #if CONFIG_OKOU_BLE_WIFI
-static bool s_ble_sync_needed;
+static bool s_ble_sync_needed = true;
 #endif
-static volatile bool s_ws_up, s_hello_acked, s_ws_broken, s_reload;
-static int64_t s_conn_start_us, s_up_since_us, s_last_rx_us, s_last_ping_us, s_last_flush_us, s_next_connect_us;
+static volatile bool s_mqtt_up, s_hello_acked, s_mqtt_broken, s_reload;
+static int64_t s_conn_start_us, s_up_since_us, s_last_flush_us, s_next_connect_us;
 static int64_t s_next_log_batch_us = MQTT_LOG_INTERVAL_US;
 static uint32_t s_log_batch_through;
 static cJSON *s_log_request_id;
 static uint32_t s_backoff_ms = 1000;
 static volatile int64_t s_reboot_at_us;
 static char s_boot_id[33];
-static uint32_t uart_cursor;
-static int64_t last_uart_poll;
 static bool s_rolled_back;
 static char *s_txbuf;
 static okou_hooks_t s_hooks;
 static char s_install_state[20] = "queued";
-static cJSON *s_leased_commands;
 static char s_inflight_id[37];
 static int64_t s_inflight_until;
-static bool s_iot, s_iot_started, s_transport_selected, s_pull_due;
-static bool s_started, s_cfg_ok, s_dev;
-static char s_hub[100], s_cid[96], s_csec[100], s_tok[96], s_url[180];
-static char s_headers[256];
+static bool s_iot_started, s_pull_due;
+static bool s_started, s_cfg_ok;
+static char s_hub[100], s_tok[96];
 static op_t s_ops[MAX_OPS];
 static int s_nops;
 static uint32_t s_events_dropped;
-
-/* receive reassembly - websocket task only */
-static char *s_rx_acc;
-static size_t s_rx_acc_cap;
-static bool s_rx_skip;
 
 static metric_t s_metrics[METRIC_RING];
 static uint32_t s_mhead, s_mcount, s_mdropped;
@@ -147,20 +120,17 @@ static void ensure_queues(void)
     if (done) {
         return;
     }
-    QueueHandle_t rx = xQueueCreate(8, sizeof(msg_t));
     QueueHandle_t tx = xQueueCreate(16, sizeof(char *));
     QueueHandle_t pq = xQueueCreate(4, sizeof(poll_job_t *));
     portENTER_CRITICAL(&m);
     if (!done) {
-        s_rxq = rx;
         s_txq = tx;
         s_pollq = pq;
         done = true;
-        rx = tx = pq = NULL;
+        tx = pq = NULL;
     }
     portEXIT_CRITICAL(&m);
-    if (rx) {
-        vQueueDelete(rx);
+    if (tx) {
         vQueueDelete(tx);
         vQueueDelete(pq);
     }
@@ -168,87 +138,36 @@ static void ensure_queues(void)
 
 /* ------------------------------------------------------------------ config */
 
-static bool starts_with(const char *s, const char *p)
-{
-    return strncmp(s, p, strlen(p)) == 0;
-}
-
 static bool load_config(void)
 {
-    s_hub[0] = s_cid[0] = s_csec[0] = s_tok[0] = '\0';
+    s_hub[0] = s_tok[0] = 0;
     okou_nvs_get_str("hub", s_hub, sizeof(s_hub));
-    okou_nvs_get_str("cid", s_cid, sizeof(s_cid));
-    okou_nvs_get_str("csec", s_csec, sizeof(s_csec));
     okou_nvs_get_str(OKOU_KEY_TOKEN, s_tok, sizeof(s_tok));
-    if (!s_hub[0]) {
-        ESP_LOGW(TAG, "not provisioned: okl/hub missing");
-        return false;
-    }
-    /* A hub device token (okl/tok) uses the /api/device/ endpoints with a bearer header; otherwise
-     * the legacy Cloudflare Access service token on /device/. */
-    const char *connect_path = s_tok[0] ? "/api/device/connect" : "/device/connect";
-    if (starts_with(s_hub, "ws://") || starts_with(s_hub, "wss://")) {
-        s_dev = starts_with(s_hub, "ws://");
-        const char *host = strstr(s_hub, "://") + 3;
-        const char *path = strchr(host, '/');
-        if (!path || path[1] == '\0') {
-            int hl = path ? (int)(path - s_hub) : (int)strlen(s_hub);
-            snprintf(s_url, sizeof(s_url), "%.*s%s", hl, s_hub, connect_path);
-        } else {
-            strlcpy(s_url, s_hub, sizeof(s_url));
-        }
-    } else {
-        s_dev = false;
-        snprintf(s_url, sizeof(s_url), "wss://%s%s", s_hub, connect_path);
-    }
-    if (s_tok[0]) {
-        snprintf(s_headers, sizeof(s_headers), "Authorization: Bearer %s\r\n", s_tok);
-    } else if (s_dev) {
-        if (!s_cid[0]) {
-            ESP_LOGW(TAG, "not provisioned: okl/cid missing");
-            return false;
-        }
-        snprintf(s_headers, sizeof(s_headers), "X-Dev-Client-Id: %s\r\n", s_cid);
-    } else {
-        if (!s_cid[0] || !s_csec[0]) {
-            ESP_LOGW(TAG, "not provisioned: okl/cid or okl/csec missing");
-            return false;
-        }
-        snprintf(s_headers, sizeof(s_headers), "CF-Access-Client-Id: %s\r\nCF-Access-Client-Secret: %s\r\n", s_cid,
-                 s_csec);
-    }
-    ESP_LOGI(TAG, "hub %s (%s)", s_url, s_tok[0] ? "device token" : s_dev ? "dev, X-Dev-Client-Id" : "Cloudflare Access");
-    return true;
+    return s_hub[0] && s_tok[0];
 }
 
 esp_err_t okou_hub_http_base(char *buf, size_t len)
 {
-    if (!s_hub[0]) {
+    if (!s_hub[0])
         return ESP_ERR_INVALID_STATE;
-    }
-    if (starts_with(s_hub, "ws://") || starts_with(s_hub, "wss://")) {
-        const char *host = strstr(s_hub, "://") + 3;
-        const char *path = strchr(host, '/');
-        int hl = path ? (int)(path - host) : (int)strlen(host);
-        snprintf(buf, len, "%s://%.*s", s_dev ? "http" : "https", hl, host);
-    } else {
-        snprintf(buf, len, "https://%s", s_hub);
-    }
-    return ESP_OK;
+    // Older registrations sometimes stored a full secure WebSocket URL.
+    const char *host = s_hub;
+    if (!strncmp(host, "wss://", 6))
+        host += 6;
+    else if (!strncmp(host, "https://", 8))
+        host += 8;
+    size_t n = strcspn(host, "/");
+    if (!n || memchr(host, '@', n) || memchr(host, '?', n))
+        return ESP_ERR_INVALID_ARG;
+    int written = snprintf(buf, len, "https://%.*s", (int)n, host);
+    return written >= 0 && (size_t)written < len ? ESP_OK : ESP_ERR_INVALID_SIZE;
 }
 
 void okou_http_apply_auth(esp_http_client_handle_t client)
 {
-    if (s_tok[0]) {
-        char h[sizeof(s_tok) + 8];
-        snprintf(h, sizeof(h), "Bearer %s", s_tok);
-        esp_http_client_set_header(client, "Authorization", h);
-    } else if (s_dev) {
-        esp_http_client_set_header(client, "X-Dev-Client-Id", s_cid);
-    } else {
-        esp_http_client_set_header(client, "CF-Access-Client-Id", s_cid);
-        esp_http_client_set_header(client, "CF-Access-Client-Secret", s_csec);
-    }
+    char h[sizeof(s_tok) + 8];
+    snprintf(h, sizeof(h), "Bearer %s", s_tok);
+    esp_http_client_set_header(client, "Authorization", h);
 }
 
 /* ------------------------------------------------------------------ public small API */
@@ -263,15 +182,9 @@ void okou_set_install_state(const char *state)
     strlcpy(s_install_state, state, sizeof(s_install_state));
 }
 
-bool okou_connected(void)
-{
-    return s_ws_up && s_hello_acked;
-}
+bool okou_connected(void) { return s_mqtt_up && s_hello_acked; }
 
-bool okou_ws_connected(void)
-{
-    return s_ws_up;
-}
+bool okou_mqtt_connected(void) { return s_mqtt_up; }
 
 void okou_agent_reload_config(void)
 {
@@ -394,7 +307,7 @@ static void hello_fill(cJSON *o)
     okou_mac_str(mac);
     const esp_partition_t *run = esp_ota_get_running_partition();
     cJSON_AddNumberToObject(o, "proto", 1);
-    if (s_iot) cJSON_AddBoolToObject(o, "log_flush", true);
+    cJSON_AddBoolToObject(o, "log_flush", true);
 #ifdef OKOU_IMAGE_PROFILE
     cJSON_AddStringToObject(o, "image_profile", image_profile);
 #endif
@@ -451,186 +364,51 @@ cJSON *okou_hello_fields(void)
 
 static bool send_text(const char *s, size_t len)
 {
-    if (s_iot) {
-        cJSON *frame = cJSON_ParseWithLength(s, len);
-        if (!frame)
-            return false;
-        const char *type = cJSON_GetStringValue(cJSON_GetObjectItem(frame, "t"));
-        // The hub has no metrics sink. Avoid waking Wi-Fi for discarded samples.
-        if (type && !strcmp(type, "metric")) {
-            cJSON_Delete(frame);
-            return true;
-        }
-        if (!cJSON_GetObjectItemCaseSensitive(frame, "boot_id"))
-            cJSON_AddStringToObject(frame, "boot_id", s_boot_id);
-        bool receipt = type && !strcmp(type, "res");
-        const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(frame, "id"));
-        bool completed = receipt && id && strcmp(id, s_inflight_id) == 0;
-        cJSON *reply = okou_iot_post("frame", frame);
-        if (!reply && receipt)
-            reply = okou_iot_post("frame", frame);
-        cJSON_Delete(frame);
-        if (!reply) {
-            s_ws_broken = true;
-            return false;
-        }
-        const cJSON *seq = cJSON_GetObjectItemCaseSensitive(reply, "seq");
-        if (cJSON_IsNumber(seq))
-            okou_log_ack((int64_t)seq->valuedouble);
-        if (completed) {
-            s_inflight_id[0] = 0;
-            s_pull_due = true;
-        }
-        cJSON_Delete(reply);
-        return true;
-    }
-    if (!s_ws || !s_ws_up || s_ws_broken) {
+    cJSON *frame = cJSON_ParseWithLength(s, len);
+    if (!frame)
         return false;
+    const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(frame, "id"));
+    const char *t = cJSON_GetStringValue(cJSON_GetObjectItem(frame, "t"));
+    const char *name = cJSON_GetStringValue(cJSON_GetObjectItem(frame, "name"));
+    bool final = name && (!strcmp(name, "install.done") || !strcmp(name, "install.failed"));
+    bool result = t && !strcmp(t, "res");
+    bool confirm = result || final || (t && (!strcmp(t, "hello") || !strcmp(t, "log")));
+    int64_t seq = -1;
+    bool sent = okou_iot_publish(frame, confirm, &seq);
+    if (sent && seq >= 0)
+        okou_log_ack(seq);
+    if (sent && (final || (result && id && !strcmp(id, s_inflight_id)))) {
+        s_inflight_id[0] = 0;
+        s_pull_due = true;
     }
-    if (len > 16384) {
-        ESP_LOGE(TAG, "frame too large (%u), dropped", (unsigned)len);
-        return true;
-    }
-    int r = esp_websocket_client_send_text(s_ws, s, (int)len, pdMS_TO_TICKS(5000));
-    if (r < 0) {
-        s_ws_broken = true;
-        return false;
-    }
-    return true;
+    cJSON_Delete(frame);
+    if (!sent)
+        s_mqtt_broken = true;
+    return sent;
 }
 
-static void ws_event(void *arg, esp_event_base_t base, int32_t id, void *event_data)
-{
-    uint32_t gen = (uint32_t)(uintptr_t)arg;
-    esp_websocket_event_data_t *d = event_data;
-    msg_t m = {.gen = gen};
-    switch (id) {
-    case WEBSOCKET_EVENT_CONNECTED:
-        m.type = M_CONNECTED;
-        xQueueSend(s_rxq, &m, 0);
-        okou_agent_notify();
-        break;
-    case WEBSOCKET_EVENT_DISCONNECTED:
-    case WEBSOCKET_EVENT_ERROR:
-    case WEBSOCKET_EVENT_CLOSED:
-        m.type = M_DISCONNECTED;
-        xQueueSend(s_rxq, &m, 0);
-        okou_agent_notify();
-        break;
-    case WEBSOCKET_EVENT_DATA:
-        if (d->op_code != 0x1 && !(d->op_code == 0x0 && d->payload_offset > 0)) {
-            break; /* binary / control frames: ignored */
-        }
-        if (d->payload_offset == 0) {
-            s_rx_skip = d->payload_len > RX_FRAME_MAX;
-            if (!s_rx_skip && (size_t)d->payload_len + 1 > s_rx_acc_cap) {
-                free(s_rx_acc);
-                s_rx_acc_cap = (size_t)d->payload_len + 1;
-                s_rx_acc = okou_malloc_large(s_rx_acc_cap);
-                if (!s_rx_acc) {
-                    s_rx_acc_cap = 0;
-                    s_rx_skip = true;
-                }
-            }
-        }
-        if (s_rx_skip || d->data_len < 0 || (size_t)(d->payload_offset + d->data_len) > s_rx_acc_cap - 1) {
-            break;
-        }
-        memcpy(s_rx_acc + d->payload_offset, d->data_ptr, d->data_len);
-        if (d->payload_offset + d->data_len >= d->payload_len) {
-            m.type = M_TEXT;
-            m.len = (size_t)d->payload_len;
-            m.data = malloc(m.len + 1);
-            if (m.data) {
-                memcpy(m.data, s_rx_acc, m.len);
-                m.data[m.len] = '\0';
-                if (xQueueSend(s_rxq, &m, 0) != pdTRUE) {
-                    free(m.data);
-                } else {
-                    okou_agent_notify();
-                }
-            }
-            if (s_rx_acc_cap > 2048) { /* do not keep large buffers around */
-                free(s_rx_acc);
-                s_rx_acc = NULL;
-                s_rx_acc_cap = 0;
-            }
-        }
-        break;
-    default:
-        break;
-    }
-}
-
-static void ws_connect(void)
-{
-    esp_websocket_client_config_t c = {
-        .uri = s_url,
-        .headers = s_headers,
-        .buffer_size = 2048,
-        .task_stack = 5120,
-        .task_prio = CONFIG_OKOU_TASK_PRIO + 1,
-        .disable_auto_reconnect = true,
-        .network_timeout_ms = 10000,
-        .ping_interval_sec = 300, /* protocol keep-alive is the text "ping" below */
-        .disable_pingpong_discon = true,
-    };
-    if (!s_dev) {
-        c.crt_bundle_attach = esp_crt_bundle_attach;
-    }
-    s_ws = esp_websocket_client_init(&c);
-    if (!s_ws) {
-        ESP_LOGE(TAG, "websocket init failed");
-        s_next_connect_us = now_us() + 5000 * US_PER_MS;
-        return;
-    }
-    s_gen++;
-    s_ws_broken = false;
-    esp_websocket_register_events(s_ws, WEBSOCKET_EVENT_ANY, ws_event, (void *)(uintptr_t)s_gen);
-    s_conn_start_us = now_us();
-    ESP_LOGI(TAG, "connecting to %s", s_url);
-    if (esp_websocket_client_start(s_ws) != ESP_OK) {
-        /* Usually the websocket task stack (internal RAM) could not be allocated: say how much
-         * internal RAM is left so an app that is out of it can be diagnosed from the log. */
-        ESP_LOGE(TAG, "hub connection not started: internal RAM free %u, largest block %u (task needs %u)",
-                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
-                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
-                 (unsigned)c.task_stack);
-        esp_websocket_client_destroy(s_ws);
-        s_ws = NULL;
-        s_next_connect_us = now_us() + 5000 * US_PER_MS;
-    }
-}
-
-static void ws_teardown(const char *why)
+static void mqtt_teardown(const char *why)
 {
     if (s_iot_started) {
-        cJSON_Delete(s_leased_commands);
-        s_leased_commands = NULL;
         s_inflight_id[0] = 0;
         okou_iot_stop();
         s_iot_started = false;
     }
-    if (s_ws) {
-        esp_websocket_client_destroy(s_ws);
-        s_ws = NULL;
-    }
-    if (s_ws_up) {
+    if (s_mqtt_up) {
         ESP_LOGW(TAG, "hub connection closed (%s)", why);
     }
 #if CONFIG_MBEDTLS_HAVE_TIME_DATE
     /* With certificate date checks on, TLS to the hub fails until the clock is set. The SDK does
      * not start SNTP itself (apps usually own it); say so instead of leaving a bare TLS error. */
     static bool s_time_hint;
-    if (!s_ws_up && !s_time_hint && time(NULL) < 1704067200 /* 2024-01-01 */) {
+    if (!s_mqtt_up && !s_time_hint && time(NULL) < 1704067200 /* 2024-01-01 */) {
         s_time_hint = true;
         ESP_LOGW(TAG, "system time is not set and CONFIG_MBEDTLS_HAVE_TIME_DATE is on: the hub "
                       "certificate cannot be verified until the app starts SNTP");
     }
 #endif
-    s_ws_up = false;
+    s_mqtt_up = false;
     s_hello_acked = false;
-    s_gen++; /* ignore late events from the old client */
     uint32_t delay = s_backoff_ms * (80 + esp_random() % 41) / 100; /* +-20 % jitter */
     s_next_connect_us = now_us() + (int64_t)delay * US_PER_MS;
     s_backoff_ms = s_backoff_ms * 2 > BACKOFF_MAX_MS ? BACKOFF_MAX_MS : s_backoff_ms * 2;
@@ -653,16 +431,6 @@ static bool send_hello(void)
 }
 
 /* ------------------------------------------------------------------ flushing */
-
-static void flush_logs(void)
-{
-    for (int i = 0; i < 4; i++) {
-        size_t n = okou_log_build_frame(s_txbuf, CONFIG_OKOU_TX_FRAME_MAX, UINT32_MAX);
-        if (n == 0 || !send_text(s_txbuf, n)) {
-            break;
-        }
-    }
-}
 
 static void fmt_number(char *b, size_t n, double v)
 {
@@ -762,7 +530,8 @@ static void send_res(const cJSON *id, bool ok, cJSON *data, const char *err)
 // an existing batch; urgent events, commands and scheduled reboots still run.
 static void service_mqtt_log_batch(int64_t now)
 {
-    if (s_ws_broken) return;
+    if (s_mqtt_broken)
+        return;
     if (!s_log_request_id && !s_log_batch_through && now < s_next_log_batch_us) return;
 
     okou_log_stats_t stats = okou_log_stats();
@@ -773,13 +542,13 @@ static void service_mqtt_log_batch(int64_t now)
     if (stats.last_acked < s_log_batch_through) {
         size_t n = okou_log_build_frame(s_txbuf, CONFIG_OKOU_TX_FRAME_MAX, s_log_batch_through);
         if (!n || !send_text(s_txbuf, n)) {
-            s_ws_broken = true;
+            s_mqtt_broken = true;
             return;
         }
         stats = okou_log_stats();
         if (stats.last_acked != stats.last_sent) {
             // Reconnect and replay from the acknowledged cursor.
-            s_ws_broken = true;
+            s_mqtt_broken = true;
             return;
         }
         if (stats.last_acked < s_log_batch_through) return;
@@ -926,11 +695,14 @@ static void handle_req(const cJSON *root)
                 return;
             }
             r = s_ops[i].fn(args, data, err, sizeof(err));
-            send_res(id, r == ESP_OK, data, err);
+            if (r == ESP_OK && !strcmp(op, "install"))
+                cJSON_Delete(data);
+            else
+                send_res(id, r == ESP_OK, data, err);
             return;
         }
     }
-    if (s_iot && strcmp(op, "logs.flush") == 0) {
+    if (strcmp(op, "logs.flush") == 0) {
         s_log_request_id = cJSON_Duplicate(id, false);
         if (s_log_request_id) {
             s_log_batch_through = okou_log_stats().last_written;
@@ -983,21 +755,6 @@ static void handle_req(const cJSON *root)
         r = okou_param_get_json(cJSON_IsString(n) ? n->valuestring : NULL, data, err, sizeof(err));
     } else if (strcmp(op, "param.set") == 0) {
         r = okou_param_set_json(args, data, err, sizeof(err));
-    } else if (strcmp(op, "auth.set") == 0) {
-        /* Migration from Access credentials: the hub hands the device its device token over the
-         * current connection; the agent reconnects with it after this response. */
-        const cJSON *t = cJSON_GetObjectItemCaseSensitive(args, "token");
-        if (!cJSON_IsString(t) || strncmp(t->valuestring, "okl_dev_", 8) != 0 || strlen(t->valuestring) >= sizeof(s_tok)) {
-            snprintf(err, sizeof(err), "token: okl_dev_... string required");
-            r = ESP_ERR_INVALID_ARG;
-        } else {
-            r = okou_nvs_set_str(OKOU_KEY_TOKEN, t->valuestring);
-            if (r == ESP_OK) {
-                s_reload = true;
-            } else {
-                snprintf(err, sizeof(err), "NVS write failed");
-            }
-        }
     } else if (strcmp(op, "provision.reset") == 0) {
         const char *keys[] = {"mqtt_identity", "ble_key", "ssid", "pass", "cid", "csec", "hub", OKOU_KEY_TOKEN};
         r = okou_nvs_set_str(OKOU_KEY_WIFIS, "[]");
@@ -1020,7 +777,10 @@ static void handle_req(const cJSON *root)
     } else {
         snprintf(err, sizeof(err), "unknown op: %s", op);
     }
-    send_res(id, r == ESP_OK, data, err);
+    if (r == ESP_OK && !strcmp(op, "reboot"))
+        cJSON_Delete(data);
+    else
+        send_res(id, r == ESP_OK, data, err);
 }
 
 int okou_poll(uint32_t timeout_ms)
@@ -1153,80 +913,13 @@ static void on_first_ack(void)
     }
 }
 
-/* RX cursor belongs to this boot and survives Wi-Fi reconnects. A new process ID
- * intentionally starts from zero. Never retry a partially consumed serial record. */
-static void uart_input(const cJSON *root)
-{
-    const cJSON *seq = cJSON_GetObjectItemCaseSensitive(root, "seq");
-    const cJSON *text = cJSON_GetObjectItemCaseSensitive(root, "text");
-    if (!cJSON_IsNumber(seq) || seq->valuedouble != (double)uart_cursor + 1 || !cJSON_IsString(text)) return;
-    cJSON *args = cJSON_CreateObject(), *reply = cJSON_CreateObject();
-    if (!args || !reply || !cJSON_AddStringToObject(args, "data", text->valuestring)) {
-        cJSON_Delete(args); cJSON_Delete(reply); return;
-    }
-    char error[128] = "terminal unavailable";
-    esp_err_t result = ESP_ERR_NOT_SUPPORTED;
-    for (int i = 0; i < s_nops; i++) {
-        if (s_ops[i].fn && strcmp(s_ops[i].op, "term.write") == 0) {
-            result = s_ops[i].fn(args, reply, error, sizeof(error));
-            break;
-        }
-    }
-    ++uart_cursor;
-    if (result != ESP_OK) ESP_LOGW(TAG, "UART input %lu: %s", (unsigned long)uart_cursor, error);
-    cJSON_Delete(args); cJSON_Delete(reply);
-}
-static void handle_text(char *s, size_t len)
-{
-    s_last_rx_us = now_us();
-    if (len == 4 && memcmp(s, "pong", 4) == 0) {
-        return;
-    }
-    cJSON *root = cJSON_ParseWithLength(s, len);
-    if (!root) {
-        ESP_LOGW(TAG, "bad frame from hub");
-        return;
-    }
-    const cJSON *t = cJSON_GetObjectItemCaseSensitive(root, "t");
-    if (cJSON_IsString(t)) {
-        if (strcmp(t->valuestring, "ack") == 0) {
-            const cJSON *seq = cJSON_GetObjectItemCaseSensitive(root, "seq");
-            if (cJSON_IsNumber(seq)) {
-                okou_log_ack((int64_t)seq->valuedouble);
-            }
-            if (!s_hello_acked) {
-                s_hello_acked = true;
-                on_first_ack();
-            }
-#if CONFIG_OKOU_BLE_WIFI
-        } else if (strcmp(t->valuestring, "ble.rotate") == 0) {
-            const cJSON *g = cJSON_GetObjectItemCaseSensitive(root, "generation");
-            const cJSON *key = cJSON_GetObjectItemCaseSensitive(root, "secret");
-            if (okou_ble_busy()) { s_ble_sync_needed = true; }
-            else if (cJSON_IsNumber(g) && g->valueint > 1 && cJSON_IsString(key) &&
-                okou_ble_install((unsigned)g->valueint, key->valuestring, false) == ESP_OK) {
-                char ack[80];
-                snprintf(ack, sizeof(ack), "{\"t\":\"ble.installed\",\"generation\":%d}", g->valueint);
-                send_text(ack, strlen(ack));
-            }
-#endif
-        } else if (strcmp(t->valuestring, "uart.input") == 0) {
-            uart_input(root);
-        } else if (strcmp(t->valuestring, "req") == 0) {
-            handle_req(root);
-        }
-    }
-    cJSON_Delete(root);
-}
-
 static void do_reboot(void)
 {
     ESP_LOGW(TAG, "rebooting");
-    if (s_ws_up) {
+    if (s_mqtt_up && !s_mqtt_broken) {
         drain_txq();
-        flush_logs();
-        if (s_ws)
-            esp_websocket_client_close(s_ws, pdMS_TO_TICKS(500));
+        s_log_batch_through = okou_log_stats().last_written;
+        service_mqtt_log_batch(now_us());
     }
     esp_restart();
 }
@@ -1237,176 +930,124 @@ static void pull_commands(void)
     if (!body)
         return;
     cJSON_AddStringToObject(body, "boot_id", s_boot_id);
-    if (!s_leased_commands || !cJSON_GetArraySize(s_leased_commands)) {
-        cJSON_Delete(s_leased_commands);
-        cJSON *batch = okou_iot_post("pull", body);
-        s_leased_commands = cJSON_DetachItemFromObjectCaseSensitive(batch, "commands");
-        if (!cJSON_IsArray(s_leased_commands))
-            s_ws_broken = true;
-        cJSON_Delete(batch);
+    cJSON *batch = okou_iot_post("iot/pull", body);
+    const cJSON *commands = cJSON_GetObjectItemCaseSensitive(batch, "commands");
+    if (!cJSON_IsArray(commands))
+        s_mqtt_broken = true;
+    const cJSON *command = cJSON_GetArrayItem(commands, 0);
+    const char *id = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(command, "id"));
+    if (id) {
+        strlcpy(s_inflight_id, id, sizeof(s_inflight_id));
+        s_inflight_until = now_us() + 90000000;
+        handle_req(command);
     }
-    // Advance only after the previous handler supplies a receipt. Handlers
-    // completing on a different task deliver their receipt through the TX queue.
-    cJSON *command = cJSON_DetachItemFromArray(s_leased_commands, 0);
-    if (command) {
-        const char *id = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(command, "id"));
-        if (id)
-            cJSON_AddStringToObject(body, "id", id);
-        cJSON *permission = id ? okou_iot_post("start", body) : NULL;
-        if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(permission, "start"))) {
-            strlcpy(s_inflight_id, id, sizeof(s_inflight_id));
-            s_inflight_until = now_us() + 90000000;
-            handle_req(command);
-        } else {
-            cJSON_Delete(s_leased_commands);
-            s_leased_commands = NULL;
-            if (!permission)
-                s_ws_broken = true;
-        }
-        cJSON_Delete(permission);
-        cJSON_Delete(command);
-    }
+    cJSON_Delete(batch);
     cJSON_Delete(body);
 }
+
+#if CONFIG_OKOU_BLE_WIFI
+static void sync_ble_when_online(int64_t now)
+{
+    static int64_t retry_at;
+    if (!s_cfg_ok || !okou_net_has_ip() || okou_ble_busy()) {
+        s_ble_sync_needed = true;
+        retry_at = 0;
+        return;
+    }
+    if (!s_ble_sync_needed || now < retry_at)
+        return;
+    unsigned generation = okou_ble_generation();
+    if (!generation) {
+        s_ble_sync_needed = false;
+        return;
+    }
+    cJSON *body = cJSON_CreateObject();
+    cJSON_AddNumberToObject(body, "generation", generation);
+    cJSON *reply = okou_iot_post("ble/sync", body);
+    cJSON_Delete(body);
+    retry_at = now + 30000000;
+    if (!reply)
+        return;
+    const cJSON *next = cJSON_GetObjectItemCaseSensitive(reply, "generation");
+    if (!next)
+        s_ble_sync_needed = false;
+    else {
+        const char *secret = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(reply, "secret"));
+        if (cJSON_IsNumber(next) && secret && okou_ble_install(next->valueint, secret, false) == ESP_OK)
+            retry_at = 0;
+    }
+    cJSON_Delete(reply);
+}
+#endif
 
 static void agent_task(void *arg)
 {
     for (;;) {
-        msg_t m;
-        if (xQueueReceive(s_rxq, &m, 0) == pdTRUE) {
-            if (m.gen != s_gen) {
-                free(m.data); /* stale client */
-            } else if (m.type == M_CONNECTED) {
-                ESP_LOGI(TAG, "hub connected");
-                s_ws_up = true;
-                s_hello_acked = false;
-#if CONFIG_OKOU_BLE_WIFI
-                s_ble_sync_needed = true;
-#endif
-                s_up_since_us = s_last_rx_us = s_last_ping_us = now_us();
-                okou_log_rewind();
-                send_hello();
-            } else if (m.type == M_DISCONNECTED) {
-                ws_teardown("disconnected");
-            } else {
-                handle_text(m.data, m.len);
-                free(m.data);
-            }
-        }
         int64_t now = now_us();
         if (s_reload) {
             s_reload = false;
             s_cfg_ok = load_config();
-            if (s_ws || s_iot_started) {
-                ws_teardown("config reload");
+#if CONFIG_OKOU_BLE_WIFI
+            s_ble_sync_needed = true;
+#endif
+            if (s_iot_started) {
+                mqtt_teardown("config reload");
             }
-            s_transport_selected = false;
-            s_iot = false;
             s_backoff_ms = 1000;
             s_next_connect_us = now;
         }
-        if (s_ws_broken && (s_ws || s_iot_started)) {
-            ws_teardown("send failed");
+#if CONFIG_OKOU_BLE_WIFI
+        sync_ble_when_online(now);
+#endif
+        if (s_mqtt_broken && s_iot_started) {
+            mqtt_teardown("send failed");
         }
         if (s_iot_started) {
             unsigned events = okou_iot_events();
             if (events & IOT_OFFLINE)
-                ws_teardown("MQTT disconnected");
+                mqtt_teardown("MQTT disconnected");
             else if (events & IOT_SUBSCRIBED) {
                 s_up_since_us = now;
-                s_ws_up = true;
+                s_mqtt_up = true;
                 okou_log_rewind();
                 if (send_hello()) {
                     s_hello_acked = true;
-#if CONFIG_OKOU_BLE_WIFI
-                    s_ble_sync_needed = true;
-#endif
                     on_first_ack();
                 } else {
-                    s_ws_broken = true;
+                    s_mqtt_broken = true;
                 }
             }
             if (events & IOT_WAKE)
                 s_pull_due = true;
         }
-        if (!s_ws && !s_iot_started) {
+        if (!s_iot_started) {
             if (s_cfg_ok && okou_net_has_ip() && now >= s_next_connect_us) {
-                if (!s_transport_selected) {
-                    int choice = s_tok[0] && !s_dev ? okou_iot_available() : 0;
-                    if (choice < 0) {
-                        ws_teardown("transport discovery failed");
-                        continue;
-                    }
-                    s_iot = choice == 1;
-                    s_transport_selected = true;
-                }
-                if (s_iot) {
-                    s_ws_broken = false;
-                    s_conn_start_us = now;
-                    s_iot_started = okou_iot_start();
-                    if (!s_iot_started)
-                        ws_teardown("MQTT setup failed");
-                } else {
-                    if (s_tok[0] && !s_dev)
-                        s_transport_selected = false;
-                    ws_connect();
-                }
+                s_mqtt_broken = false;
+                s_conn_start_us = now;
+                s_iot_started = okou_iot_start(s_boot_id);
+                if (!s_iot_started)
+                    mqtt_teardown("MQTT setup failed");
             }
-        } else if (!s_ws_up) {
+        } else if (!s_mqtt_up) {
             if (now - s_conn_start_us > CONNECT_TIMEOUT_US) {
-                ws_teardown("connect timeout");
+                mqtt_teardown("connect timeout");
             }
         } else {
             drain_txq();
             if (s_hello_acked && s_hooks.on_connected_poll)
                 s_hooks.on_connected_poll(s_boot_id);
-#if CONFIG_OKOU_BLE_WIFI
-            if (okou_ble_busy()) s_ble_sync_needed = true;
-            else if (s_hello_acked && s_ble_sync_needed) {
-                unsigned generation = okou_ble_generation();
-                char report[80];
-                snprintf(report, sizeof(report), "{\"t\":\"ble.installed\",\"generation\":%u}", generation);
-                if (s_iot && generation) {
-                    cJSON *frame = cJSON_Parse(report);
-                    cJSON_AddStringToObject(frame, "boot_id", s_boot_id);
-                    cJSON *reply = okou_iot_post("frame", frame);
-                    cJSON_Delete(frame);
-                    if (!reply) s_ws_broken = true;
-                    else {
-                        const cJSON *key = cJSON_GetObjectItemCaseSensitive(reply, "secret");
-                        const cJSON *next = cJSON_GetObjectItemCaseSensitive(reply, "generation");
-                        s_ble_sync_needed = cJSON_IsNumber(next) && cJSON_IsString(key) &&
-                            okou_ble_install(next->valueint, key->valuestring, false) == ESP_OK;
-                        cJSON_Delete(reply);
-                    }
-                } else if (!generation || send_text(report, strlen(report))) s_ble_sync_needed = false;
-            }
-#endif
-            if (s_iot && s_pull_due && !s_log_request_id && s_hello_acked && (!s_inflight_id[0] || now >= s_inflight_until)) {
+            if (s_pull_due && !s_log_request_id && s_hello_acked &&
+                (!s_inflight_id[0] || now >= s_inflight_until)) {
                 s_pull_due = false;
                 pull_commands();
             }
-            if (!s_iot && s_hello_acked && now - last_uart_poll >= 1500000) {
-                char poll[80];
-                int n = snprintf(poll, sizeof(poll), "{\"t\":\"uart.poll\",\"after\":%lu}",
-                                 (unsigned long)uart_cursor);
-                send_text(poll, n);
-                last_uart_poll = now;
-            }
-            if (s_iot) service_mqtt_log_batch(now);
+            service_mqtt_log_batch(now);
             if (now - s_last_flush_us >= FLUSH_INTERVAL_US) {
                 s_last_flush_us = now;
-                if (!s_iot) flush_logs();
                 flush_metrics();
             }
-            if (!s_iot && now - s_last_ping_us >= PING_INTERVAL_US) {
-                s_last_ping_us = now;
-                send_text("ping", 4);
-            }
-            if (!s_iot && now - s_last_rx_us >= PONG_TIMEOUT_US) {
-                ws_teardown("no pong for 90 s");
-            } else if (!okou_net_has_ip()) {
-                ws_teardown("network down");
+            if (!okou_net_has_ip()) {
+                mqtt_teardown("network down");
             } else if (now - s_up_since_us >= BACKOFF_RESET_US) {
                 s_backoff_ms = 1000;
             }
@@ -1421,17 +1062,16 @@ static void agent_task(void *arg)
         now = now_us();
         int64_t deadline = now + 1000000;
         if (rb && rb < deadline) deadline = rb;
-        if (s_ws_up && !s_iot && s_hello_acked && last_uart_poll + 1500000 < deadline)
-            deadline = last_uart_poll + 1500000;
-        if (s_ws_up) {
+        if (s_mqtt_up) {
             portENTER_CRITICAL(&s_mmux);
             bool metrics = s_mcount != 0;
             portEXIT_CRITICAL(&s_mmux);
-            if (s_iot && s_log_batch_through && !s_ws_broken) deadline = now;
-            if ((metrics || (!s_iot && okou_log_pending())) && s_last_flush_us + FLUSH_INTERVAL_US < deadline)
+            if (s_log_batch_through && !s_mqtt_broken)
+                deadline = now;
+            if (metrics && s_last_flush_us + FLUSH_INTERVAL_US < deadline)
                 deadline = s_last_flush_us + FLUSH_INTERVAL_US;
         }
-        if (deadline > now && !uxQueueMessagesWaiting(s_rxq))
+        if (deadline > now)
             xSemaphoreTake(s_wake, pdMS_TO_TICKS((deadline - now) / 1000) + 1);
     }
 }

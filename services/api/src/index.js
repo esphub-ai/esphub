@@ -1,6 +1,6 @@
 import { syncBle } from "./ble.js";
-import { enroll, enabled } from "./iot.js";
-import { pull, receipt, retryDue } from "./commands.js";
+import { enroll, publishWake } from "./iot.js";
+import { pull, retryDue } from "./commands.js";
 import { maxUploadBytes } from "./uploads.js";
 import { releaseResponse } from "./releases.js";
 import { Hono } from "hono";
@@ -105,7 +105,7 @@ async function authenticatedDevice(c) {
   const hash = await digest(t);
   const sql = c.get("sql"),
     [d] =
-      await sql`SELECT id,board,transport,cert_id,boot_id FROM esphub.devices WHERE token_hash=${hash}`;
+      await sql`SELECT id,boot_id FROM esphub.devices WHERE token_hash=${hash}`;
   if (!d) fail(401, "Invalid device token");
   return { ...d, hash, stub: c.env.DEVICE.get(c.env.DEVICE.idFromName(d.id)) };
 }
@@ -138,83 +138,74 @@ api.put("/api/device/program/:pid", async (c) => {
     body: JSON.stringify({ pid, status, source }),
   });
 });
-api.post("/api/device/iot/:action", async (c) => {
+function validBoot(id) {
+  return typeof id === "string" && /^[a-f0-9]{32}$/.test(id);
+}
+api.post("/api/device/iot/enroll", async (c) => {
   const d = await authenticatedDevice(c),
     db = c.get("sql"),
-    action = c.req.param("action"),
-    m = await c.req.json();
-  if (action === "capabilities") return c.json({ mqtt: enabled(c.env) });
-  if (action === "enroll")
-    return c.json(await enroll(c.env, db, d.id, d.hash, m.csr));
-  if (!d.cert_id) fail(403, "Device enrollment required");
-  const boot = m.boot_id;
-  if (typeof boot !== "string" || !/^[0-9a-f]{32}$/.test(boot))
-    fail(400, "Invalid boot ID");
-  if (action === "frame" && m.t === "hello") {
-    if (m.board !== d.board || !["launcher", "app"].includes(m.role))
-      fail(409, "Registered board mismatch");
-    const ack = await d.stub.fetch("https://device/mqtt-frame", {
-      method: "POST",
-      body: JSON.stringify({ frame: m, boot_id: boot, device_id: d.id }),
-    });
-    if (!ack.ok) return ack;
-    const rows =
-      await db`UPDATE esphub.devices SET boot_id=${boot},boot_info=${JSON.stringify(m)}::text::jsonb,transport='mqtt' WHERE id=${d.id} AND token_hash=${d.hash} RETURNING id`;
-    if (!rows.length) fail(401, "Registration changed");
-    return ack;
-  }
-  if (d.transport !== "mqtt" || d.boot_id !== boot)
-    fail(409, "Stale device session");
-  if (action === "frame" && m.t === "ble.installed")
-    return c.json((await syncBle(db, d.id, d.hash, m.generation)) ?? {});
-  if (action === "start") {
-    if (!/^[0-9a-f-]{36}$/.test(m.id ?? "")) fail(400, "Invalid command ID");
-    const rows =
-      await db`UPDATE esphub.device_commands SET state='executing',lease_until=now()+interval '90 seconds',next_wake=now()+interval '90 seconds'
-      WHERE device_id=${d.id} AND id=${m.id} AND claimed_boot=${boot} AND state='claimed' AND lease_until>now()
-      AND NOT EXISTS(SELECT 1 FROM esphub.device_commands earlier WHERE earlier.device_id=${d.id} AND earlier.seq<device_commands.seq AND earlier.state IN ('claimed','executing') AND earlier.lease_until>now())
-      AND expires_at>now() RETURNING id`;
-    return c.json({ start: !!rows.length });
-  }
-  if (action === "pull")
-    return c.json({ commands: await pull(db, d.id, boot) });
-  if (action === "frame" && m.t === "res") {
-    if (typeof m.ok !== "boolean" || !/^[0-9a-f-]{36}$/.test(m.id ?? ""))
-      fail(400, "Invalid receipt");
-    return c.json(await receipt(db, d.id, boot, m));
-  }
+    { csr, boot_id } = await c.req.json();
+  if (!validBoot(boot_id)) fail(400, "Invalid boot ID");
+  const result = await enroll(c.env, db, d.id, d.hash, csr);
+  const rows =
+    await db`UPDATE esphub.devices SET enrolled_boot=${boot_id} WHERE id=${d.id} AND token_hash=${d.hash} AND cert_ready RETURNING id`;
+  if (!rows.length) fail(409, "Enrollment changed");
+  return c.json(result);
+});
+api.post("/api/device/iot/pull", async (c) => {
+  const d = await authenticatedDevice(c),
+    { boot_id } = await c.req.json();
+  if (!validBoot(boot_id) || d.boot_id !== boot_id) fail(409, "Stale boot");
+  return c.json({ commands: await pull(c.get("sql"), d.id, boot_id) });
+});
+api.post("/api/device/ble/sync", async (c) => {
+  const d = await authenticatedDevice(c),
+    { generation } = await c.req.json();
   if (
-    action === "frame" &&
-    m.t === "event" &&
-    ["install.done", "install.failed"].includes(m.name) &&
-    /^[0-9a-f-]{36}$/.test(m.data?.transfer_id ?? "")
-  ) {
-    await db`UPDATE esphub.device_commands SET state=${m.name === "install.done" ? "succeeded" : "failed"},result=${JSON.stringify(m.data)}::text::jsonb,args='{}',next_wake=NULL WHERE device_id=${d.id} AND request_id=${m.data.transfer_id} AND operation='install' AND claimed_boot=${boot} AND state IN ('accepted','executing','unknown')`;
-  }
-  if (action === "frame" && ["log", "event", "metric"].includes(m.t))
-    return d.stub.fetch("https://device/mqtt-frame", {
-      method: "POST",
-      body: JSON.stringify({ frame: m, boot_id: boot, device_id: d.id }),
+    !Number.isSafeInteger(generation) ||
+    generation < 1 ||
+    generation >= 2147483647
+  )
+    fail(400, "Invalid BLE generation");
+  return c.json((await syncBle(c.get("sql"), d.id, d.hash, generation)) ?? {});
+});
+// Only the IoT rule relay has this credential. Device identity and certificate
+// come from the broker's topic and principal, outside the device-controlled frame.
+api.post("/internal/iot/uplink", async (c) => {
+  if (
+    !c.env.IOT_RELAY_SECRET ||
+    c.req.header("Authorization") !== "Bearer " + c.env.IOT_RELAY_SECRET
+  )
+    fail(401, "Broker authentication required");
+  const { device, principal, frame } = await c.req.json();
+  if (
+    !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(device) ||
+    !/^[a-f0-9]{64}$/.test(principal) ||
+    !validBoot(frame?.boot_id) ||
+    !Number.isSafeInteger(frame.mid) ||
+    frame.mid < 1
+  )
+    fail(400, "Invalid uplink");
+  const stub = c.env.DEVICE.get(c.env.DEVICE.idFromName(device));
+  const response = await stub.fetch("https://device/uplink", {
+    method: "POST",
+    body: JSON.stringify({ device, principal, frame }),
+  });
+  if (!response.ok) return response;
+  const ack = await response.json();
+  if (frame.confirm === true)
+    await publishWake(c.env, device, {
+      boot_id: frame.boot_id,
+      mid: frame.mid,
+      ...ack,
     });
-  fail(404, "Unknown action");
+  return c.json({ ok: true });
 });
 api.get("/api/device/programs/:artifact", async (c) => {
   const { stub } = await authenticatedDevice(c);
   return stub.fetch(
     "https://device/artifacts/" + encodeURIComponent(c.req.param("artifact")),
   );
-});
-api.get("/api/device/connect", async (c) => {
-  if (c.req.header("Upgrade")?.toLowerCase() !== "websocket")
-    fail(426, "WebSocket upgrade required");
-  const { id, hash: tokenHash, stub, transport } = await authenticatedDevice(c);
-  if (transport === "mqtt") {
-    const db = c.get("sql");
-    await db`UPDATE esphub.devices SET transport='websocket',boot_id=NULL,boot_info=NULL WHERE id=${id} AND transport='mqtt'`;
-  }
-  return stub.fetch("https://device/connect", {
-    headers: { Upgrade: "websocket", "X-Device-ID": id, "X-Device-Token-Hash": tokenHash },
-  });
 });
 api.post("/operations/:name", async (c) => {
   const user = await identify(c);
@@ -232,6 +223,6 @@ api.post("/operations/:name", async (c) => {
 export default {
   fetch: api.fetch,
   async scheduled(_event, env) {
-    if (enabled(env)) await withDatabase(env, (db) => retryDue(db, env));
+    await withDatabase(env, (db) => retryDue(db, env));
   },
 };

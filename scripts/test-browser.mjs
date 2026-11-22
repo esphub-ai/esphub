@@ -1,5 +1,5 @@
 import { chromium } from "playwright-core";
-import WebSocket from "ws";
+import { simulatedDevice } from "../tests/fixtures/iot/device.mjs";
 import assert from "node:assert/strict";
 import { importPKCS8, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
@@ -27,7 +27,7 @@ const jwt = await new SignJWT(session)
   .setIssuedAt()
   .setExpirationTime("5m")
   .sign(privateKey);
-let ws;
+let mcu, poll;
 try {
   const page = await browser.newPage({
     viewport: { width: 1280, height: 800 },
@@ -85,7 +85,9 @@ try {
   await page.goto(origin);
   await page.getByRole("heading", { name: /Bring HMR to ESP32/ }).waitFor();
   assert.equal(await page.locator('a[href="/mcp"]').count(), 0);
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin });
+  await page
+    .context()
+    .grantPermissions(["clipboard-read", "clipboard-write"], { origin });
   await page.getByRole("button", { name: "Copy prompt" }).click();
   const setupPrompt = await page.evaluate(() => navigator.clipboard.readText());
   assert.equal(setupPrompt, await page.locator("#prompt").innerText());
@@ -98,16 +100,33 @@ try {
   );
   signedIn = true;
   await page.goto(origin + "/devices");
-  const copyPrompt = page.getByRole("button", { name: "Copy prompt", exact: true });
-  await page.getByRole("region", { name: "Use EspHub with your assistant" }).waitFor();
+  const copyPrompt = page.getByRole("button", {
+    name: "Copy prompt",
+    exact: true,
+  });
+  await page
+    .getByRole("region", { name: "Use EspHub with your assistant" })
+    .waitFor();
   assert.equal(await copyPrompt.count(), 1);
   await copyPrompt.click();
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
   assert.equal(prompt, await page.locator("#mcp-prompt").textContent());
-  for (const required of ["https://api.esphub.ai/mcp", "CIMD OAuth", "devices:read", "devices:write", "devices.create", "programs.publish", "launcher.enter", "ota.install"])
+  for (const required of [
+    "https://api.esphub.ai/mcp",
+    "CIMD OAuth",
+    "devices:read",
+    "devices:write",
+    "devices.create",
+    "programs.publish",
+    "launcher.enter",
+    "ota.install",
+  ])
     assert.ok(prompt.includes(required));
   if (process.env.QA_MCP_SCREENSHOT)
-    await page.screenshot({path: process.env.QA_MCP_SCREENSHOT, fullPage: true});
+    await page.screenshot({
+      path: process.env.QA_MCP_SCREENSHOT,
+      fullPage: true,
+    });
   assert.equal(await page.locator('a[href="/mcp"]').count(), 0);
   await page.goto(origin + "/mcp");
   assert.equal(page.url(), origin + "/");
@@ -167,6 +186,7 @@ try {
   await page.getByRole("button", { name: "Create virtual ESP32" }).waitFor();
   await page.getByText("+ Add device").click();
   await page.locator("[name=name]").fill("Paper Color · integration");
+  await page.locator("[name=board]").selectOption("paper-color");
   await page.getByRole("button", { name: "Register", exact: true }).click();
   const token = JSON.parse(
     await page.locator("dialog pre").textContent(),
@@ -174,99 +194,94 @@ try {
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.locator(".device").first().click();
   await page.getByText("No boot sessions yet").waitFor();
-  const url = new URL("/backend/api/device/connect", origin);
-  url.protocol = "ws:";
-  ws = new WebSocket(url, { headers: { Authorization: "Bearer " + token } });
-  await new Promise((ok, no) => {
-    ws.once("open", ok);
-    ws.once("error", no);
-  });
-  const pid = randomUUID();
-  const send = (o) => ws.send(JSON.stringify(o));
-  const ack = new Promise((ok) => ws.once("message", ok));
-  send({
-    t: "hello",
-    boot_id: pid,
+  mcu = simulatedDevice(origin, token);
+  const pid = await mcu.hello({
     board: "paper-color",
     chip: "esp32s3",
+    image_profile: "ESPHUB1/launcher/paper-color",
     fw: { name: "launcher", version: "test" },
     role: "launcher",
+    log_flush: true,
   });
-  await ack;
-  let rx = 0,
+  let busy = false,
     seq = 0;
-  ws.on("message", (buf) => {
-    const m = JSON.parse(buf);
-    if (m.t === "uart.input" && m.seq > rx) {
-      rx = m.seq;
-      send({
-        t: "log",
-        seq: ++seq,
-        lines: [[100, "I", "serial echo: " + m.text.trim()]],
-      });
+  poll = setInterval(async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      const [cmd] = await mcu.pull();
+      if (!cmd) return;
+      let data = {};
+      if (cmd.op === "term.write") {
+        await mcu.send({
+          t: "log",
+          seq: ++seq,
+          lines: [[100, "I", "serial echo: " + cmd.args.data.trim()]],
+        });
+      } else if (cmd.op === "logs.flush")
+        data = { last_acked_seq: seq, dropped_lines: 0 };
+      else throw Error("Unexpected browser command " + cmd.op);
+      await mcu.send({ t: "res", id: cmd.id, ok: true, data });
+    } catch (e) {
+      errors.push(e.message);
+    } finally {
+      busy = false;
     }
-  });
-  const poll = setInterval(() => {
-    if (ws.readyState === 1) send({ t: "uart.poll", after: rx });
-  }, 200);
-  poll.unref();
+  }, 250);
   await page.locator("#cmd").fill("hello from browser");
   await page.locator("#send button").click();
   await page
     .locator("#logs")
     .getByText(/serial echo: hello from browser/)
     .waitFor();
-  await page.locator("#rx").filter({ hasText: /^1$/ }).waitFor();
-  // The integration device exercises WebSocket streaming. Switch only the
-  // browser-facing responses to a capable MQTT boot to verify the recall UI.
-  const fetchLogs = page.getByRole("button", { name: "Fetch device logs" });
-  assert.ok(await fetchLogs.isHidden());
-  const deviceRoute = "**/operations/devices.get";
-  await page.route(deviceRoute, async route => {
-    const response = await route.fetch();
-    const d = await response.json();
-    await route.fulfill({response, json:{...d, transport:"mqtt", info:{...d.info,log_flush:true}}});
-  });
-  const commandId = randomUUID();
-  let recallArgs;
-  await page.route("**/operations/logs.flush", route => {
-    recallArgs = route.request().postDataJSON();
-    return route.fulfill({json:{command_id:commandId,state:"queued"}});
-  });
-  await page.route("**/operations/commands.get", route => {
-    assert.equal(route.request().postDataJSON().command_id, commandId);
-    return route.fulfill({json:{state:"succeeded",process_id:pid,result:{last_acked_seq:17,dropped_lines:2}}});
-  });
-  await fetchLogs.click();
-  await page.getByText("Uploaded through log #17 · 2 lines dropped this boot").waitFor();
-  assert.equal(recallArgs.process_id, pid);
-  assert.ok(recallArgs.device_id && recallArgs.request_id);
-  await page.unroute(deviceRoute);
-  await page.unroute("**/operations/logs.flush");
-  await page.unroute("**/operations/commands.get");
+  await page.getByRole("button", { name: "Fetch device logs" }).click();
+  await page
+    .getByText("Uploaded through log #1 · 0 lines dropped this boot")
+    .waitFor();
+  clearInterval(poll);
   if (process.env.QA_SCREENSHOT)
     await page.screenshot({ path: process.env.QA_SCREENSHOT });
   await page.getByRole("button", { name: "Firmware", exact: true }).click();
-  await page.getByRole("button", { name: "Enter launcher mode", exact: true }).waitFor();
-  await page.getByRole("button", { name: "Install from URL", exact: true }).click();
-  assert.deepEqual(await page.locator('[name="kind"] option').evaluateAll(options => options.map(o => o.value)), ["python", "micropython", "launcher"]);
+  await page
+    .getByRole("button", { name: "Enter launcher mode", exact: true })
+    .waitFor();
+  await page
+    .getByRole("button", { name: "Install from URL", exact: true })
+    .click();
+  assert.deepEqual(
+    await page
+      .locator('[name="kind"] option')
+      .evaluateAll((options) => options.map((o) => o.value)),
+    ["python", "micropython", "launcher"],
+  );
   assert.equal(await page.locator('[name="sha256"]').count(), 0);
   await page.getByRole("button", { name: "Close", exact: true }).click();
-  const pythonBoot = randomUUID();
-  const ready = new Promise(resolve => ws.on("message", function onAck(buf) {
-    if (JSON.parse(buf).t === "ack") { ws.off("message", onAck); resolve(); }
-  }));
-  send({t:"hello",role:"app",board:"paper-color",boot_id:pythonBoot,launcher_version:"1.1.17",micropython_version:"1.27.0",fw:{name:"micropython",version:"1.1.18"}});
-  await ready;
+  const pythonBoot = await mcu.hello({
+    role: "app",
+    board: "paper-color",
+    launcher_version: "1.1.17",
+    micropython_version: "1.27.0",
+    fw: { name: "micropython", version: "1.1.18" },
+  });
   const source = "# 咖啡 café <script>window.bad = true</script>\nprint(42)\n";
-  assert.equal((await fetch(origin+"/backend/api/device/program/"+pythonBoot,{
-    method:"PUT",headers:{Authorization:"Bearer "+token,"X-Program-Status":"available"},body:source
-  })).status,200);
+  assert.equal(
+    (
+      await fetch(origin + "/backend/api/device/program/" + pythonBoot, {
+        method: "PUT",
+        headers: {
+          Authorization: "Bearer " + token,
+          "X-Program-Status": "available",
+        },
+        body: source,
+      })
+    ).status,
+    200,
+  );
   await page.getByRole("button", { name: "Firmware", exact: true }).click();
-  await page.getByText("1.27.0", {exact:true}).waitFor();
-  await page.locator("#program").filter({hasText:"print(42)"}).waitFor();
-  assert.equal(await page.locator("#program").textContent(),source);
-  assert.equal(await page.locator("#program script").count(),0);
+  await page.getByText("1.27.0", { exact: true }).waitFor();
+  await page.locator("#program").filter({ hasText: "print(42)" }).waitFor();
+  assert.equal(await page.locator("#program").textContent(), source);
+  assert.equal(await page.locator("#program script").count(), 0);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .getByRole("button", { name: "Delete device", exact: true })
@@ -298,19 +313,27 @@ try {
       .getAttribute("href"),
     "https://api.esphub.ai/releases/stopwatch/setup",
   );
-  assert.equal(await page.getByRole("link", { name: "Launcher OTA image" }).count(), 0);
-  await page.getByText("Firmware downloads", {exact: true}).click();
+  assert.equal(
+    await page.getByRole("link", { name: "Launcher OTA image" }).count(),
+    0,
+  );
+  await page.getByText("Firmware downloads", { exact: true }).click();
   assert.equal(
     await page.getByRole("link", { name: "Launcher OTA image" }).count(),
     1,
   );
-  assert.equal(await page.getByRole("link", { name: "MicroPython OTA image" }).getAttribute("href"),
-    "https://api.esphub.ai/releases/stopwatch/micropython");
+  assert.equal(
+    await page
+      .getByRole("link", { name: "MicroPython OTA image" })
+      .getAttribute("href"),
+    "https://api.esphub.ai/releases/stopwatch/micropython",
+  );
   assert.deepEqual(errors, []);
   console.log(
     "PASS hosted sign-in and sign-up routing, signed session verification, virtual board creation and boot history, live serial round trip, tool explorer, deletion, mobile navigation",
   );
 } finally {
-  ws?.close();
+  clearInterval(poll);
+  mcu?.close();
   await browser.close();
 }

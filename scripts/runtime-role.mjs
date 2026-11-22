@@ -36,6 +36,7 @@ await writeFile(
     CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
     ...Object.fromEntries(
       [
+        "IOT_RELAY_SECRET",
         "IOT_ACCOUNT_ID",
         "IOT_DATA_ENDPOINT",
         "IOT_ACCESS_KEY_ID",

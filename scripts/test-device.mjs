@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import postgres from "postgres";
-import WebSocket from "ws";
+import { simulatedDevice } from "../tests/fixtures/iot/device.mjs";
 import { importPKCS8, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
 const base = process.env.TEST_SITE_URL;
@@ -80,9 +80,9 @@ async function testVirtualDevice(read) {
   assert.equal(listedVirtual.serial_input, false);
   assert.deepEqual(
     (
-      await sql`SELECT token_hash,ble_secret,cert_id,transport FROM esphub.devices WHERE id=${virtual.id}`
+      await sql`SELECT token_hash,ble_secret,cert_id FROM esphub.devices WHERE id=${virtual.id}`
     )[0],
-    { token_hash: null, ble_secret: null, cert_id: null, transport: null },
+    { token_hash: null, ble_secret: null, cert_id: null },
   );
   assert.equal((await op("uart.sessions", vid, read)).length, 1);
   const rebootArgs = { ...vid, request_id: randomUUID() };
@@ -180,7 +180,6 @@ async function testVirtualDevice(read) {
     ["wifi.ble_credential", vid],
     ["devices.reissue", vid],
     ["launcher.enter", vid],
-    ["launcher.install", vid],
     ["ota.install", { ...vid, kind: "python", url: staged.url }],
     ["uart.write", { ...logArgs, text: "help", request_id: randomUUID() }],
   ]) {
@@ -198,8 +197,7 @@ async function testVirtualDevice(read) {
   );
 }
 
-let ws;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let mcu;
 try {
   const discovery = await (
     await fetch(base + "/backend/.well-known/oauth-protected-resource/mcp")
@@ -243,8 +241,8 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 25);
-  assert.ok(!listed.some(t => t.name === "programs.install"));
+  assert.equal(listed.length, 24);
+  assert.ok(!listed.some((t) => t.name === "programs.install"));
   const readOnly = new Set([
     "commands.get",
     "devices.list",
@@ -255,13 +253,29 @@ try {
     "uart.sessions",
     "uart.read",
   ]);
-  const additiveTools = new Set(["logs.flush", "wifi.ble_credential", "devices.create", "devices.create_virtual", "ota.prepare_upload", "programs.publish"]);
-  const openWorldTools = new Set(["wifi.scan", "wifi.add", "launcher.install", "ota.install", "uart.write"]);
+  const additiveTools = new Set([
+    "logs.flush",
+    "wifi.ble_credential",
+    "devices.create",
+    "devices.create_virtual",
+    "ota.prepare_upload",
+    "programs.publish",
+  ]);
+  const openWorldTools = new Set([
+    "wifi.scan",
+    "wifi.add",
+    "ota.install",
+    "uart.write",
+  ]);
   for (const { name, annotations } of listed) {
     // Active Wi-Fi discovery observes nearby networks but still requires write scope.
     const observesOnly = readOnly.has(name) || name === "wifi.scan";
     assert.equal(annotations?.readOnlyHint, observesOnly, name);
-    assert.equal(annotations?.destructiveHint, !observesOnly && !additiveTools.has(name), name);
+    assert.equal(
+      annotations?.destructiveHint,
+      !observesOnly && !additiveTools.has(name),
+      name,
+    );
     assert.equal(annotations?.openWorldHint, openWorldTools.has(name), name);
   }
   for (const { name } of listed.filter((t) => !readOnly.has(t.name))) {
@@ -305,14 +319,19 @@ try {
   assert.match(d.ble_secret, /^[0-9a-f]{64}$/);
   const firstBle = await op("wifi.ble_credential", id);
   const { credential } = await import("../services/api/src/ble.js");
-  const deriveFor = (secret, beacon) => credential(secret, Buffer.from(beacon.slice(0,16), "hex"));
+  const deriveFor = (secret, beacon) =>
+    credential(secret, Buffer.from(beacon.slice(0, 16), "hex"));
   assert.deepEqual(firstBle, await deriveFor(d.ble_secret, firstBle.beacon));
   assert.match(d.verification_source, /Hello, M5Stack Paper Color/);
   assert.equal(
     d.setup_manifest,
     "https://api.esphub.ai/releases/paper-color/setup-manifest",
   );
-  assert.deepEqual(Object.keys(d.sources).sort(), ["launcher", "micropython", "python"]);
+  assert.deepEqual(Object.keys(d.sources).sort(), [
+    "launcher",
+    "micropython",
+    "python",
+  ]);
   const offline = await op("devices.get", id, read);
   assert.equal(offline.online, false);
   assert.equal(offline.kind, "physical");
@@ -327,21 +346,38 @@ try {
   assert.match(watch.prompt, /Beacon ready/);
   assert.doesNotMatch(watch.prompt, /wifi scan/);
   const watchBle = await op("wifi.ble_credential", { device_id: watch.id });
-  assert.deepEqual(watchBle, await deriveFor(watch.ble_secret, watchBle.beacon));
+  assert.deepEqual(
+    watchBle,
+    await deriveFor(watch.ble_secret, watchBle.beacon),
+  );
 
-  const local = url => base + "/backend" + new URL(url).pathname;
+  const local = (url) => base + "/backend" + new URL(url).pathname;
   const localFiles = {};
-  for (const kind of ["python", "launcher", "micropython"]) {
-    const file = kind === "python" ? Buffer.from("print('R2')") : Buffer.alloc(200000, 0xe9);
-    const grant = await op("ota.prepare_upload", { ...id, kind, size: file.length });
-    const upload = (body, headers) => fetch(local(grant.upload_url), { method: "PUT", headers, body });
+  for (const kind of ["launcher", "micropython"]) {
+    const file = Buffer.alloc(200000, 0xe9);
+    const grant = await op("ota.prepare_upload", {
+      ...id,
+      kind,
+      size: file.length,
+    });
+    const upload = (body, headers) =>
+      fetch(local(grant.upload_url), { method: "PUT", headers, body });
     assert.equal((await upload(file, {})).status, 403);
     assert.equal((await upload(file.subarray(1), grant.headers)).status, 400);
     const response = await upload(file, grant.headers);
     assert.equal(response.status, 201, await response.clone().text());
     assert.equal((await response.json()).url, grant.url);
-    assert.equal((await upload(Buffer.alloc(file.length, 1), grant.headers)).status, 409);
-    const get = token => fetch(local(grant.url), { headers: { Authorization: "Bearer " + token, "Accept-Encoding": "identity" } });
+    assert.equal(
+      (await upload(Buffer.alloc(file.length, 1), grant.headers)).status,
+      409,
+    );
+    const get = (token) =>
+      fetch(local(grant.url), {
+        headers: {
+          Authorization: "Bearer " + token,
+          "Accept-Encoding": "identity",
+        },
+      });
     assert.equal((await get(watch.token)).status, 404);
     assert.equal((await fetch(local(grant.url))).status, 401);
     const downloaded = await get(d.token);
@@ -350,7 +386,11 @@ try {
     assert.ok(Buffer.from(await downloaded.arrayBuffer()).equals(file));
     localFiles[kind] = grant.url;
   }
-  const pending = await op("ota.prepare_upload", { ...id, kind: "launcher", size: 100 });
+  const pending = await op("ota.prepare_upload", {
+    ...id,
+    kind: "launcher",
+    size: 100,
+  });
 
   const other = await issue("devices:read devices:write", {
     sub: otherSubject,
@@ -366,211 +406,237 @@ try {
     assert.match(result.content[0].text, /not found/i);
   }
   assert.equal((await request("tools/list", {}, d.token)).status, 401);
-  const socketURL = new URL("/backend/api/device/connect", base);
-  socketURL.protocol = "ws:";
-  ws = new WebSocket(socketURL, {
-    headers: { Authorization: "Bearer " + d.token },
-  });
-  await new Promise((ok, no) => {
-    ws.once("open", ok);
-    ws.once("error", no);
-  });
-  const inbox = [];
-
-  ws.on("message", (msg) => {
-    const f = JSON.parse(msg.toString());
-    inbox.push(f);
-    if (f.t === "req") {
-      assert.ok(!["py.exec", "term.write"].includes(f.op));
-      const data = f.op === "install" ? { accepted: true } : { output: "test Wi-Fi network" };
-      ws.send(
-        JSON.stringify({
-          t: "res",
-          id: f.id,
-          ok: true,
-          data,
-        }),
-      );
-    }
-  });
-  const send = (v) => ws.send(JSON.stringify(v));
-  const take = async (pred) => {
-    for (let i = 0; i < 150; i++) {
-      const n = inbox.findIndex(pred);
-      if (n >= 0) return inbox.splice(n, 1)[0];
-      await sleep(75);
-    }
-    throw Error("WebSocket response timeout");
-  };
-  const session = { ...id, process_id: randomUUID() };
-  send({
-    t: "hello",
-    boot_id: session.process_id,
-    fw: { name: "launcher", version: "test" },
+  mcu = simulatedDevice(base, d.token);
+  const boot = await mcu.hello({
+    board: d.board,
     role: "launcher",
     chip: "esp32s3",
+    mac: "00:11:22:33:44:55",
+    image_profile: "ESPHUB1/launcher/" + d.board,
+    fw: { version: "1.2.3" },
+    log_flush: true,
   });
-  await take((f) => f.t === "ack");
-  send({ t: "ble.installed", generation: 1 });
-  const offer = await take(f => f.t === "ble.rotate");
+  const session = { ...id, process_id: boot };
+  assert.equal((await op("devices.get", id)).online, true);
+  for (const route of [
+    "iot/start",
+    "iot/frame",
+    "iot/capabilities",
+    "connect",
+  ]) {
+    const r = await fetch(base + "/backend/api/device/" + route, {
+      method: route === "connect" ? "GET" : "POST",
+    });
+    assert.equal(r.status, 404, route);
+  }
+  const ingress = (auth, principal, frame) =>
+    fetch(base + "/backend/internal/iot/uplink", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + auth,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        device: d.id,
+        principal,
+        frame: { boot_id: boot, mid: 1, ...frame },
+      }),
+    });
+  assert.equal(
+    (await ingress(d.token, mcu.principal, { t: "hello" })).status,
+    401,
+  );
+  assert.equal(
+    (
+      await ingress(process.env.TEST_RELAY_SECRET, "1".repeat(64), {
+        t: "hello",
+      })
+    ).status,
+    409,
+  );
+  const sync = (generation) => mcu.post("ble/sync", { generation });
+  const offer = await sync(1);
   assert.equal(offer.generation, 2);
-  send({ t: "ble.installed", generation: 1 });
-  assert.deepEqual(await take(f => f.t === "ble.rotate"), offer);
-  const recovery = await op("wifi.ble_credential", id);
-  const {alternate, ...previous} = recovery;
+  assert.deepEqual(await sync(1), offer);
+  const { alternate, ...previous } = await op("wifi.ble_credential", id);
   assert.deepEqual(previous, await deriveFor(d.ble_secret, previous.beacon));
   assert.deepEqual(alternate, await deriveFor(offer.secret, alternate.beacon));
-  send({ t: "ble.installed", generation: 2 });
-  const afterRecovery = await take(f => f.t === "ble.rotate");
+  const afterRecovery = await sync(2);
   assert.equal(afterRecovery.generation, 3);
-  send({ t: "ble.installed", generation: 3 });
-  send({ t: "log", seq: 1, lines: [[121, "I", "boot log"]] });
-  await take((f) => f.t === "ack" && f.seq === 1);
-  assert.equal(
-    (await op("uart.read", { ...session, after: 0 }, read)).records[0].text,
-    "boot log",
+  assert.deepEqual(await sync(3), {});
+  const rotated = await op("wifi.ble_credential", id);
+  assert.deepEqual(
+    rotated,
+    await deriveFor(afterRecovery.secret, rotated.beacon),
   );
-  const rotatedBle = await op("wifi.ble_credential", id);
-  assert.deepEqual(rotatedBle, await deriveFor(afterRecovery.secret, rotatedBle.beacon));
-  assert.notEqual(rotatedBle.psk, (await deriveFor(d.ble_secret, rotatedBle.beacon)).psk);
-  assert.equal((await op("devices.get", id, read)).online, true);
-  const data = { ...session, text: "help\n", request_id: randomUUID() };
-  assert.equal((await op("uart.write", data)).sequence, 1);
-  assert.equal((await op("uart.write", data)).sequence, 1);
-  send({ t: "uart.poll", after: 0 });
-  assert.equal((await take((f) => f.t === "uart.input")).text, "help\n");
-  send({ t: "uart.poll", after: 1 });
-  send({ t: "log", seq: 2, lines: [[456, "I", "help response"]] });
-  await take((f) => f.t === "ack" && f.seq === 2);
-  assert.equal(
-    (await op("uart.read", { ...session, after: 1 })).records[0].text,
-    "help response",
-  );
-  assert.equal((await op("uart.sessions", id, read))[0].rx_cursor, 1);
-  await op("wifi.list", id, read);
-  assert.deepEqual((await op("firmware.get", id, read)).sources, d.sources);
-  assert.equal((await op("wifi.scan", id)).output, "test Wi-Fi network");
-  const source = d.verification_source + "# " + "é".repeat(3500) + "\n";
-  const staged = await op("programs.publish", { ...id, source });
-  assert.deepEqual(staged.sources, d.sources);
-  const artifactUrl = base + "/backend" + new URL(staged.url).pathname;
-  assert.equal((await fetch(artifactUrl)).status, 401);
-  const download = token => fetch(artifactUrl, { headers: { Authorization: "Bearer " + token } });
-  assert.equal((await download(watch.token)).status, 404);
-  assert.equal(await (await download(d.token)).text(), source);
-  const attempt = (name, args) => call("tools/call", {name, arguments: args});
-  const ota = { ...id, kind: "python", url: staged.url };
-  const report = async (role, image_profile, board = "paper-color") => {
-    const boot_id = randomUUID();
-    send({t:"hello", boot_id, role, board, mac:"00:11:22:33:44:55", chip:"esp32s3", image_profile, fw:{version:"1.2.3", name: role === "launcher" ? "esp-launcher" : "micropython"}});
-    await take(f => f.t === "ack");
-    return boot_id;
+
+  const result = (idValue) =>
+    op("commands.get", { ...id, command_id: idValue }, read);
+  const wifi = {
+    ...id,
+    ssid: "field network",
+    password: "fixture passphrase",
+    request_id: randomUUID(),
   };
-  const oldApp = await report("app");
-  assert.equal((await attempt("ota.install", ota)).isError, true);
-  assert.equal((await attempt("uart.write", {...data, process_id:oldApp})).isError, true);
-  assert.equal((await op("launcher.enter", id)).mode, "rebooting");
-  assert.deepEqual((await take(f => f.op === "reboot")).args, {target:"launcher"});
-  await report("launcher");
-  assert.match((await attempt("ota.install", ota)).content[0].text, /launcher.install/);
-  await report("launcher", "ESPHUB1/launcher/stopwatch", "stopwatch");
-  assert.equal((await attempt("ota.install", ota)).isError, true);
-  const boot = await report("launcher", "ESPHUB1/launcher/paper-color");
-  const entered = await op("launcher.enter", id);
-  assert.equal(entered.mode, "launcher");
-  assert.deepEqual(entered.sources, d.sources);
-  for (const [kind,url] of [["launcher",pending.url], ["launcher",localFiles.python]]) {
-    const rejected = await attempt("ota.install", { ...id, kind, url });
-    assert.equal(rejected.isError, true);
-    assert.match(rejected.content[0].text, /Upload this device/);
+  const added = await op("wifi.add", wifi);
+  assert.equal((await op("wifi.add", wifi)).command_id, added.command_id);
+  const [save] = await mcu.pull();
+  assert.deepEqual(save.args, {
+    name: "wifi",
+    argv: ["add", wifi.ssid, wifi.password],
+  });
+  assert.deepEqual(await mcu.pull(), []);
+  assert.equal((await result(save.id)).state, "dispatched");
+  const ack = {
+    t: "res",
+    id: save.id,
+    ok: true,
+    data: { output: "Saved network" },
+  };
+  await mcu.send(ack);
+  await mcu.send(ack);
+  assert.deepEqual((await result(save.id)).result, ack.data);
+  const stored =
+    await sql`SELECT args,result FROM esphub.device_commands WHERE id=${save.id}`;
+  assert.ok(!JSON.stringify(stored).includes(wifi.password));
+  const flush = await op("logs.flush", {
+    ...session,
+    request_id: randomUUID(),
+  });
+  assert.equal((await mcu.pull())[0].id, flush.command_id);
+  const log = { t: "log", seq: 1, lines: [[10, "I", "boot log"]] };
+  assert.equal((await mcu.send(log)).seq, 1);
+  assert.equal((await mcu.send(log)).seq, 1);
+  await mcu.send({
+    t: "res",
+    ok: true,
+    id: flush.command_id,
+    data: { last_acked_seq: 1, dropped_lines: 0 },
+  });
+  assert.equal((await result(flush.command_id)).result.last_acked_seq, 1);
+  await mcu.send({ t: "event", name: "draw.done", data: { rotation: 1 } });
+  await mcu.send({ t: "metric", items: [["draw_ms", 10, 750]] });
+  assert.deepEqual(
+    (await op("uart.read", session)).records.map((r) => r.text),
+    ["boot log", 'draw.done {"rotation":1}', 'metric [["draw_ms",10,750]]'],
+  );
+
+  const source = 'print("café")';
+  const staged = await op("programs.publish", { ...id, source });
+  assert.equal((await fetch(local(staged.url))).status, 401);
+  assert.equal(
+    (
+      await fetch(local(staged.url), {
+        headers: { authorization: "Bearer " + watch.token },
+      })
+    ).status,
+    404,
+  );
+  assert.equal(
+    await (
+      await fetch(local(staged.url), {
+        headers: { authorization: "Bearer " + d.token },
+      })
+    ).text(),
+    source,
+  );
+  assert.equal((await op("launcher.enter", id)).mode, "launcher");
+  for (const url of [staged.url, pending.url]) {
+    await assert.rejects(
+      op("ota.install", { ...id, kind: "launcher", url }),
+      /Upload not ready/,
+    );
   }
-  for (const kind of ["python","launcher","micropython"]) {
-    const url = kind === "python" ? staged.url : kind === "launcher" ? localFiles.launcher : "https://example.org/micropython.bin";
-    const receipt = await op("ota.install", { ...id, kind, url });
-    assert.equal(receipt.accepted, true);
-    assert.deepEqual(receipt.sources, d.sources);
-    assert.equal(receipt.custom_build_guide_url, d.custom_build_guide_url);
-    assert.equal(receipt.process_id, boot);
-    const wire = await take(f => f.op === "install");
-    assert.deepEqual(wire.args, {kind, url, board:"paper-color", transfer_id:receipt.transfer_id});
-    const event = kind === "launcher" ? "install.failed" : "install.done";
-    send({t:"event",name:event,data:{transfer_id:receipt.transfer_id,kind}});
-    send({t:"log",seq:kind === "python" ? 1 : kind === "launcher" ? 2 : 3, lines:[[123,"I","ota"]]});
-    await take(f => f.t === "ack");
-    const events = await op("uart.read", { ...id, process_id: boot, after: receipt.after });
-    assert.ok(events.records.some(r => r.text.includes(receipt.transfer_id) && r.text.includes(event)));
+  for (const [kind, url] of [
+    ["python", staged.url],
+    ["launcher", localFiles.launcher],
+    ["micropython", localFiles.micropython],
+  ]) {
+    const key = randomUUID(),
+      queued = await op("ota.install", { ...id, kind, url, request_id: key });
+    const [cmd] = await mcu.pull();
+    assert.equal(cmd.id, queued.command_id);
+    assert.deepEqual(cmd.args, { url, board: d.board, kind, transfer_id: key });
+    await mcu.send({
+      t: "event",
+      name: "install.progress",
+      data: { transfer_id: key, written: 100 },
+    });
+    const ok = kind !== "launcher";
+    await mcu.send({
+      t: "event",
+      name: ok ? "install.done" : "install.failed",
+      data: { transfer_id: key, kind },
+    });
+    assert.equal((await result(cmd.id)).state, ok ? "succeeded" : "failed");
   }
-  const app = await report("app", "ESPHUB1/micropython/paper-color");
+
+  const reboot = await op("devices.reboot", id);
+  assert.equal((await mcu.pull())[0].id, reboot.command_id);
+  const app = await mcu.hello({
+    board: d.board,
+    role: "app",
+    mac: "00:11:22:33:44:55",
+    image_profile: "ESPHUB1/micropython/" + d.board,
+    fw: { name: "micropython", version: "test" },
+  });
+  assert.equal((await result(reboot.command_id)).state, "succeeded");
   const inventory = (await op("devices.get", id)).software;
   assert.equal(inventory.launcher_version, "1.2.3");
-  assert.equal(inventory.launcher_last_seen, true);
   assert.equal(inventory.application.kind, "micropython");
-  assert.equal((await op("programs.get", id, read)).status, "unreported");
-  const uploadSource = (pid, token, source) => fetch(base + "/backend/api/device/program/" + pid, {
-    method:"PUT", headers:{Authorization:"Bearer " + token, "X-Program-Status":"available"}, body:source,
-  });
-  assert.equal((await uploadSource(oldApp,d.token,source)).status,409);
-  assert.equal((await uploadSource(app,watch.token,source)).status,409);
-  assert.equal((await uploadSource(app,d.token,source)).status,200);
-  assert.deepEqual(await op("programs.get", id, read), {process_id:app, status:"available", source});
-  assert.equal((await op("devices.get", id)).serial_input, true);
-  await op("uart.write", {...data, process_id:app,text:"application message"});
-  send({t:"uart.poll",after:0});
-  assert.equal((await take(f => f.t === "uart.input")).text, "application message");
-  // Exercise the new firmware protocol against a real Worker and Postgres with the
-  // broker offline. A missed wake is recovered by the pull following subscription.
-  await sql`UPDATE esphub.devices SET cert_id=${"0".repeat(64)} WHERE id=${watch.id}`;
-  const mqttBoot=randomUUID().replaceAll("-","");
-  const devicePost=async(action,body,token=watch.token)=>{
-    const response=await fetch(base+"/backend/api/device/iot/"+action,{
-      method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(body)
+  assert.equal(
+    (
+      await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
+        boot_id: boot,
+        t: "hello",
+        board: d.board,
+        role: "launcher",
+      })
+    ).status,
+    409,
+  );
+  await assert.rejects(
+    op("uart.write", {
+      ...session,
+      text: "wrong boot",
+      request_id: randomUUID(),
+    }),
+    /conflict/,
+  );
+  await assert.rejects(
+    op("ota.install", { ...id, kind: "python", url: staged.url }),
+    /launcher/,
+  );
+  const snapshot = (pid, token) =>
+    fetch(base + "/backend/api/device/program/" + pid, {
+      method: "PUT",
+      headers: {
+        Authorization: "Bearer " + token,
+        "X-Program-Status": "available",
+      },
+      body: source,
     });
-    assert.equal(response.status,200,await response.clone().text());
-    return response.json();
-  };
-  await devicePost("frame",{t:"hello",board:"stopwatch",role:"app",boot_id:mqttBoot,micropython_version:"1.27.0",fw:{name:"micropython",version:"test-runtime"}});
-  assert.equal((await uploadSource(mqttBoot,watch.token,"")).status,200);
-  assert.equal((await op("programs.get",{device_id:watch.id},read)).source,"");
-  const flushArgs = { device_id: watch.id, process_id: mqttBoot, request_id: randomUUID() };
-  await assert.rejects(op("logs.flush", flushArgs), /Log recall requires/);
-  await devicePost("frame", {t:"hello", board:"stopwatch", role:"app", boot_id:mqttBoot, log_flush:true});
-  await assert.rejects(op("logs.flush", {...flushArgs,process_id:randomUUID()}), /Boot, transport or request ID conflict/);
-  const flush = await op("logs.flush", flushArgs);
-  assert.equal((await op("logs.flush", flushArgs)).command_id, flush.command_id);
-  const flushBoot = {boot_id:mqttBoot};
-  const batch = await devicePost("pull", flushBoot);
-  assert.deepEqual(batch.commands.map(c => [c.id,c.op]), [[flush.command_id,"logs.flush"]]);
-  assert.equal((await devicePost("start", {...flushBoot,id:flush.command_id})).start, true);
-  const logAck = await devicePost("frame", {...flushBoot,t:"log",seq:1,lines:[[1,"I","buffered log"]]});
-  assert.equal(logAck.seq, 1);
-  const flushData = {last_acked_seq:logAck.seq,dropped_lines:2};
-  await devicePost("frame", {...flushBoot,t:"res",ok:true,id:flush.command_id,data:flushData});
-  const flushStatus = await op("commands.get", {device_id:watch.id,command_id:flush.command_id}, read);
-  assert.equal(flushStatus.state,"succeeded");
-  assert.deepEqual(flushStatus.result,flushData);
-  const queued=await op("uart.write",{device_id:watch.id,process_id:mqttBoot,request_id:randomUUID(),text:"test"});
-  const body={boot_id:mqttBoot};
-  const {commands}=await devicePost("pull",body);
-  assert.deepEqual(commands.map(c=>[c.id,c.op,c.args]),[[queued.command_id,"term.write",{data:"test"}]]);
-  assert.equal((await devicePost("start",{...body,id:queued.command_id})).start,true);
-  assert.equal((await devicePost("start",{...body,id:queued.command_id})).start,false);
-  const result={...body,t:"res",ok:true,id:queued.command_id,data:{written:4}};
-  await devicePost("frame",result);
-  await devicePost("frame",result);
-  const status=await op("commands.get",{device_id:watch.id,command_id:queued.command_id},read);
-  assert.equal(status.state,"succeeded"); assert.deepEqual(status.result,result.data);
+  assert.equal((await snapshot(boot, d.token)).status, 409);
+  assert.equal((await snapshot(app, watch.token)).status, 409);
+  assert.equal((await snapshot(app, d.token)).status, 200);
+  assert.equal((await op("programs.get", id)).source, source);
+  await op("devices.reissue", id);
+  assert.equal(
+    (
+      await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
+        boot_id: app,
+        t: "log",
+      })
+    ).status,
+    409,
+  );
   await op("devices.delete", { device_id: watch.id });
-  const archived = await call("tools/call", {
-    name: "uart.write",
-    arguments: { ...data, request_id: randomUUID() },
-  });
-  assert.equal(archived.isError, true);
   await op("devices.delete", id);
   console.log(
-    "PASS Clerk OAuth discovery, 25 MCP tools, persistent virtual devices and idempotent reboots, BLE credential issuance and acknowledged rotation, private R2 uploads, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
+    "PASS Clerk, virtual devices, broker enrollment, command dispatch, duplicate receipts, cloud Wi-Fi, BLE rotation, MQTT logs and events, OTA, private file transfer and revocation",
   );
 } finally {
-  ws?.close();
+  mcu?.close();
   await sql`DELETE FROM esphub.accounts WHERE clerk_subject IN (${subject}, ${otherSubject})`;
   await sql.end();
 }

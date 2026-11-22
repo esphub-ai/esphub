@@ -18,7 +18,7 @@ test(
       await db`INSERT INTO esphub.accounts(handle) VALUES(${crypto.randomUUID()}) RETURNING id`;
     try {
       const [device] =
-        await db`INSERT INTO esphub.devices(owner,name,board,token_hash,transport,boot_id) VALUES(${owner.id},'test','paper-color',${crypto.randomUUID()},'mqtt',${boot}) RETURNING id`;
+        await db`INSERT INTO esphub.devices(owner,name,board,token_hash,enrolled_boot,boot_id) VALUES(${owner.id},'test','paper-color',${crypto.randomUUID()},${boot},${boot}) RETURNING id`;
       const c = { sql: db, env: {} },
         id = device.id,
         key = crypto.randomUUID();
@@ -39,11 +39,11 @@ test(
       const [command] = batches.flat();
       assert.equal(batches.flat().length, 1);
       assert.deepEqual(command.args, args);
-      await db`UPDATE esphub.device_commands SET next_wake=now(),lease_until=now() WHERE id=${command.id}`;
+      const second = await enqueue(c, id, "status", {}, boot);
+      assert.equal((await pull(db, id, boot)).length, 0); // one command outstanding
+      await db`UPDATE esphub.device_commands SET next_wake=now() WHERE id=${command.id}`;
       await retryDue(db, {}, id);
-      assert.equal((await pull(db, id, boot))[0].id, command.id);
-      await db`UPDATE esphub.device_commands SET state='executing',next_wake=now() WHERE id=${command.id}`;
-      await retryDue(db, {}, id);
+      assert.equal((await pull(db, id, boot))[0].id, second.command_id);
       assert.equal(
         (
           await db`SELECT state FROM esphub.device_commands WHERE id=${command.id}`

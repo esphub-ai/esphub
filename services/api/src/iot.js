@@ -58,13 +58,13 @@ export async function connected(env, id) {
     )?.connected === true
   );
 }
-export function publishWake(env, id) {
+export function publishWake(env, id, payload = { pending: true }) {
   return request(
     env,
     env.IOT_DATA_ENDPOINT,
     "/topics/" + encodeURIComponent("devices/" + id + "/wake") + "?qos=1",
     "POST",
-    { pending: true },
+    payload,
     "iotdata",
   );
 }

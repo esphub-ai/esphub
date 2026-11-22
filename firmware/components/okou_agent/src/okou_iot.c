@@ -1,19 +1,27 @@
 /* SPDX-License-Identifier: MIT */
-#include "okou_priv.h"
 #include "okou_iot.h"
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include "mqtt_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_random.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "mbedtls/pk.h"
 #include "mbedtls/x509_csr.h"
+#include "mqtt_client.h"
+#include "okou_priv.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static esp_mqtt_client_handle_t mqtt;
 static cJSON *active_identity, *active_certificate;
 static unsigned events;
-static char topic[64];
+static char topic[64], uplink[64], boot[33];
+static uint32_t next_mid;
+typedef struct {
+    uint32_t mid;
+    int64_t seq;
+} ack_t;
+static QueueHandle_t acks;
 static portMUX_TYPE event_lock = portMUX_INITIALIZER_UNLOCKED;
 static void signal_event(unsigned mask)
 {
@@ -53,8 +61,8 @@ static cJSON *post(const char *operation, cJSON *body, int *status)
     char base[160], url[224];
     if (!body || okou_hub_http_base(base, sizeof(base)) != ESP_OK || strncmp(base, "https://", 8))
         return NULL;
-    snprintf(url, sizeof(url), "%s/api/device/iot/%s", base, operation);
-    response_t r = {.limit = 16384};
+    snprintf(url, sizeof(url), "%s/api/device/%s", base, operation);
+    response_t r = {.limit = !strcmp(operation, "ble/sync") ? 256 : 16384};
     r.data = okou_malloc_large(r.limit + 1);
     char *payload = cJSON_PrintUnformatted(body);
     cJSON *answer = NULL;
@@ -88,17 +96,6 @@ cJSON *okou_iot_post(const char *operation, cJSON *body)
 {
     int status = 0;
     return post(operation, body, &status);
-}
-int okou_iot_available(void)
-{
-    cJSON *empty = cJSON_CreateObject();
-    int status = 0;
-    cJSON *reply = post("capabilities", empty, &status);
-    const cJSON *value = cJSON_GetObjectItemCaseSensitive(reply, "mqtt");
-    int available = cJSON_IsBool(value) ? cJSON_IsTrue(value) : (status == 404 ? 0 : -1);
-    cJSON_Delete(empty);
-    cJSON_Delete(reply);
-    return available;
 }
 static int hardware_random(void *ctx, unsigned char *buf, size_t len)
 {
@@ -160,9 +157,24 @@ static void mqtt_event(void *ctx, esp_event_base_t base, int32_t event, void *ar
         signal_event((e->data_len == 1 && e->data && ((unsigned char)e->data[0]) <= 1) ? IOT_SUBSCRIBED | IOT_WAKE
                                                                                        : IOT_OFFLINE);
         break;
-    case MQTT_EVENT_DATA:
-        signal_event(IOT_WAKE);
+    case MQTT_EVENT_DATA: {
+        if (!e->data || e->data_len <= 0 || e->data_len != e->total_data_len || e->data_len > 256)
+            break;
+        cJSON *m = cJSON_ParseWithLength(e->data, e->data_len);
+        if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(m, "pending")))
+            signal_event(IOT_WAKE);
+        const char *pid = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(m, "boot_id"));
+        const cJSON *mid = cJSON_GetObjectItemCaseSensitive(m, "mid");
+        if (pid && !strcmp(pid, boot) && cJSON_IsNumber(mid) && mid->valuedouble >= 1 &&
+            mid->valuedouble <= UINT32_MAX) {
+            const cJSON *cursor = cJSON_GetObjectItemCaseSensitive(m, "seq");
+            ack_t ack = {.mid = (uint32_t)mid->valuedouble,
+                         .seq = cJSON_IsNumber(cursor) ? (int64_t)cursor->valuedouble : -1};
+            xQueueSend(acks, &ack, 0);
+        }
+        cJSON_Delete(m);
         break;
+    }
     case MQTT_EVENT_DISCONNECTED:
         signal_event(IOT_OFFLINE);
         break;
@@ -182,15 +194,64 @@ void okou_iot_stop(void)
     active_certificate = NULL;
     okou_iot_events();
 }
-bool okou_iot_start(void)
+bool okou_iot_publish(cJSON *frame, bool confirm, int64_t *seq)
+{
+    if (!mqtt || !acks || !frame)
+        return false;
+    uint32_t mid = ++next_mid;
+    if (!cJSON_GetObjectItemCaseSensitive(frame, "boot_id") && !cJSON_AddStringToObject(frame, "boot_id", boot))
+        return false;
+    if (!cJSON_AddNumberToObject(frame, "mid", mid) || (confirm && !cJSON_AddTrueToObject(frame, "confirm")))
+        return false;
+    cJSON *envelope = cJSON_CreateObject();
+    if (!envelope || !cJSON_AddItemReferenceToObject(envelope, "frame", frame)) {
+        cJSON_Delete(envelope);
+        return false;
+    }
+    char *payload = cJSON_PrintUnformatted(envelope);
+    cJSON_Delete(envelope);
+    if (!payload)
+        return false;
+    bool done = false;
+    for (int attempt = 0; attempt < (confirm ? 2 : 1) && !done; ++attempt) {
+        if (esp_mqtt_client_publish(mqtt, uplink, payload, 0, 1, 0) < 0)
+            break;
+        if (!confirm) {
+            done = true;
+            break;
+        }
+        TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(6000);
+        for (;;) {
+            int32_t remaining = (int32_t)(deadline - xTaskGetTickCount());
+            ack_t ack;
+            if (remaining <= 0 || !xQueueReceive(acks, &ack, (TickType_t)remaining))
+                break;
+            if (ack.mid == mid) {
+                *seq = ack.seq;
+                done = true;
+                break;
+            }
+        }
+    }
+    free(payload);
+    return done;
+}
+
+bool okou_iot_start(const char *boot_id)
 {
     cJSON *id = identity(), *req = cJSON_CreateObject(), *reply = NULL;
     const char *key = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(id, "key"));
     const char *csr = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(id, "csr"));
     bool started = false;
-    if (!key || !csr || !cJSON_AddStringToObject(req, "csr", csr))
+    if (!acks)
+        acks = xQueueCreate(8, sizeof(ack_t));
+    if (!acks)
         goto done;
-    reply = okou_iot_post("enroll", req);
+    xQueueReset(acks);
+    strlcpy(boot, boot_id, sizeof(boot));
+    if (!key || !csr || !cJSON_AddStringToObject(req, "boot_id", boot) || !cJSON_AddStringToObject(req, "csr", csr))
+        goto done;
+    reply = okou_iot_post("iot/enroll", req);
     const char *device = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(reply, "device_id"));
     const char *host = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(reply, "endpoint"));
     const char *cert = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(reply, "certificate"));
@@ -199,6 +260,7 @@ bool okou_iot_start(void)
     char client_id[48];
     snprintf(client_id, sizeof(client_id), "esphub-%s", device);
     snprintf(topic, sizeof(topic), "devices/%s/wake", device);
+    snprintf(uplink, sizeof(uplink), "devices/%s/up", device);
     esp_mqtt_client_config_t config = {
         .broker.address.hostname = host,
         .broker.address.port = 8883,
