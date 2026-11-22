@@ -121,7 +121,7 @@ const defs = [
   [
     "ota.prepare_upload",
     additive,
-    "Stage a local file without GitHub or a running device. Request a short-lived, single-object R2 upload credential, then PUT exactly size bytes to upload_url with the returned headers. After HTTP 201, enter launcher mode and call ota.install with the returned url and matching kind.",
+    "Returns a short-lived PUT URL, authorization headers, and an artifact URL for one file of the specified kind and byte size. A successful upload of exactly that size returns HTTP 201. The device can be offline.",
     {
       ...id,
       kind: otaKind,
@@ -131,7 +131,7 @@ const defs = [
   [
     "ota.install",
     { ...destructive, openWorldHint: true },
-    "In launcher mode, stream an HTTPS artifact for the registered board. Use ota.prepare_upload for a local file. Supply your own board-compatible build or use https://api.esphub.ai/releases/{board}/ota for the official launcher or /releases/{board}/micropython for its runtime. For python, use a plain UTF-8 main.py URL. The receipt includes GitHub sources for all three layers. Follow install.done or install.failed in the returned UART session, then verify the next boot.",
+    "Requests installation from an HTTPS URL while the registered board is in launcher mode. The artifact is a board-compatible launcher image, a MicroPython runtime image, or a UTF-8 main.py file. The launcher reports install.done or install.failed for the transfer.",
     {
       ...id,
       kind: otaKind,
@@ -151,7 +151,7 @@ const defs = [
       },
     },
   ],
-  ["logs.flush", additive, "Wake a compatible MQTT device to upload buffered logs from the selected boot. Use commands.get for the last acknowledged log sequence and the number of lines dropped this boot.", session],
+  ["logs.flush", additive, "Queues a buffered log upload for the selected boot on an MQTT device with log recall support. The completed command reports the last acknowledged log sequence and the number of lines dropped during that boot.", session],
   ["programs.get", readOnly, "Read the last reported main.py for the current or last-seen MicroPython boot, including offline devices.", id],
   [
     "uart.sessions",
