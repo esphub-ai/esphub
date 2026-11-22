@@ -13,6 +13,12 @@ ESP Hub provisions ESP32 devices over USB and manages them through the web and M
 
 All supported models use ESP32-S3. Paper Color, PaperDIY, StackChan and StopWatch have 16 MB flash. Cardputer-Adv has 8 MB flash and its own partition layout. Its MicroPython runtime includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for the TCA8418 keyboard. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the launcher, MicroPython runtime, partition table, flash arguments and a SHA-256 manifest. This kit replaces the partition table and app. The separate StopWatch launcher-only kit preserves its legacy partition layout.
 
+To build the launcher locally, run this from `firmware/launcher` in an ESP-IDF shell, replacing `stopwatch` with the directory name of your board:
+
+```sh
+idf.py -B build-stopwatch -DSDKCONFIG="$PWD/build-stopwatch/sdkconfig" -DESPHUB_BOARD=stopwatch -DIDF_TARGET=esp32s3 build
+```
+
 Connect the board over USB and call `devices.create`. Download and flash the matching setup kit. Send the returned token and BLE bootstrap key to the launcher at 115200 baud:
 
 ```text

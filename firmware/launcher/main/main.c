@@ -14,7 +14,6 @@
 #include "esp_timer.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
-#include "driver/gpio.h"
 #include "okou_agent.h"
 #include "okou_agent_ext.h"
 #include "launcher.h"
@@ -141,15 +140,7 @@ void app_main(void)
                  (int)((autostart_at - t0) / 1000));
     }
 
-#if CONFIG_OKL_PROV_BUTTON_GPIO >= 0
-    gpio_config_t io = {.pin_bit_mask = 1ULL << CONFIG_OKL_PROV_BUTTON_GPIO,
-                        .mode = GPIO_MODE_INPUT,
-                        .pull_up_en = GPIO_PULLUP_ENABLE};
-    gpio_config(&io);
-#endif
     bool acked_once = false;
-    __attribute__((unused)) int64_t btn_since = 0;
-    __attribute__((unused)) bool btn_fired = false;
 
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -187,27 +178,13 @@ void app_main(void)
             vTaskDelay(pdMS_TO_TICKS(500));
             esp_ota_mark_app_invalid_rollback_and_reboot();
         }
-#if CONFIG_OKL_PROV_BUTTON_GPIO >= 0
-        if (gpio_get_level(CONFIG_OKL_PROV_BUTTON_GPIO) == 0) {
-            if (!btn_since) {
-                btn_since = now;
-            } else if (!btn_fired && now - btn_since > 3000000) {
-                btn_fired = true;
-                autostart = false;
-                ESP_LOGW(TAG, "BOOT held 3 s: staying in launcher for USB setup");
-            }
-        } else {
-            btn_since = 0;
-            btn_fired = false;
-        }
-#endif
         if (autostart && (s_req_seen || s_stay)) {
             autostart = false;
         }
 #if CONFIG_OKOU_BLE_WIFI
         if (okou_ble_busy()) continue;
 #endif
-        if (autostart && !btn_since && now >= autostart_at) {
+        if (autostart && now >= autostart_at) {
             autostart = false;
             okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);
             esp_err_t e = esp_ota_set_boot_partition(app);

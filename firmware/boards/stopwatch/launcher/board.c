@@ -2,11 +2,11 @@
  * Board bring-up run first in app_main.
  *
  * M5Stack StopWatch: the M5PM1 power manager (I2C 0x6E on
- * SDA 47 / SCL 48) clears its power-hold register on every reset. Without re-asserting it the
- * device can drop power on battery, and its watchdog/I2C-sleep defaults must be neutralised.
- * Register map from m5stack/M5PM1 1.0.6 (the version e7h4n/coffee-watch pins):
- *   0x07 HOLD_CFG bit5 = LDO hold, 0x09 I2C_CFG low nibble = sleep timeout (0 = off),
- *   0x0A WDT_CNT (0 = off). Power-key behavior belongs to the PMIC.
+ * SDA 47 / SCL 48). HOLD_CFG bit 5 retains the L1 rail (IMU/RTC)
+ * during PMIC shutdown. Clear the I2C idle timeout and watchdog so a
+ * configuration left by another application cannot put the PMIC to
+ * sleep or reset the system during launcher operations.
+ * Register definitions: m5stack/M5PM1, docs/M5PM1_Datasheet_EN.pdf.
  * The bus is released afterwards so apps can initialise the board their own way.
  *
  * SPDX-License-Identifier: MIT

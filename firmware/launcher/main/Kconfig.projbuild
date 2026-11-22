@@ -20,9 +20,4 @@ menu "esp-launcher"
         int "New launcher: roll back if the hub has not acked hello within (s)"
         default 300
 
-    config OKL_PROV_BUTTON_GPIO
-        int "BOOT button GPIO (hold 3 s: stay in launcher for USB setup); -1 = none"
-        range -1 48
-        default 0
-
 endmenu
