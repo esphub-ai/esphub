@@ -1,0 +1,6 @@
+{
+  "name": "StackChan",
+  "model": "M5Stack StackChan",
+  "chip": "esp32s3",
+  "flash_mb": 16
+}

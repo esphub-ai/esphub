@@ -139,3 +139,55 @@ with tempfile.TemporaryDirectory() as root:
   assert.match(output, /program\.applied/);
   assert.match(output, /program\.rejected/);
 });
+
+test("PaperDIY verification counts only press events from the two user buttons", () => {
+  validate("devices.create", { board: "paper-diy", name: "PaperDIY" });
+  const fixture = `import sys, time
+from unittest.mock import MagicMock, call
+m5 = MagicMock()
+m5.getBoard.return_value = m5.BOARD.M5PaperDIY
+m5.Power.getBatteryVoltage.return_value = 3920
+m5.BtnA.wasPressed.side_effect = [True, False, False, True]
+m5.BtnB.wasPressed.side_effect = [False, False, True, False]
+sys.modules['M5'] = m5
+sys.modules['okou'] = MagicMock(wifi_rssi=lambda: -55)
+time.sleep_ms = lambda ms: None
+try: exec(sys.stdin.read(), {})
+except StopIteration: pass
+assert m5.Widgets.Label.return_value.setText.call_args_list == [
+    call('A: 1   B: 0'), call('A: 1   B: 1'), call('A: 2   B: 1')]
+`;
+  execFileSync("python3", ["-I", "-c", fixture], {
+    input: provisioning("paper-diy").verification_source,
+  });
+});
+
+test("StackChan verification maps touches and releases to paired strip LEDs", () => {
+  validate("devices.create", { board: "stackchan", name: "StackChan" });
+  const fixture = `import sys, time
+from unittest.mock import MagicMock, call
+m5 = MagicMock()
+m5.getBoard.return_value = m5.BOARD.M5StackChan
+sys.modules['M5'] = m5
+sys.modules['okou'] = MagicMock(wifi_rssi=lambda: -55)
+hardware = MagicMock()
+sys.modules['hardware.stackchan'] = hardware
+body = hardware.StackChan.return_value
+body.get_battery_voltage.return_value = 4.0
+body.get_touch.side_effect = [[1,0,0], [1,0,0], [0,1,0], [0,0,1], [0,0,0]]
+time.sleep_ms = lambda ms: None
+try: exec(sys.stdin.read(), {})
+except StopIteration: pass
+expected = []
+for zone, color in enumerate((0x33cc00, 0x00cccc, 0x000099)):
+    for value in (color, 0):
+        for strip in (0, 1):
+            for index in (2*zone, 2*zone+1):
+                expected.append(call(strip, index, value))
+assert body.set_rgb_color.call_args_list == expected
+body.set_servo_power.assert_not_called()
+`;
+  execFileSync("python3", ["-I", "-c", fixture], {
+    input: provisioning("stackchan").verification_source,
+  });
+});
