@@ -24,7 +24,7 @@ runs:
           args=(-B build-setup -DSDKCONFIG="$PWD/sdkconfig.setup")
           package=(--setup-base)
         fi
-        idf.py "${args[@]}" -DIDF_TARGET="$CHIP" -DPROJECT_VER="$VERSION" \
+        idf.py "${args[@]}" -DESPHUB_BOARD="$BOARD" -DIDF_TARGET="$CHIP" -DPROJECT_VER="$VERSION" \
           -DSDKCONFIG_DEFAULTS="$defaults" build
         config=sdkconfig
         if [[ "$FRESH_LAYOUT" == true ]]; then config=sdkconfig.setup; fi

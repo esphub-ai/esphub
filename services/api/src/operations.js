@@ -28,7 +28,7 @@ const defs = [
   [
     "devices.create",
     additive,
-    "Identify the USB board first. Ask the user if uncertain. Register it and follow the returned provisioning prompt.",
+    "Registers a physical device under the supplied name and board model. Returns its device ID, provisioning credentials, and board-specific setup information.",
     {
       ...strings("name"),
       board: { enum: Object.keys(boards), type: "string" },
@@ -73,7 +73,7 @@ const defs = [
   [
     "wifi.ble_credential",
     additive,
-    "Issue a private BLE provisioning credential for the registered device. Pass privately to the local host tool. Wait for Beacon ready, then restart the board.",
+    "Issues a private BLE Wi-Fi provisioning credential for a registered physical device with a BLE bootstrap key. Returns a beacon identifier and a pre-shared key.",
     id,
   ],
   [
@@ -103,7 +103,7 @@ const defs = [
   [
     "launcher.enter",
     destructive,
-    "Enter launcher mode for OTA. Wait for devices.get to report an online launcher.",
+    "Reports launcher mode if the physical device is already in the launcher. Otherwise, requests a reboot into the launcher for over-the-air updates.",
     id,
   ],
   [

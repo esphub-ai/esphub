@@ -57,22 +57,6 @@ menu "okou agent (esp-launcher SDK)"
         int "Agent task priority (keep low)"
         default 2
 
-    config OKOU_LAUNCHER_BUTTON_GPIO
-        int "Button held at app start to boot into the launcher (-1 = off)"
-        range -1 48
-        default -1
-        help
-            A running app normally boots straight back into itself. If this button (active low)
-            is held for OKOU_LAUNCHER_BUTTON_HOLD_MS while the app starts, the SDK reboots into
-            the launcher and the launcher stays there (one-shot okl/hold) for USB provisioning
-            and remote application installation. "reboot target=app" or the next power cycle starts the app again.
-            Do not use a strapping pin (GPIO0 on ESP32-S3).
-
-    config OKOU_LAUNCHER_BUTTON_HOLD_MS
-        int "Hold time for the launcher button (ms)"
-        range 500 10000
-        default 3000
-
     config OKOU_MAX_FAIL_BOOTS
         int "Boots without a hub ack before the SDK boots the launcher (0 = never)"
         range 0 20
