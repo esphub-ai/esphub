@@ -9,7 +9,25 @@ on:
 permissions:
   contents: read
 jobs:
+  pin-source:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    steps:
+      - name: Reserve the build's source tag while the push is current
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="launcher-v1.0.${GITHUB_RUN_NUMBER}"
+          ref="repos/$GITHUB_REPOSITORY/git/ref/tags/$tag"
+          existing="$(gh api "$ref" --jq .object.sha 2>/dev/null || true)"
+          if [ -n "$existing" ]; then
+            test "$existing" = "$GITHUB_SHA"
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -X POST -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" --silent
+          fi
   build:
+    needs: pin-source
     strategy:
       fail-fast: false
       matrix:
@@ -52,5 +70,5 @@ jobs:
           if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" dist/* -R "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$tag" dist/* -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest --title "$tag" --notes 'Board-specific USB installation kits, launcher-only OTA binaries and SHA-256 manifests.'
+            gh release create "$tag" dist/* -R "$GITHUB_REPOSITORY" --verify-tag --latest --title "$tag" --notes 'Board-specific USB installation kits, launcher-only OTA binaries and SHA-256 manifests.'
           fi

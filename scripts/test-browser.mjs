@@ -83,6 +83,7 @@ try {
     .locator("#logs")
     .getByText(/serial echo: hello from browser/)
     .waitFor();
+  await page.locator("#rx").filter({hasText: /^1$/}).waitFor();
   if (process.env.QA_SCREENSHOT)
     await page.screenshot({ path: process.env.QA_SCREENSHOT });
   await page.getByRole("button", { name: "Settings", exact: true }).click();

@@ -7,12 +7,12 @@
   "routes": [
     { "pattern": "esphub.ai", "custom_domain": true },
     { "pattern": "www.esphub.ai", "custom_domain": true },
-    { "pattern": "app.esphub.ai", "custom_domain": true },
+    { "pattern": "app.esphub.ai", "custom_domain": true }
   ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": true,
+    "run_worker_first": true
   },
-  "services": [{ "binding": "API", "service": "esphub-api" }],
+  "services": [{ "binding": "API", "service": "esphub-api" }]
 }

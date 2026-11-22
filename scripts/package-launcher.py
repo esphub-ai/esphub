@@ -1,6 +1,7 @@
 """Run from firmware/launcher after idf.py build; use the generated flash offsets."""
 import hashlib
 import json
+import os
 import sys
 import zipfile
 from pathlib import Path
@@ -29,7 +30,7 @@ with zipfile.ZipFile(out / usb, "w", zipfile.ZIP_DEFLATED) as z:
     z.write(build / "flash_args", "flash_args")
     z.write(table, "partitions.csv")
     z.writestr("INSTALL.txt", f"For {board} only. Unzip, then run from this directory:\nesptool.py --chip {chip} --port PORT write_flash @flash_args\nUse the ota.bin only for a launcher update on a compatible installed layout.\n")
-manifest = {"board":board, "chip":chip, "version":version, "flash_mb":16,
+manifest = {"source_commit":os.environ["GITHUB_SHA"], "board":board, "chip":chip, "version":version, "flash_mb":16,
             "partition_sha256":digest(table.read_bytes()), "offsets":files,
             "ota":{"file":ota,"sha256":digest(image),"size":len(image)},
             "usb":{"file":usb,"sha256":digest((out/usb).read_bytes())}}
