@@ -112,6 +112,59 @@ try {
   await page.goto(origin + "/mcp");
   assert.equal(page.url(), origin + "/");
   await page.goto(origin + "/devices");
+  await page.getByRole("button", { name: "Create virtual ESP32" }).click();
+  await page.getByRole("heading", { name: "Virtual ESP32" }).waitFor();
+  await page
+    .locator("#logs")
+    .getByText(/Virtual ESP32 created/)
+    .waitFor();
+  const initialBoot = await page.locator("#pid").inputValue();
+  assert.ok(await page.locator("#cmd").isDisabled());
+  assert.equal(
+    await page.getByRole("button", { name: "Wi-Fi", exact: true }).count(),
+    0,
+  );
+  await page.getByRole("button", { name: "Firmware", exact: true }).click();
+  await page.getByRole("definition").filter({ hasText: "1.0.0" }).waitFor();
+  await page.getByRole("button", { name: "Inspect device" }).click();
+  await page
+    .locator("#out")
+    .filter({ hasText: /EspHub virtual firmware/ })
+    .waitFor();
+  assert.equal(
+    await page.getByRole("button", { name: "Install from URL" }).count(),
+    0,
+  );
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Reboot", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
+  await page
+    .locator("#logs")
+    .getByText(/Virtual ESP32 restarted/)
+    .waitFor();
+  const reboot = await page.locator("#pid").inputValue();
+  assert.notEqual(reboot, initialBoot);
+  await page.reload();
+  await page
+    .locator("#logs")
+    .getByText(/Virtual ESP32 restarted/)
+    .waitFor();
+  assert.equal(await page.locator("#pid").inputValue(), reboot);
+  await page.locator("#pid").selectOption(initialBoot);
+  await page
+    .locator("#logs")
+    .getByText(/Virtual ESP32 created/)
+    .waitFor();
+  await page.getByRole("link", { name: "← Devices" }).click();
+  await page
+    .getByRole("link", { name: /Virtual ESP32.*Simulated ESP32/ })
+    .click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Delete device", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
+  await page.getByRole("button", { name: "Create virtual ESP32" }).waitFor();
   await page.getByText("+ Add device").click();
   await page.locator("[name=name]").fill("Paper Color · integration");
   await page.getByRole("button", { name: "Register", exact: true }).click();
@@ -228,7 +281,7 @@ try {
     "https://api.esphub.ai/releases/stopwatch/micropython");
   assert.deepEqual(errors, []);
   console.log(
-    "PASS hosted sign-in and sign-up routing, signed session verification, live serial round trip, tool explorer, deletion, mobile navigation",
+    "PASS hosted sign-in and sign-up routing, signed session verification, virtual board creation and boot history, live serial round trip, tool explorer, deletion, mobile navigation",
   );
 } finally {
   ws?.close();

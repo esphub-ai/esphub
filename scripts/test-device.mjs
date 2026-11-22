@@ -62,6 +62,142 @@ async function op(name, args, accessToken) {
   assert.ok(!r.isError, JSON.stringify(r));
   return JSON.parse(r.content[0].text);
 }
+async function testVirtualDevice(read) {
+  const createVirtual = () => op("devices.create_virtual", {});
+  const [virtual, duplicate] = await Promise.all([
+    createVirtual(),
+    createVirtual(),
+  ]);
+  assert.deepEqual(virtual, duplicate);
+  assert.equal(virtual.kind, "virtual");
+  const vid = { device_id: virtual.id };
+  const firmware = await op("firmware.get", vid, read);
+  const [listedVirtual] = await op("devices.list", {}, read);
+  assert.equal(listedVirtual.kind, "virtual");
+  assert.equal(listedVirtual.process_id, firmware.process_id);
+  assert.equal(listedVirtual.info.fw.name, "EspHub virtual firmware");
+  assert.deepEqual(listedVirtual.info.fw, firmware.fw);
+  assert.equal(listedVirtual.serial_input, false);
+  assert.deepEqual(
+    (
+      await sql`SELECT token_hash,ble_secret,cert_id,transport FROM esphub.devices WHERE id=${virtual.id}`
+    )[0],
+    { token_hash: null, ble_secret: null, cert_id: null, transport: null },
+  );
+  assert.equal((await op("uart.sessions", vid, read)).length, 1);
+  const rebootArgs = { ...vid, request_id: randomUUID() };
+  const [restart, retry] = await Promise.all([
+    op("devices.reboot", rebootArgs),
+    op("devices.reboot", rebootArgs),
+  ]);
+  assert.deepEqual(retry, restart);
+  assert.notEqual(restart.process_id, firmware.process_id);
+  const later = await op("devices.reboot", vid);
+  assert.deepEqual(await createVirtual(), virtual);
+  assert.deepEqual(await op("devices.reboot", rebootArgs), restart);
+  const reconnected = await issue("devices:read");
+  const current = await op("devices.get", vid, reconnected);
+  assert.equal(current.process_id, later.process_id);
+  const history = await op("uart.sessions", vid, reconnected);
+  assert.deepEqual(
+    history.map((s) => s.process_id),
+    [later.process_id, restart.process_id, firmware.process_id],
+  );
+  const logArgs = { ...vid, process_id: restart.process_id };
+  const output = await op("uart.read", logArgs, read);
+  assert.match(output.records[0].text, /Virtual ESP32 restarted/);
+  assert.deepEqual(
+    output.records.map((r) => r.seq),
+    [1, 2],
+  );
+  assert.deepEqual(
+    (await op("uart.read", { ...logArgs, after: 1 }, read)).records,
+    output.records.slice(1),
+  );
+  assert.deepEqual(await op("uart.read", { ...logArgs, after: 2 }, read), {
+    records: [],
+    cursor: 2,
+    last: 2,
+  });
+  assert.match(
+    (await op("uart.read", { ...vid, process_id: firmware.process_id }, read))
+      .records[0].text,
+    /created/,
+  );
+
+  const secondAccount = await issue("devices:read devices:write", {
+    sub: otherSubject,
+  });
+  assert.deepEqual(await op("devices.list", {}, secondAccount), []);
+  const secondBoard = await op("devices.create_virtual", {}, secondAccount);
+  assert.notEqual(secondBoard.id, virtual.id);
+  for (const name of [
+    "devices.get",
+    "devices.reboot",
+    "devices.delete",
+    "uart.sessions",
+    "uart.read",
+    "programs.publish",
+  ]) {
+    const args =
+      name === "uart.read"
+        ? logArgs
+        : name === "programs.publish"
+          ? { ...vid, source: "pass" }
+          : vid;
+    const result = await call(
+      "tools/call",
+      { name, arguments: args },
+      secondAccount,
+    );
+    assert.equal(result.isError, true, name);
+    assert.match(result.content[0].text, /Device not found/, name);
+  }
+  const wrongBoot = await call(
+    "tools/call",
+    {
+      name: "uart.read",
+      arguments: {
+        device_id: secondBoard.id,
+        process_id: restart.process_id,
+      },
+    },
+    secondAccount,
+  );
+  assert.match(wrongBoot.content[0].text, /Unknown boot session/);
+  const staged = await op("programs.publish", {
+    ...vid,
+    source: 'print("staged")',
+  });
+  assert.equal(staged.status, "staged");
+  assert.equal(staged.executable, false);
+  assert.match(
+    staged.url,
+    /^https:\/\/api\.esphub\.ai\/api\/device\/programs\//,
+  );
+  for (const [name, args] of [
+    ["wifi.scan", vid],
+    ["wifi.ble_credential", vid],
+    ["devices.reissue", vid],
+    ["launcher.enter", vid],
+    ["launcher.install", vid],
+    ["ota.install", { ...vid, kind: "python", url: staged.url }],
+    ["uart.write", { ...logArgs, text: "help", request_id: randomUUID() }],
+  ]) {
+    const result = await call("tools/call", { name, arguments: args });
+    assert.equal(result.isError, true, name);
+    assert.match(result.content[0].text, /requires a physical device/, name);
+  }
+  await op("devices.delete", vid);
+  assert.deepEqual(await op("devices.list", {}, read), []);
+  assert.equal(
+    (
+      await sql`SELECT 1 FROM esphub.virtual_boots WHERE device_id=${virtual.id}`
+    ).length,
+    0,
+  );
+}
+
 let ws;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 try {
@@ -107,7 +243,7 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 23);
+  assert.equal(listed.length, 24);
   assert.ok(!listed.some(t => t.name === "programs.install"));
   const readOnly = new Set([
     "commands.get",
@@ -119,7 +255,7 @@ try {
     "uart.sessions",
     "uart.read",
   ]);
-  const additiveTools = new Set(["wifi.ble_credential", "devices.create", "ota.prepare_upload", "programs.publish"]);
+  const additiveTools = new Set(["wifi.ble_credential", "devices.create", "devices.create_virtual", "ota.prepare_upload", "programs.publish"]);
   const openWorldTools = new Set(["wifi.scan", "wifi.add", "launcher.install", "ota.install", "uart.write"]);
   for (const { name, annotations } of listed) {
     // Active Wi-Fi discovery observes nearby networks but still requires write scope.
@@ -159,6 +295,7 @@ try {
   assert.ok(
     (await call("tools/list", {})).tools.some((t) => t.name === "uart.write"),
   );
+  await testVirtualDevice(read);
   const d = await op("devices.create", {
       board: "paper-color",
       name: "Simulator",
@@ -178,6 +315,7 @@ try {
   assert.deepEqual(Object.keys(d.sources).sort(), ["launcher", "micropython", "python"]);
   const offline = await op("devices.get", id, read);
   assert.equal(offline.online, false);
+  assert.equal(offline.kind, "physical");
   assert.deepEqual(offline.sources, d.sources);
   const watch = await op("devices.create", {
     board: "stopwatch",
@@ -407,7 +545,7 @@ try {
   assert.equal(archived.isError, true);
   await op("devices.delete", id);
   console.log(
-    "PASS Clerk OAuth discovery, 23 MCP tools, BLE credential issuance and acknowledged rotation, private R2 uploads, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
+    "PASS Clerk OAuth discovery, 24 MCP tools, persistent virtual devices and idempotent reboots, BLE credential issuance and acknowledged rotation, private R2 uploads, private HTTPS program staging and all three OTA commands, scoped access and owner isolation, authenticated simulated MCU, boot isolation, RX idempotency and ACK, R2 TX replay, live RPC and device deletion",
   );
 } finally {
   ws?.close();

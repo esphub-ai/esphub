@@ -139,7 +139,9 @@ function docs(title, body) {
     body +
     "</section>";
 }
-function softwareFields(software) {
+function softwareFields(device) {
+  if (device.kind === "virtual") return [["Simulated firmware", device.info.fw.version]];
+  const software = device.software;
   const app = software?.application;
   const fields = [["Launcher", (software?.launcher_version || "Not reported") + (software?.launcher_last_seen ? " (last seen)" : "")]];
   if (!app) return fields;
@@ -150,6 +152,9 @@ function softwareFields(software) {
   }
   return fields;
 }
+function boardLabel(d) {
+  return d.kind === "virtual" ? "Simulated ESP32" : boardName[d.board];
+}
 function row(d) {
   return (
     '<a class="device" href="/device/' +
@@ -157,12 +162,12 @@ function row(d) {
     '"><span class="icon">▦</span><span class="desc"><b>' +
     esc(d.name) +
     "</b><small>" +
-    esc(boardName[d.board]) +
+    esc(boardLabel(d)) +
     " · " +
     d.id.slice(0, 8) +
     "</small><small>" +
     (d.software?.application?.last_seen ? "Last seen app · " : "") +
-    softwareFields(d.software).map(([label, value]) => label + " " + esc(value || "Not reported")).join(" · ") +
+    softwareFields(d).map(([label, value]) => label + " " + esc(value || "Not reported")).join(" · ") +
     '</small></span><span class="mini">' +
     (d.online ? "● Online" : "○ Offline") +
     "</span><span>↗</span></a>"
@@ -182,6 +187,9 @@ async function fleet() {
   main.innerHTML =
     '<section class="app"><div class="kicker">Device workspace</div><div class="toolbar"><h1>Devices</h1><div class="flex">' +
     link("/account", "Account") +
+    (ds.some((d) => d.kind === "virtual")
+      ? ""
+      : button("create-virtual", "Create virtual ESP32")) +
     button("add", "+ Add device", true) +
     '</div></div><div class="board"><div class="bar"><input class="field" style="max-width:320px" id="filter" aria-label="Filter devices" placeholder="Filter devices"><span class="tag">' +
     ds.length +
@@ -198,7 +206,9 @@ async function fleet() {
         )
         .map(row)
         .join("") ||
-      '<div class="empty">No devices found. Register your board to get started.</div>';
+      (ds.length
+        ? '<div class="empty">No matching devices.</div>'
+        : '<div class="empty">No devices found. Add a board or create a virtual ESP32 to get started.</div>');
   };
   $("#filter").oninput = show;
   show();
@@ -208,9 +218,13 @@ async function refresh() {
   clearTimeout(poll);
   device = await op("devices.get", { device_id: path[1] });
   if (currentView !== view) return;
+  const virtual = device.kind === "virtual";
+  const tabs = virtual
+    ? ["Serial", "Firmware", "Settings"]
+    : ["Serial", "Wi-Fi", "Firmware", "Settings"];
   main.innerHTML =
     '<section class="app"><a class="crumb" href="/devices">← Devices</a><div class="toolbar"><div><div class="kicker">' +
-    esc(boardName[device.board]) +
+    esc(boardLabel(device)) +
     "</div><h1>" +
     esc(device.name) +
     '</h1><span class="mono notice">' +
@@ -218,7 +232,7 @@ async function refresh() {
     '</span></div><span class="chip" id="connection">' +
     (device.online ? "● Online" : "○ Offline") +
     '</span></div><div class="tabs">' +
-    ["Serial", "Wi-Fi", "Firmware", "Settings"]
+    tabs
       .map(
         (k) =>
           '<button data-tab="' +
@@ -357,15 +371,19 @@ async function refresh() {
   } else if (tab === "Firmware") {
     area.innerHTML =
       '<div class="panel"><h3>Firmware</h3><dl class="software">' +
-      softwareFields(device.software).map(([label,value]) => "<dt>" + label + "</dt><dd>" + esc(value || "Not reported") + "</dd>").join("") +
+      softwareFields(device).map(([label,value]) => "<dt>" + label + "</dt><dd>" + esc(value || "Not reported") + "</dd>").join("") +
       "</dl>" +
       (device.software?.application?.last_seen ? '<p class="notice">Application details are from its last reported boot.</p>' : "") +
       '<div class="flex">' +
       button("info", "Inspect device") +
-      button("enter", "Enter launcher mode") +
-      button("install", "Install from URL") +
-      (device.info?.role === "launcher" && !device.info?.image_profile ? button("launcher", "Upgrade legacy launcher") : "") +
-      link("/setup?board=" + device.board, "Firmware downloads ↗") +
+      (virtual
+        ? ""
+        : button("enter", "Enter launcher mode") +
+          button("install", "Install from URL") +
+          (device.info?.role === "launcher" && !device.info?.image_profile
+            ? button("launcher", "Upgrade legacy launcher")
+            : "") +
+          link("/setup?board=" + device.board, "Firmware downloads ↗")) +
       '</div><pre id="out" hidden></pre></div>';
     const app = device.software?.application;
     if (app?.kind === "micropython") {
@@ -388,10 +406,16 @@ async function refresh() {
     }
   } else
     area.innerHTML =
-      '<div class="panel"><h3>Device controls</h3><p class="notice">Reboot opens a new serial session. Reset clears the device token and saved Wi-Fi networks. Generate a new token to provision again over USB.</p><div class="actions">' +
+      '<div class="panel"><h3>Device controls</h3><p class="notice">' +
+      (virtual
+        ? "Reboot starts a new simulated session. Previous boot logs stay available."
+        : "Reboot opens a new serial session. Reset clears the device token and saved Wi-Fi networks. Generate a new token to provision again over USB.") +
+      '</p><div class="actions">' +
       button("reboot", "Reboot") +
-      button("reset", "Reset provisioning") +
-      button("reissue", "Replace USB token") +
+      (virtual
+        ? ""
+        : button("reset", "Reset provisioning") +
+          button("reissue", "Replace USB token")) +
       button("delete", "Delete device") +
       "</div></div>";
 }
@@ -418,6 +442,11 @@ async function action(k) {
       selection.addRange(range);
       notify("Text selected. Use your system copy command.");
     }
+    return;
+  }
+  if (k === "create-virtual") {
+    const d = await op("devices.create_virtual");
+    location.assign("/device/" + d.id);
     return;
   }
   if (k === "add") {
@@ -530,13 +559,20 @@ async function action(k) {
       "<p>" +
         {
           reset: "Saved Wi-Fi and device credentials will be cleared.",
-          reboot: "The running program will restart.",
+          reboot:
+            device.kind === "virtual"
+              ? "Start a new simulated boot and keep the current logs."
+              : "The running program will restart.",
           delete: "The registration and device access will be revoked.",
         }[k] +
         "</p>",
       "Confirm",
       async () => {
-        await op("devices." + k, id);
+        const result = await op("devices." + k, id);
+        if (k === "reboot" && device.kind === "virtual") {
+          session = result.process_id;
+          tab = "Serial";
+        }
         if (k === "delete") location.assign("/devices");
         else await refresh();
       },

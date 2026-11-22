@@ -23,6 +23,16 @@ After `OKL-PROVISION-OK`, wait for the online MicroPython app and use the OTA pr
 
 Paper Color can also use Bluetooth for the first Wi-Fi connection and subsequent network changes after a one-time USB credential write. [Mac setup and BLE protocol](tools/ble-wifi/README.md).
 
+## Try a virtual ESP32
+
+Sign in, open **Devices**, and select **Create virtual ESP32**, or call `devices.create_virtual` from an authorized MCP client. Each account can create one private board. Creating it again returns the same device ID.
+
+1. Call `devices.list` and select the device with `kind: "virtual"`. Use its ID with `firmware.get` to inspect the simulated firmware and current `process_id`.
+2. Call `devices.reboot` with that device ID. The response contains the new boot’s `process_id`. Supply a UUID as `request_id` on the first call and reuse it for retries.
+3. Pass the device and process IDs to `uart.read` to see the restart log. `uart.sessions` lists the saved boots, newest first. Boot history persists across logins until the device is deleted.
+
+The virtual board supports read-only serial output and private 24-hour source staging with `programs.publish`. Running MicroPython, writing serial input, Wi-Fi/BLE operations and flashing firmware require physical hardware.
+
 ## OTA
 
 1. For any local OTA file, use `ota.prepare_upload` and PUT the file as described below. If you already have an HTTPS download URL, use it directly. For generated Python, call `programs.publish` with the device ID and UTF-8 source (up to 32 KiB). It returns a private HTTPS URL valid for 24 hours. An existing HTTPS URL also works.
