@@ -1,0 +1,78 @@
+menu "okou agent (esp-launcher SDK)"
+
+    config OKOU_NET_OPENETH
+        bool "Use OpenCores Ethernet (QEMU) instead of Wi-Fi"
+        depends on ETH_USE_OPENETH
+        default n
+        help
+            For Espressif QEMU builds (-nic user,model=open_eth). Wi-Fi is not initialised.
+
+    config OKOU_QEMU_SYSTEM_RESET
+        bool "QEMU workaround: make esp_restart() a full system reset"
+        depends on OKOU_NET_OPENETH
+        default y
+        help
+            Espressif QEMU does not reset peripherals on SW_CPU_RESET; the next boot then
+            crashes in esp_timer_init. Only for QEMU builds.
+
+    config OKOU_LOG_BUF_SIZE
+        int "Log retain ring buffer size (bytes, rounded down to a power of two)"
+        range 2048 131072
+        default 16384
+
+    config OKOU_LOG_LINE_MAX
+        int "Max captured log line length (bytes; longer lines are truncated)"
+        range 64 480
+        default 192
+        help
+            The formatting buffer lives on the logging task's stack.
+
+    config OKOU_TX_FRAME_MAX
+        int "Max outgoing frame size (bytes, protocol limit 16384)"
+        range 2048 16384
+        default 6144
+
+    config OKOU_MAX_CMDS
+        int "Max registered commands"
+        default 24
+
+    config OKOU_MAX_PARAMS
+        int "Max registered params"
+        default 24
+
+    config OKOU_CMD_OUT_MAX
+        int "Max command output (bytes)"
+        range 256 12288
+        default 4096
+
+    config OKOU_TASK_STACK
+        int "Agent task stack size"
+        default 6144
+
+    config OKOU_TASK_PRIO
+        int "Agent task priority (keep low)"
+        default 2
+
+    config OKOU_LAUNCHER_BUTTON_GPIO
+        int "Button held at app start to boot into the launcher (-1 = off)"
+        range -1 48
+        default -1
+        help
+            A running app normally boots straight back into itself. If this button (active low)
+            is held for OKOU_LAUNCHER_BUTTON_HOLD_MS while the app starts, the SDK reboots into
+            the launcher and the launcher stays there (one-shot okl/hold): BLE provisioning is
+            open (always while offline, and for 5 minutes even when online), and the hub can
+            install apps. "reboot target=app" or the next power cycle starts the app again.
+            Do not use a strapping pin (GPIO0 on ESP32-S3).
+
+    config OKOU_LAUNCHER_BUTTON_HOLD_MS
+        int "Hold time for the launcher button (ms)"
+        range 500 10000
+        default 3000
+
+    config OKOU_MAX_FAIL_BOOTS
+        int "Boots without a hub ack before the SDK boots the launcher (0 = never)"
+        range 0 20
+        default 3
+
+endmenu

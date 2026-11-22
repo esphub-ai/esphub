@@ -1,0 +1,50 @@
+menu "esp-launcher"
+
+    choice OKL_SIGNING_KEY
+        prompt "Public key embedded for firmware signature checks"
+        default OKL_KEY_RELEASE
+        config OKL_KEY_RELEASE
+            bool "release: firmware/keys/release_pub.pem"
+        config OKL_KEY_DEV
+            bool "dev (TEST ONLY): firmware/keys/dev_pub.pem"
+        config OKL_KEY_CUSTOM
+            bool "custom PEM path"
+    endchoice
+
+    config OKL_KEY_CUSTOM_PATH
+        string "Custom public key PEM (relative to the launcher project dir)"
+        depends on OKL_KEY_CUSTOM
+        default "../keys/release_pub.pem"
+
+    config OKL_AUTOSTART_MS
+        int "Auto-start the app this long after boot (ms)"
+        default 3000
+
+    config OKL_FAILSAFE_WAIT_S
+        int "Auto-start delay after an app rollback / fail_boots trip (s)"
+        default 30
+        help
+            Extension to docs/protocol.md: after the app failed (bootloader rollback or
+            okl/fail_boots >= 3) the launcher waits longer before starting it again so an
+            operator can catch it; any hub request cancels auto-start.
+
+    config OKL_VALIDATE_TIMEOUT_S
+        int "New launcher: roll back if the hub has not acked hello within (s)"
+        default 300
+
+    choice OKL_BOARD
+        prompt "Board"
+        default OKL_BOARD_GENERIC
+        config OKL_BOARD_GENERIC
+            bool "Generic (no board bring-up)"
+        config OKL_BOARD_M5_STOPWATCH
+            bool "M5Stack StopWatch (M5PM1 power hold, watchdog off)"
+            depends on IDF_TARGET_ESP32S3
+    endchoice
+
+    config OKL_PROV_BUTTON_GPIO
+        int "BOOT button GPIO (hold 3 s: stay in launcher for USB setup); -1 = none"
+        range -1 48
+        default 0
+
+endmenu

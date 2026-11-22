@@ -1,0 +1,9 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env
+dist/
+build/
+sdkconfig
+managed_components/
+__pycache__/
