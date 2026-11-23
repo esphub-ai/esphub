@@ -14,6 +14,7 @@ import { mcpEndpoint } from "../../../shared/identity.js";
 import { accountForSubject } from "./auth.js";
 import { withDatabase } from "./database.js";
 import { operate, tools } from "./operations.js";
+import { reconnectGuidance } from "./provisioning.js";
 
 const options = {
   resourceUrl: mcpEndpoint,
@@ -51,7 +52,10 @@ export async function serveMcp(c) {
   const authInfo = c.get("mcpAuth");
   const handler = createMcpHandler(
     () => {
-      const server = new McpServer({ name: "esphub", title: "EspHub", version: "1.0.0" });
+      const server = new McpServer(
+        { name: "esphub", title: "EspHub", version: "1.0.0" },
+        { instructions: reconnectGuidance },
+      );
       for (const { name, description, inputSchema, annotations } of tools) {
         server.registerTool(
           name,

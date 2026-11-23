@@ -60,7 +60,7 @@ const defs = [
   [
     "devices.reboot",
     destructive,
-    "Restart the device and create a new boot session.",
+    "Request a restart. Some physical devices need a manual power cycle to reconnect. Check devices.get for a new online boot session.",
     id,
   ],
   [
@@ -102,7 +102,7 @@ const defs = [
   [
     "bootloader.enter",
     destructive,
-    "Enter EspHub Bootloader mode for OTA updates. If already in Bootloader mode, returns the current boot session.",
+    "Enter EspHub Bootloader mode for OTA updates. If already in Bootloader mode, returns the current boot session. Check devices.get for online=true and info.role=bootloader before OTA. Some boards may need a manual power cycle and may return to the app.",
     id,
   ],
   [
