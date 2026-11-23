@@ -12,8 +12,7 @@ import { createVirtual, operateVirtual } from "./virtual-device.js";
 const programByteLimit = 32 * 1024;
 const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
-const id = strings("device_id"),
-  session = { ...id, ...strings("process_id") };
+const id = strings("device_id");
 const otaKind = { type: "string", enum: ["bootloader", "micropython", "python"] };
 const additive = {
   readOnlyHint: false,
@@ -37,7 +36,7 @@ const defs = [
   [
     "devices.create_virtual",
     additive,
-    "Create or return the account’s private Virtual ESP32 for simulated reboots, firmware inspection and boot logs.",
+    "Create or return the account’s private Virtual ESP32 for simulated reboots and firmware inspection.",
     {},
   ],
   [
@@ -146,29 +145,10 @@ const defs = [
     },
   ],
   [
-    "logs.flush",
-    additive,
-    "Queues a buffered log upload for the selected boot on an MQTT device with log recall support. The completed command reports the last acknowledged log sequence and the number of lines dropped during that boot.",
-    session,
-  ],
-  [
     "programs.get",
     readOnly,
     "Read the transfer ID, SHA-256 and byte count of the last confirmed cloud main.py installation, including offline devices.",
     id,
-  ],
-  ["uart.sessions", readOnly, "List boot sessions.", id],
-  [
-    "uart.read",
-    readOnly,
-    "Read serial TX records after an exclusive cursor.",
-    { ...session, after: { type: "integer", minimum: 0 } },
-  ],
-  [
-    "uart.write",
-    { ...destructive, openWorldHint: true },
-    "Append a UTF-8 input record to this boot. Reuse request_id when retrying.",
-    { ...session, ...strings("text", "request_id") },
   ],
   [
     "commands.get",
@@ -190,7 +170,7 @@ export const tools = defs.map(
         ...(queueable(name) ? strings("request_id") : {}),
       },
       required: Object.keys(properties).filter(
-        (k) => !["password", "after", "url"].includes(k),
+        (k) => !["password", "url"].includes(k),
       ),
     },
   }),
@@ -204,8 +184,6 @@ function queueable(name) {
       "bootloader.enter",
       "ota.install",
       "firmware.get",
-      "logs.flush",
-      "uart.write",
     ].includes(name)
   );
 }
@@ -236,14 +214,12 @@ export function validate(name, a) {
   if (
     (a.command_id && !uuid.test(a.command_id)) ||
     (a.device_id && !uuid.test(a.device_id)) ||
-    (a.request_id && !uuid.test(a.request_id)) ||
-    (a.process_id && !/^[0-9a-f-]{8,36}$/i.test(a.process_id))
+    (a.request_id && !uuid.test(a.request_id))
   )
     fail(400, "Invalid identifier");
   if (a.name?.trim().length === 0 || a.name?.length > 64)
     fail(400, "Invalid name");
   for (const [k, max] of [
-    ["text", 1024],
     ["source", programByteLimit],
     ["ssid", 32],
     ["password", 63],
@@ -292,7 +268,6 @@ async function summary(c, d) {
       online: true,
       process_id: d.boot_id,
       info: d.boot_info,
-      serial_input: false,
     };
   const [session, broker] = await Promise.all([
     d.cert_ready && d.boot_id && connectedSince(c.env, d.id),
@@ -306,7 +281,6 @@ async function summary(c, d) {
         : softwareInventory(d.boot_info),
     process_id: d.boot_id,
     info: d.boot_info,
-    serial_input: true,
   };
 }
 export async function operate(c, owner, name, a) {
@@ -403,14 +377,7 @@ export async function operate(c, owner, name, a) {
   const key = a.request_id ?? crypto.randomUUID();
   const queue = (op, args, boot = null) =>
     internal(c, d.id, "enqueue", { device: d.id, op, args, boot, key });
-  if (name === "logs.flush") {
-    if (d.boot_info?.log_flush !== true)
-      fail(409, "Log recall requires MQTT firmware that supports logs.flush");
-    return queue("logs.flush", {}, a.process_id);
-  }
   const info = d.boot_info;
-  if (name === "uart.write")
-    return queue("term.write", { data: a.text }, a.process_id);
   if (name === "bootloader.enter")
     return info?.role === "bootloader"
       ? { mode: "bootloader", process_id: d.boot_id }
@@ -452,12 +419,6 @@ export async function operate(c, owner, name, a) {
       d.boot_id,
     );
   }
-  if (name === "uart.sessions") return internal(c, d.id, "sessions");
-  if (name === "uart.read")
-    return internal(c, d.id, "read", {
-      process_id: a.process_id,
-      after: a.after ?? 0,
-    });
   let op,
     args = {};
   if (name.startsWith("wifi.")) {

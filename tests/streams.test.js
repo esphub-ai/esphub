@@ -45,23 +45,9 @@ test("a failed manifest commit cannot expose or duplicate abandoned input", asyn
     ["one", "two"],
   );
 });
-test("reject invalid board, boot scope, firmware URLs and cursor", () => {
+test("reject invalid boards, firmware URLs and retired console operations", () => {
   assert.throws(() =>
     validate("devices.create", { name: "x", board: "esp32s3" }),
-  );
-  assert.throws(() =>
-    validate("uart.read", {
-      device_id: crypto.randomUUID(),
-      process_id: "other/boot",
-      after: 0,
-    }),
-  );
-  assert.throws(() =>
-    validate("uart.read", {
-      device_id: crypto.randomUUID(),
-      process_id: "12345678",
-      after: -1,
-    }),
   );
   assert.throws(() =>
     validate("ota.install", {
@@ -70,12 +56,6 @@ test("reject invalid board, boot scope, firmware URLs and cursor", () => {
       kind: "bootloader",
     }),
   );
-  assert.doesNotThrow(() =>
-    validate("uart.write", {
-      device_id: crypto.randomUUID(),
-      process_id: "12345678",
-      request_id: crypto.randomUUID(),
-      text: "help\n",
-    }),
-  );
+  for (const name of ["uart.read", "uart.write", "uart.sessions", "logs.flush"])
+    assert.throws(() => validate(name, {}), /Unknown tool/);
 });

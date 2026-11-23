@@ -31,7 +31,7 @@ static const char *TAG = "prov_serial";
 #define PREFIX "OKL-PROVISION "
 #define PROV_LINE_MAX 640
 
-/* Complete lines from USB and remote RX have separate buffers. Provisioning is USB-only. */
+/* Handle commands typed on the local USB console. */
 static void console_line(char *line)
 {
     char *save = NULL;
@@ -51,17 +51,7 @@ static void console_line(char *line)
     int rc = okou_cmd_run(name, args, &output);
     const char *message = output ? output : (rc == 0 ? "OK" : "Unknown command. Type help.");
     printf("%s\n", message);
-    okou_log_text(rc == 0 ? 'I' : 'W', message, strlen(message));
     free(output); cJSON_Delete(args);
-}
-
-static esp_err_t remote_line(const cJSON *args, cJSON *reply, char *err, size_t n)
-{
-    const cJSON *v = cJSON_GetObjectItemCaseSensitive(args, "data");
-    if (!cJSON_IsString(v)) return ESP_ERR_INVALID_ARG;
-    char *copy = strdup(v->valuestring);
-    if (!copy) return ESP_ERR_NO_MEM;
-    console_line(copy); free(copy); return ESP_OK;
 }
 
 static void serial_task(void *arg)
@@ -131,7 +121,6 @@ void prov_usb_cdc_init(void)
 
 void prov_serial_start(void)
 {
-    ESP_ERROR_CHECK(okou_op_register("term.write", remote_line));
 #if CONFIG_OKL_USB_CDC
     if (!usb_cdc_ready)
         return;

@@ -484,16 +484,6 @@ static int cmd_wifi(int argc, char **argv, okou_out_t *out)
     return 1;
 }
 
-static int cmd_logstat(int argc, char **argv, okou_out_t *out)
-{
-    okou_log_stats_t stats = okou_log_stats();
-    okou_outf(out, "next_seq %" PRIu32 " sent_upto %" PRIu32 " acked_upto %" PRIu32 " dropped %" PRIu32
-              " buffered %u/%u\n",
-              stats.last_written, stats.last_sent, stats.last_acked, stats.dropped,
-              (unsigned)stats.used, (unsigned)stats.capacity);
-    return 0;
-}
-
 static void builtin(const char *name, const char *help, okou_cmd_handler_t fn)
 {
     for (int i = 0; i < s_ncmds; i++) {
@@ -510,5 +500,4 @@ void okou_registry_builtin_cmds(void)
     builtin("version", "firmware version and running partition", cmd_version);
     builtin("heap", "heap statistics", cmd_heap);
     builtin("wifi", "wifi [list|scan|add <ssid> [pass] [hidden]|forget <ssid>]: status and saved networks", cmd_wifi);
-    builtin("logstat", "log ring buffer: seq sent/acked, drops, usage", cmd_logstat);
 }

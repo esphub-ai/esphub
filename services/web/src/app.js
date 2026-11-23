@@ -35,10 +35,7 @@ const path = location.pathname.split("/").filter(Boolean),
   detail = path[0] === "device";
 let user,
   device,
-  tab = "Serial",
-  session = "",
-  cursor = 0,
-  poll = null,
+  tab = "Firmware",
   timer,
   view = 0;
 const field = (key, label, type = "text", extra = "") =>
@@ -92,15 +89,14 @@ async function api(path, data) {
 }
 async function op(name,args={}) {
   let value=await api("/operations/"+name,args);
-  if(!value.command_id || name==="commands.get" || name==="uart.write") return value;
+  if(!value.command_id || name==="commands.get") return value;
   const command_id=value.command_id;
   notify("Command queued");
-  const logRecall = name === "logs.flush";
   const deadline =
-    Date.now() + (name === "ota.install" ? 600000 : logRecall ? 390000 : 90000);
+    Date.now() + (name === "ota.install" ? 600000 : 90000);
   while (Date.now() < deadline) {
     await new Promise((resolve) =>
-      setTimeout(resolve, logRecall ? 3000 : 1000),
+      setTimeout(resolve, 1000),
     );
     value = await api("/operations/commands.get", {
       device_id: args.device_id,
@@ -187,7 +183,7 @@ const devicePrompt = `Connect to ${mcpEndpoint} with CIMD OAuth and the devices:
 
 For a new board, identify it over USB. Ask me if the model is unclear, then call devices.create and follow its setup instructions.
 
-For a program update, confirm the target and what I want it to do. Use an existing HTTPS download URL, upload a local firmware binary with ota.prepare_upload, or stage main.py with programs.publish. Call bootloader.enter, wait for Bootloader mode, then use ota.install with the matching kind and download URL. Check the next boot’s output before reporting success.`;
+For a program update, confirm the target and what I want it to do. Use an existing HTTPS download URL, upload a local firmware binary with ota.prepare_upload, or stage main.py with programs.publish. Call bootloader.enter, wait for Bootloader mode, then use ota.install with the matching kind and download URL. Check the install receipt and next boot’s identity before reporting success.`;
 function devicePromptPanel() {
   return `<section class="mcp-setup" aria-labelledby="mcp-title"><h2 id="mcp-title">Use EspHub with your assistant</h2>
     <div class="mcp-grid"><div class="panel"><blockquote id="mcp-prompt">${esc(devicePrompt)}</blockquote>${button("copy-prompt", "Copy prompt")}</div></div></section>`;
@@ -225,13 +221,12 @@ async function fleet() {
 }
 async function refresh() {
   const currentView = ++view;
-  clearTimeout(poll);
   device = await op("devices.get", { device_id: path[1] });
   if (currentView !== view) return;
   const virtual = device.kind === "virtual";
   const tabs = virtual
-    ? ["Serial", "Firmware", "Settings"]
-    : ["Serial", "Wi-Fi", "Firmware", "Settings"];
+    ? ["Firmware", "Settings"]
+    : ["Wi-Fi", "Firmware", "Settings"];
   main.innerHTML =
     '<section class="app"><a class="crumb" href="/devices">← Devices</a><div class="toolbar"><div><div class="kicker">' +
     esc(boardLabel(device)) +
@@ -256,134 +251,7 @@ async function refresh() {
       .join("") +
     '</div><div id="content"></div></section>';
   const area = $("#content");
-  if (tab === "Serial") {
-    const sessions = await op("uart.sessions", { device_id: device.id });
-    if (currentView !== view) return;
-    if (!sessions.length) {
-      area.innerHTML =
-        '<div class="panel"><h3>No boot sessions yet</h3><p>Connect the board over USB and complete provisioning.</p><div class="actions">' +
-        link("/setup?board=" + device.board, "USB setup →") +
-        "</div></div>";
-      const awaitFirstBoot = async () => {
-        try {
-          const boots = await op("uart.sessions", { device_id: device.id });
-          if (currentView === view && boots.length) await refresh();
-        } catch (err) {
-          if (currentView === view) notify(err.message);
-        } finally {
-          if (currentView === view) poll = setTimeout(awaitFirstBoot, 2500);
-        }
-      };
-      poll = setTimeout(awaitFirstBoot, 2500);
-      return;
-    }
-    const selected =
-      sessions.find((s) => s.process_id === session) || sessions[0];
-    session = selected.process_id;
-    cursor = 0;
-    area.innerHTML =
-      '<div class="columns"><div class="console"><div class="termhead"><span>◉ Serial console</span><span id="state"></span></div><div id="logs" class="logs"></div><form id="send" class="inputrow"><span>›</span><input id="cmd" class="cmd" aria-label="Serial command" placeholder="Enter a command" maxlength="1000"><button>Send ↵</button></form></div><div class="panel"><h3>Boot session</h3><select aria-label="Process ID" id="pid" class="field">' +
-      sessions
-        .map(
-          (s) =>
-            '<option value="' +
-            s.process_id +
-            '" ' +
-            (s.process_id === session ? "selected" : "") +
-            ">" +
-            esc(s.process_id.slice(0, 10) + " · " + s.started_at) +
-            "</option>",
-        )
-        .join("") +
-      '</select><div class="kv cursor-value">Browser TX cursor <b id="tx">0</b></div><button id="flush" hidden>Fetch device logs</button><p id="flush-result" role="status"></p><a class="crumb" href="/streams">Stream protocol ↗</a></div></div>';
-    const flushButton = $("#flush");
-    const flushResult = $("#flush-result");
-    flushButton.onclick = async () => {
-      flushButton.disabled = true;
-      flushResult.textContent = "Waiting for device logs…";
-      try {
-        const receipt = await op("logs.flush", {
-          device_id: device.id, process_id: session, request_id: crypto.randomUUID(),
-        });
-        flushResult.textContent = "Uploaded through log #" + receipt.last_acked_seq +
-          " · " + receipt.dropped_lines + " lines dropped this boot";
-      } catch (err) {
-        flushResult.textContent = err.message;
-      } finally {
-        flushButton.disabled = false;
-      }
-    };
-    const setState = (d) => {
-      flushButton.hidden = !(d.online && d.transport === "mqtt" && d.info?.log_flush === true && session === d.process_id);
-      const active = d.online && session === d.process_id && d.serial_input !== false;
-      $("#cmd").disabled = !active;
-      $("#send button").disabled = !active;
-      $("#state").textContent = active ? "Connected" : "Read-only session";
-    };
-    setState(device);
-    $("#pid").onchange = (e) => {
-      session = e.target.value;
-      refresh().catch((err) => notify(err.message));
-    };
-    $("#send").onsubmit = async (e) => {
-      e.preventDefault();
-      const input = $("#cmd"),
-        text = input.value;
-      if (!text.trim()) return;
-      try {
-        await op("uart.write", {
-          device_id: device.id,
-          process_id: session,
-          text: text + "\n",
-          request_id: crypto.randomUUID(),
-        });
-        input.value = "";
-        notify("Input queued");
-      } catch (err) {
-        notify(err.message);
-      }
-    };
-    let ticks = 0;
-    const tail = async () => {
-      try {
-        const page = await op("uart.read", {
-          device_id: device.id,
-          process_id: session,
-          after: cursor,
-        });
-        if (currentView !== view) return;
-        const logs = $("#logs"),
-          bottom = logs.scrollHeight - logs.scrollTop - logs.clientHeight < 30;
-        for (const r of page.records) {
-          const el = document.createElement("div");
-          el.textContent = r.at.slice(11, 19) + "  " + r.text;
-          logs.append(el);
-        }
-        while (logs.children.length > 1500) logs.firstChild.remove();
-        if (bottom) logs.scrollTop = logs.scrollHeight;
-        cursor = page.cursor;
-        $("#tx").textContent = cursor;
-        if (++ticks % 4 === 0) {
-          const [ds, ss] = await Promise.all([
-            op("devices.get", { device_id: device.id }),
-            op("uart.sessions", { device_id: device.id }),
-          ]);
-          if (currentView !== view) return;
-          $("#connection").textContent = ds.online ? "● Online" : "○ Offline";
-          setState(ds);
-          if (ss.length !== sessions.length) {
-            await refresh();
-            return;
-          }
-        }
-      } catch (err) {
-        if (currentView === view) $("#state").textContent = err.message;
-      } finally {
-        if (currentView === view) poll = setTimeout(tail, 1600);
-      }
-    };
-    await tail();
-  } else if (tab === "Wi-Fi") {
+  if (tab === "Wi-Fi") {
     area.innerHTML =
       '<div class="panel"><h3>Wi-Fi networks</h3><div class="flex">' +
       button("saved", "Saved networks") +
@@ -425,8 +293,8 @@ async function refresh() {
     area.innerHTML =
       '<div class="panel"><h3>Device controls</h3><p class="notice">' +
       (virtual
-        ? "Reboot starts a new simulated session. Previous boot logs stay available."
-        : "Reboot opens a new serial session. Reset clears the device token and saved Wi-Fi networks. Generate a new token to provision again over USB.") +
+        ? "Reboot starts a new simulated session."
+        : "Reboot restarts the device. Reset clears the device token and saved Wi-Fi networks. Generate a new token to provision again over USB.") +
       '</p><div class="actions">' +
       button("reboot", "Reboot") +
       (virtual
@@ -542,7 +410,7 @@ async function action(k) {
       "Install Bootloader",
       async () => {
         await op("ota.install", { ...id, kind: "bootloader" });
-        tab = "Serial";
+        tab = "Firmware";
         await refresh();
         notify("Bootloader image installed");
       },
@@ -556,10 +424,9 @@ async function action(k) {
         field("url", "HTTPS artifact URL", "url", "required"),
       "Install",
       async (a) => {
-        const receipt = await op("ota.install", { ...id, ...a });
-        session = receipt.process_id;
-        notify("Install completed. Verify the next boot in Serial.");
-        tab = "Serial";
+        await op("ota.install", { ...id, ...a });
+        notify("Install completed.");
+        tab = "Firmware";
         await refresh();
       },
     );
@@ -577,17 +444,16 @@ async function action(k) {
           reset: "Saved Wi-Fi and device credentials will be cleared.",
           reboot:
             device.kind === "virtual"
-              ? "Start a new simulated boot and keep the current logs."
+              ? "Start a new simulated boot."
               : "The running program will restart.",
           delete: "The registration and device access will be revoked.",
         }[k] +
         "</p>",
       "Confirm",
       async () => {
-        const result = await op("devices." + k, id);
+        await op("devices." + k, id);
         if (k === "reboot" && device.kind === "virtual") {
-          session = result.process_id;
-          tab = "Serial";
+          tab = "Firmware";
         }
         if (k === "delete") location.assign("/devices");
         else await refresh();
@@ -661,7 +527,6 @@ async function explorer() {
           "wifi.remove",
           "bootloader.enter",
           "ota.install",
-          "uart.write",
         ].includes(name)
       )
         dialog(
@@ -677,13 +542,6 @@ async function explorer() {
   };
 }
 async function start() {
-  if (path[0] === "streams") {
-    docs(
-      "UART streams",
-      '<p class="lead">Each boot has its own process ID and serial output.</p><h2>Device input</h2><p class="doccopy">Use uart.write with the current process ID. The board receives the command and reports the result over MQTT. Reuse the request ID when retrying a write.</p><h2>Device output</h2><p class="doccopy">Use uart.read after the last delivered record. The same cursor reads stored logs and events from an archived boot. Use logs.flush on the current boot to fetch buffered output immediately.</p>',
-    );
-    return;
-  }
   if (path[0] === "setup") {
     const selectedBoard = new URLSearchParams(location.search).get("board");
     const profiles = Object.entries(boardName).filter(
@@ -693,7 +551,7 @@ async function start() {
     );
     docs(
       "USB provisioning",
-      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install EspHub with MicroPython. Use the matching board kit from GitHub Releases and follow INSTALL.txt. Write the registration token and BLE bootstrap key over USB. Start the Mac BLE provisioning tool. When it says Beacon ready, restart the board and choose a Wi-Fi network or enter a hidden SSID.</p></div><div class="panel"><h3>3. Verify</h3><p>Check devices.get for the online MicroPython application. Stage the hello program with programs.publish. Enter Bootloader mode, install its URL with ota.install, then check the new boot for the hello message.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","ble_secret":"&lt;ble_secret&gt;"}</pre><p class="doccopy"><a href="https://github.com/okou-ai/esphub/tree/main/tools/ble-wifi">Mac BLE provisioning tool and instructions</a></p><h2>Board packages</h2><div class="flex">' +
+      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install EspHub with MicroPython. Use the matching board kit from GitHub Releases and follow INSTALL.txt. Write the registration token and BLE bootstrap key over USB. Start the Mac BLE provisioning tool. When it says Beacon ready, restart the board and choose a Wi-Fi network or enter a hidden SSID.</p></div><div class="panel"><h3>3. Verify</h3><p>Check devices.get for the online MicroPython application. Stage the hello program with programs.publish. Enter Bootloader mode, install its URL with ota.install, then check the install receipt and confirm the new app boot.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","ble_secret":"&lt;ble_secret&gt;"}</pre><p class="doccopy"><a href="https://github.com/okou-ai/esphub/tree/main/tools/ble-wifi">Mac BLE provisioning tool and instructions</a></p><h2>Board packages</h2><div class="flex">' +
         profiles
           .map(([board, name]) => {
             const base = "https://api.esphub.ai/releases/" + board + "/";

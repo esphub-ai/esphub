@@ -27,7 +27,7 @@ const jwt = await new SignJWT(session)
   .setIssuedAt()
   .setExpirationTime("5m")
   .sign(privateKey);
-let mcu, poll;
+let mcu;
 try {
   const page = await browser.newPage({
     viewport: { width: 1280, height: 800 },
@@ -133,12 +133,7 @@ try {
   await page.goto(origin + "/devices");
   await page.getByRole("button", { name: "Create virtual ESP32" }).click();
   await page.getByRole("heading", { name: "Virtual ESP32" }).waitFor();
-  await page
-    .locator("#logs")
-    .getByText(/Virtual ESP32 created/)
-    .waitFor();
-  const initialBoot = await page.locator("#pid").inputValue();
-  assert.ok(await page.locator("#cmd").isDisabled());
+  assert.equal(await page.getByRole("button", { name: "Serial", exact: true }).count(), 0);
   assert.equal(
     await page.getByRole("button", { name: "Wi-Fi", exact: true }).count(),
     0,
@@ -157,23 +152,6 @@ try {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Reboot", exact: true }).click();
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
-  await page
-    .locator("#logs")
-    .getByText(/Virtual ESP32 restarted/)
-    .waitFor();
-  const reboot = await page.locator("#pid").inputValue();
-  assert.notEqual(reboot, initialBoot);
-  await page.reload();
-  await page
-    .locator("#logs")
-    .getByText(/Virtual ESP32 restarted/)
-    .waitFor();
-  assert.equal(await page.locator("#pid").inputValue(), reboot);
-  await page.locator("#pid").selectOption(initialBoot);
-  await page
-    .locator("#logs")
-    .getByText(/Virtual ESP32 created/)
-    .waitFor();
   await page.getByRole("link", { name: "← Devices" }).click();
   await page
     .getByRole("link", { name: /Virtual ESP32.*Simulated ESP32/ })
@@ -193,52 +171,15 @@ try {
   ).token;
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.locator(".device").first().click();
-  await page.getByText("No boot sessions yet").waitFor();
   mcu = simulatedDevice(origin, token);
-  const pid = await mcu.hello({
+  await mcu.hello({
     board: "paper-color",
     chip: "esp32s3",
     image_profile: "ESPHUB2/bootloader/esp32s3-16mb",
     fw: { name: "bootloader", version: "test" },
     role: "bootloader",
-    log_flush: true,
   });
-  let busy = false,
-    seq = 0;
-  poll = setInterval(async () => {
-    if (busy) return;
-    busy = true;
-    try {
-      if (!mcu.queued) return;
-      const cmd = await mcu.nextCommand();
-      let data = {};
-      if (cmd.op === "term.write") {
-        await mcu.send({
-          t: "log",
-          seq: ++seq,
-          lines: [[100, "I", "serial echo: " + cmd.args.data.trim()]],
-        });
-      } else if (cmd.op === "logs.flush")
-        data = { last_acked_seq: seq, dropped_lines: 0 };
-      else throw Error("Unexpected browser command " + cmd.op);
-      await mcu.send({ t: "res", id: cmd.id, ok: true, data });
-    } catch (e) {
-      errors.push(e.message);
-    } finally {
-      busy = false;
-    }
-  }, 250);
-  await page.locator("#cmd").fill("hello from browser");
-  await page.locator("#send button").click();
-  await page
-    .locator("#logs")
-    .getByText(/serial echo: hello from browser/)
-    .waitFor();
-  await page.getByRole("button", { name: "Fetch device logs" }).click();
-  await page
-    .getByText("Uploaded through log #1 · 0 lines dropped this boot")
-    .waitFor();
-  clearInterval(poll);
+  await page.reload();
   if (process.env.QA_SCREENSHOT)
     await page.screenshot({ path: process.env.QA_SCREENSHOT });
   await page.getByRole("button", { name: "Firmware", exact: true }).click();
@@ -262,7 +203,7 @@ try {
   await mcu.send({t:"event", name:"install.done", data:{
     kind:"python", transfer_id:install.args.transfer_id, sha256, bytes:10
   }});
-  await page.getByText("Install completed. Verify the next boot in Serial.").waitFor();
+  await page.getByText("Install completed.").waitFor();
   await mcu.hello({
     role: "app", board:"paper-color", bootloader_version:"1.1.17",
     micropython_version:"1.27.0", fw:{name:"micropython", version:"1.1.18"}
@@ -277,7 +218,6 @@ try {
     .click();
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await page.getByText(/No devices found/).waitFor();
-  clearInterval(poll);
   await page.goto(origin + "/explorer");
   await page.getByRole("button", { name: "Run tool" }).click();
   await page.locator("#result").filter({ hasText: "[]" }).waitFor();
@@ -285,7 +225,7 @@ try {
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL(origin + "/signed-out");
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const p of ["/", "/devices", "/setup", "/streams", "/mcp"]) {
+  for (const p of ["/", "/devices", "/setup", "/mcp"]) {
     await page.goto(origin + p);
     await page.locator("h1").waitFor();
     assert.ok(
@@ -319,10 +259,9 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS hosted sign-in and sign-up routing, signed session verification, virtual board creation and boot history, live serial round trip, tool explorer, deletion, mobile navigation",
+    "PASS hosted sign-in and sign-up routing, signed session verification, virtual board creation, MQTT installation, tool explorer, deletion, mobile navigation",
   );
 } finally {
-  clearInterval(poll);
   mcu?.close();
   await browser.close();
 }

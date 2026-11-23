@@ -26,7 +26,7 @@ export function provisioning(board) {
       "Read setup_manifest and match its board to the device. Download the ZIP over HTTPS from its GitHub Releases download_url, then flash over USB using INSTALL.txt and flash_args. First-time installation erases flash. Back up any device data before flashing.",
       usb,
       wifi,
-      "Poll devices.get with this registration ID until it is online with the matching board and MicroPython Runtime (role app). Stage verification_source with programs.publish. Call bootloader.enter, wait for the device to come online in EspHub Bootloader mode, then call ota.install with kind python and the staged URL. For a queued response, use commands.get with command_id until succeeded. Use uart.read on the Bootloader process_id to check the install event for the transfer_id from the command result. Wait for a new app boot and read its output for the board-specific hello or a program.failed event. Report what the board confirmed.",
+      "Poll devices.get with this registration ID until it is online with the matching board and MicroPython Runtime (role app). Stage verification_source with programs.publish. Call bootloader.enter, wait for the device to come online in EspHub Bootloader mode, then call ota.install with kind python and the staged URL. For a queued response, use commands.get with command_id until succeeded. Check programs.get for the confirmed transfer ID and devices.get for a new app boot. Verify the board-specific hello on the display or USB console. Report what the board confirmed.",
     ].join("\n"),
     setup_manifest: base + "setup-manifest",
     verification_source: profile.hello,

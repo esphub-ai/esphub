@@ -11,7 +11,7 @@ The bootloader and MicroPython share one device agent. Firmware keeps a single a
 | Rotate BLE credentials | MQTT hello includes `ble_generation`. Its ACK can include `rotate: {generation, secret}` | After committing to NVS the device sends `ble.confirm` with the installed generation. A later hello also confirms it |
 | Obtain MQTT credentials | HTTPS `POST /api/device/iot/enroll` with `{csr}` | NVS stores the certificate, broker endpoint and device ID, bound to the registration and hub. The private key stays on the board |
 | Receive a command | QoS 1 MQTT downlink `{boot_id, command: {id, seq, op, args}}` | The device executes it and returns `{t:"res", id, ok, data}` or an error |
-| Report device state and execution | QoS 1 MQTT publish to `devices/<uuid>/up` | The hub processes hello, receipts, logs, metrics and events, including drawing events and final OTA results |
+| Report device state and execution | QoS 1 MQTT publish to `devices/<uuid>/up` | The hub processes hello, receipts, metrics and events, including drawing events and final OTA results |
 | Download an OTA artifact | The bootloader persists the job, destroys its MQTT client and streams an HTTPS GET | After HTTPS cleanup, a terminal MQTT event reports success or failure. Its receipt survives a reboot |
 | Inspect the last cloud-installed main.py | `programs.get` looks up the latest confirmed Python transfer | Transfer ID, SHA-256 of installed bytes, byte count. USB edits are outside this inventory |
 
@@ -27,7 +27,7 @@ The queue expires undelivered commands after five minutes. A dispatched command 
 
 Each uplink contains a `frame` with a per-boot message ID. The AWS rule attaches the device UUID from the topic and the certificate ID from the broker principal. A Lambda relay forwards the envelope to the Worker. The Worker checks the registered certificate and the active boot. The device policy scopes publish and subscribe to the attached thing.
 
-Hello, BLE confirmations, command receipts, install outcomes and log batches request an application acknowledgement on the downlink. The ACK echoes the boot ID and message ID. Hello confirms that the hub has recorded the boot before firmware can cancel rollback. Log acknowledgements carry the stored source sequence. Metrics and ordinary events use MQTT QoS 1. Periodic logging captures a finite batch every ten minutes. An empty buffer produces no upload. `logs.flush` requests a batch immediately. Unacknowledged RAM logs can be lost on a power cut.
+Hello, BLE confirmations, command receipts and install outcomes request an application acknowledgement on the downlink. The ACK echoes the boot ID and message ID. Hello confirms that the hub has recorded the boot before firmware can cancel rollback. Metrics and ordinary events use MQTT QoS 1. Console output is available locally over USB.
 
 ## Deployment
 

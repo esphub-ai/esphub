@@ -9,9 +9,6 @@ import esp32
 import micropython
 import okou
 
-# print() / REPL output also goes to the hub log stream.
-os.dupterm(okou.term(), 0)
-
 # User files live on the `data` partition (LittleFS), mounted at /flash.
 _p = esp32.Partition.find(esp32.Partition.TYPE_DATA, label="data")
 if _p:
