@@ -38,64 +38,6 @@ static size_t utf8_len(const unsigned char *s, size_t n)
     return l;
 }
 
-int okou_json_escape(char *dst, size_t cap, const char *src, size_t len)
-{
-    static const char hex[] = "0123456789abcdef";
-    size_t o = 0;
-    const unsigned char *s = (const unsigned char *)src;
-    for (size_t i = 0; i < len;) {
-        unsigned char c = s[i];
-        if (c >= 0x80) {
-            size_t l = utf8_len(s + i, len - i);
-            if (l == 0) {
-                if (o + 1 > cap) {
-                    return -1;
-                }
-                dst[o++] = '?';
-                i++;
-            } else {
-                if (o + l > cap) {
-                    return -1;
-                }
-                memcpy(dst + o, s + i, l);
-                o += l;
-                i += l;
-            }
-            continue;
-        }
-        if (c == '"' || c == '\\') {
-            if (o + 2 > cap) {
-                return -1;
-            }
-            dst[o++] = '\\';
-            dst[o++] = (char)c;
-        } else if (c == '\n' || c == '\r' || c == '\t') {
-            if (o + 2 > cap) {
-                return -1;
-            }
-            dst[o++] = '\\';
-            dst[o++] = c == '\n' ? 'n' : (c == '\r' ? 'r' : 't');
-        } else if (c < 0x20 || c == 0x7f) {
-            if (o + 6 > cap) {
-                return -1;
-            }
-            dst[o++] = '\\';
-            dst[o++] = 'u';
-            dst[o++] = '0';
-            dst[o++] = '0';
-            dst[o++] = hex[c >> 4];
-            dst[o++] = hex[c & 0xf];
-        } else {
-            if (o + 1 > cap) {
-                return -1;
-            }
-            dst[o++] = (char)c;
-        }
-        i++;
-    }
-    return (int)o;
-}
-
 void okou_utf8_sanitize(char *str)
 {
     unsigned char *s = (unsigned char *)str;

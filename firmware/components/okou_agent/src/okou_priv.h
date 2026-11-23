@@ -32,8 +32,6 @@ void okou_net_info(cJSON *obj); /* adds ip, rssi */
 int okou_net_describe(char *buf, size_t len);
 
 /* ---- util (okou_util.c) ---- */
-/* JSON string body escape with UTF-8 sanitising; returns bytes written or -1 if no room. */
-int okou_json_escape(char *dst, size_t cap, const char *src, size_t len);
 void okou_utf8_sanitize(char *s);
 const char *okou_reset_reason_str(void);
 const char *okou_ota_state_str(const esp_partition_t *p);

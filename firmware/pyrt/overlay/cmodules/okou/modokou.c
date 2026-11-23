@@ -88,13 +88,6 @@ static mp_obj_t okou_event_py(size_t n_args, const mp_obj_t *args)
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(okou_event_obj, 1, 2, okou_event_py);
 
-static mp_obj_t okou_metric_py(mp_obj_t name, mp_obj_t value)
-{
-    okou_metric(mp_obj_str_get_str(name), mp_obj_get_float(value));
-    return mp_const_none;
-}
-static MP_DEFINE_CONST_FUN_OBJ_2(okou_metric_obj, okou_metric_py);
-
 static mp_obj_t okou_safe_boot_py(void)
 {
     bool safe = okou_nvs_get_u8("pysafe", 0) != 0;
@@ -117,7 +110,6 @@ static const mp_rom_map_elem_t okou_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_okou) },
     { MP_ROM_QSTR(MP_QSTR_connected), MP_ROM_PTR(&okou_connected_obj) },
     { MP_ROM_QSTR(MP_QSTR_event), MP_ROM_PTR(&okou_event_obj) },
-    { MP_ROM_QSTR(MP_QSTR_metric), MP_ROM_PTR(&okou_metric_obj) },
     { MP_ROM_QSTR(MP_QSTR_safe_boot), MP_ROM_PTR(&okou_safe_boot_obj) },
 };
 static MP_DEFINE_CONST_DICT(okou_module_globals, okou_module_globals_table);

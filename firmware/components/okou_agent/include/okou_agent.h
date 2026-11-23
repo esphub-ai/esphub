@@ -2,9 +2,8 @@
  * okou_agent - device side of the esp-bootloader protocol.
  *
  * Link this component into an app, register commands/params, call okou_agent_start().
- * Nothing in this API blocks on the network: metrics and events are queued into
- * bounded RAM buffers and sent by a low-priority agent task; when buffers are full, data
- * is dropped and counted instead of blocking the caller.
+ * Events enter a bounded queue and a low-priority agent task sends them.
+ * A full queue drops the event and increments the drop counter.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -87,8 +86,6 @@ esp_err_t okou_param_bool(const char *name, bool *ptr, bool persist);
 esp_err_t okou_param_save(const char *name);
 
 /* ---- telemetry ----------------------------------------------------------------------- */
-/* Never blocks. Samples are batched (~200 ms). Oldest samples are overwritten when offline. */
-void okou_metric(const char *name, double value);
 /* json: a JSON object text (or NULL for {}). Invalid JSON is sent as {"text":"..."}.
  * Never blocks; dropped (and counted) when the outbound queue is full. */
 void okou_event(const char *name, const char *json);
