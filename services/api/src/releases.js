@@ -42,6 +42,8 @@ export async function launcherManifest(board) {
     m.board !== board ||
     m.chip !== boards[board].chip ||
     m.version !== version ||
+    (m.bootloader !== undefined &&
+      (m.bootloader !== boards[board].bootloader || m.flash_mb !== boards[board].flash_mb)) ||
     !/^[a-f0-9]{64}$/.test(m.ota?.sha256) ||
     !Number.isSafeInteger(m.ota.size) ||
     m.ota.size <= 0

@@ -1,2 +1,0 @@
-CONFIG_OKOU_BOARD_PROFILE="stopwatch"
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="../boards/stopwatch/launcher/partitions.csv"

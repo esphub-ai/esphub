@@ -9,11 +9,11 @@ export function updateSources(board) {
   return {
     sources: {
       launcher: {
-        directory_url: tree + "/firmware/launcher",
-        board_directory_url: tree + profile + "/launcher",
+        directory_url: tree + "/firmware/bootloader",
+        board_directory_url: tree + profile + "/layout",
         sdk_directory_url: tree + "/firmware/components/okou_agent",
-        build_action_url: blob + profile + "/launcher/action.yml",
-        artifact: "Board-specific launcher OTA binary (*-ota.bin)",
+        build_action_url: blob + "/scripts/build-bootloader.sh",
+        artifact: "Shared bootloader OTA binary (*-ota.bin)",
       },
       micropython: {
         directory_url: tree + "/firmware/pyrt",

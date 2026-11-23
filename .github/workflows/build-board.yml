@@ -43,10 +43,24 @@ jobs:
       KIND: ${{ matrix.task.kind }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        if: matrix.task.kind == 'launcher'
+        with:
+          name: bl-${{ fromJSON(inputs.profile).bootloader }}
+          path: shared-bl
+      - name: Assemble launcher release for the board
+        if: matrix.task.kind == 'launcher'
+        shell: bash
+        run: |
+          set -eo pipefail
+          source "$IDF_PATH/export.sh"
+          python scripts/package-board-launcher.py "$BOARD" "$VERSION"
       - name: Select the board's composite action
+        if: matrix.task.kind != 'launcher'
         shell: bash
         run: cp -R "firmware/boards/$BOARD/$KIND" .board-task
       - uses: ./.board-task
+        if: matrix.task.kind != 'launcher'
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BOARD }}-${{ matrix.task.kind }}

@@ -1,0 +1,55 @@
+name: Build a shared EspHub bootloader
+on:
+  workflow_call:
+    inputs:
+      variant: {type: string, required: true}
+      fingerprint: {type: string, required: true}
+      version: {type: string, required: true}
+permissions: {contents: write}
+concurrency:
+  group: bl-${{ github.ref }}-${{ inputs.variant }}-${{ inputs.fingerprint }}
+  cancel-in-progress: false
+env:
+  VARIANT: ${{ inputs.variant }}
+  VERSION: ${{ inputs.version }}
+  TAG: bl-${{ inputs.variant }}-${{ inputs.fingerprint }}
+  GH_TOKEN: ${{ github.token }}
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the published build for these inputs
+        id: published
+        shell: bash
+        run: |
+          set -euo pipefail
+          if receipt=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" 2>&1); then
+            jq -e '.draft == false and .prerelease == false' <<< "$receipt"
+            gh release download "$TAG" -p bootloader.tar.gz -p bootloader.tar.gz.sha256
+            sha256sum -c bootloader.tar.gz.sha256
+            mkdir shared-bl
+            tar -xzf bootloader.tar.gz -C shared-bl
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$receipt" != *"(HTTP 404)"* ]]; then
+            printf '%s\n' "$receipt" >&2
+            exit 1
+          fi
+      - name: Compile the shared binaries
+        if: steps.published.outputs.found != 'true'
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work -e VARIANT -e VERSION -e GITHUB_SHA \
+            espressif/idf:v5.4.1 bash scripts/build-bootloader.sh
+      - name: Publish the shared build
+        if: steps.published.outputs.found != 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          tar -czf bootloader.tar.gz -C shared-bl .
+          sha256sum bootloader.tar.gz > bootloader.tar.gz.sha256
+          gh release create "$TAG" bootloader.tar.gz bootloader.tar.gz.sha256 \
+            --target "$GITHUB_SHA" --latest=false --title "$VARIANT $VERSION" \
+            --notes "Build inputs: ${{ inputs.fingerprint }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bl-${{ inputs.variant }}
+          path: shared-bl/
+          if-no-files-found: error

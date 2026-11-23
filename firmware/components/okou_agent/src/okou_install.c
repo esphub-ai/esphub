@@ -28,7 +28,15 @@
 #define PROGRAM "/flash/main.py"
 #define MAX_ATTEMPTS 3
 #define PROFILE_OFFSET (sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) + sizeof(esp_app_desc_t))
-#define BOARD CONFIG_OKOU_BOARD_PROFILE
+static bool device_board(char board[OKOU_BOARD_CAPACITY])
+{
+#if CONFIG_OKL_URL_OTA
+    return okou_nvs_get_str(OKOU_BOARD_KEY, board, OKOU_BOARD_CAPACITY) == ESP_OK && board[0];
+#else
+    strlcpy(board, CONFIG_OKOU_BOARD_PROFILE, OKOU_BOARD_CAPACITY);
+    return board[0] != 0;
+#endif
+}
 
 static const char *TAG = "install";
 typedef struct {
@@ -61,7 +69,9 @@ static bool parse_args(const cJSON *a, inst_t *in, char *err, size_t n)
     if (!kind || (strcmp(kind, "launcher") && strcmp(kind, "micropython") && strcmp(kind, "python"))) {
         snprintf(err, n, "Expected launcher, micropython or python"); return false;
     }
-    if (!board || strcmp(board, BOARD)) { snprintf(err, n, "Expected board %s", BOARD); return false; }
+    char expected[OKOU_BOARD_CAPACITY];
+    if (!device_board(expected)) { snprintf(err, n, "Device board is missing from NVS"); return false; }
+    if (!board || strcmp(board, expected)) { snprintf(err, n, "Expected board %s", expected); return false; }
     if (!https_url(url) || strlen(url) >= sizeof(in->url)) {
         snprintf(err, n, "Expected HTTPS URL (up to 1024 bytes)"); return false;
     }
@@ -128,35 +138,51 @@ static const char *open_download(esp_http_client_handle_t c, bool private_progra
     return "Too many redirects";
 }
 
-static bool valid_header(const uint8_t *header, const char *kind)
+static bool matches_profile(const uint8_t *profile, const char *expected, bool need_writer)
 {
-    const esp_image_header_t *ih = (const esp_image_header_t *)header;
-    char expected[48];
-    snprintf(expected, sizeof(expected), "ESPHUB1/%s/%s", kind, BOARD);
     size_t len = strlen(expected) + 1;
-    return ih->magic == ESP_IMAGE_HEADER_MAGIC && ih->chip_id == CONFIG_IDF_FIRMWARE_CHIP_ID &&
-           !memcmp(header + PROFILE_OFFSET, expected, len) &&
-           !memcmp(header + PROFILE_OFFSET + len, OKOU_OTA_CAPABILITY, sizeof(OKOU_OTA_CAPABILITY));
+    return !memcmp(profile, expected, len) &&
+           (!need_writer || !memcmp(profile + len, OKOU_OTA_CAPABILITY, sizeof(OKOU_OTA_CAPABILITY)));
 }
 
-static bool compatible_runtime(const esp_partition_t *app, bool need_writer)
+static bool valid_header(const uint8_t *header, const char *kind, const char *board)
 {
-    const char expected[] = "ESPHUB1/micropython/" BOARD "\0" OKOU_OTA_CAPABILITY;
-    char profile[sizeof(expected)];
+    const esp_image_header_t *ih = (const esp_image_header_t *)header;
+    if (ih->magic != ESP_IMAGE_HEADER_MAGIC || ih->chip_id != CONFIG_IDF_FIRMWARE_CHIP_ID) return false;
+    const uint8_t *profile = header + PROFILE_OFFSET;
+    if (!strcmp(kind, "launcher") && CONFIG_OKOU_BL_PROFILE[0] &&
+        matches_profile(profile, OKOU_BL_IMAGE_PREFIX CONFIG_OKOU_BL_PROFILE, true)) return true;
+    char expected[sizeof("ESPHUB1/micropython/") + OKOU_BOARD_CAPACITY];
+    snprintf(expected, sizeof(expected), "ESPHUB1/%s/%s", kind, board);
+    return matches_profile(profile, expected, true);
+}
+
+#if CONFIG_OKL_URL_OTA
+static bool compatible_runtime(const esp_partition_t *app, const char *board, bool need_writer)
+{
+    char expected[sizeof("ESPHUB1/micropython/") + OKOU_BOARD_CAPACITY];
+    uint8_t profile[sizeof(expected) + sizeof(OKOU_OTA_CAPABILITY)];
+    snprintf(expected, sizeof(expected), "ESPHUB1/micropython/%s", board);
     esp_app_desc_t desc;
     return app && esp_ota_get_partition_description(app, &desc) == ESP_OK &&
            esp_partition_read(app, PROFILE_OFFSET, profile, sizeof(profile)) == ESP_OK &&
-           !memcmp(profile, expected, need_writer ? sizeof(expected) : strlen(expected) + 1);
+           matches_profile(profile, expected, need_writer);
 }
+#endif
 
 /* Write the firmware header last so a partial image cannot boot. */
 static bool run_install(inst_t *in)
 {
+    char board[OKOU_BOARD_CAPACITY];
+    if (!device_board(board)) {
+        emit_failed(in, "Device board is missing");
+        return false;
+    }
     bool launcher = !strcmp(in->kind, "launcher");
 #if CONFIG_OKL_URL_OTA
     if (launcher) {
         const esp_partition_t *app = runtime_partition();
-        if (!compatible_runtime(app, true)) {
+        if (!compatible_runtime(app, board, true)) {
             emit_failed(in, "Install the matching single-slot OTA runtime first");
             return false;
         }
@@ -198,7 +224,7 @@ static bool run_install(inst_t *in)
     const char *fail = NULL;
     if (!c || !buf || (!script && !header)) { fail = "Out of memory"; goto out; }
     if (!target || target->address == esp_ota_get_running_partition()->address) { fail = "Incompatible partition layout"; goto out; }
-    if (script && !compatible_runtime(target, false)) {
+    if (script && !compatible_runtime(target, board, false)) {
         fail = "Install the matching URL OTA MicroPython runtime first"; goto out;
     }
     uint32_t limit = script ? PROGRAM_LIMIT : target->size;
@@ -237,7 +263,11 @@ static bool run_install(inst_t *in)
                 off = (uint32_t)n < CHUNK - written ? (uint32_t)n : CHUNK - written;
                 memcpy(header + written, buf, off);
                 if (written + off == CHUNK) {
-                    if (!valid_header(header, in->kind)) { fail = "Firmware type, board or chip mismatch"; goto out; }
+                    if (!valid_header(header, in->kind, board)) { fail = "Firmware type, board, chip or flash profile mismatch"; goto out; }
+                    if (launcher && matches_profile(header + PROFILE_OFFSET, OKOU_BL_IMAGE_PREFIX CONFIG_OKOU_BL_PROFILE, true) &&
+                        okou_nvs_set_str(OKOU_BOARD_KEY, board) != ESP_OK) {
+                        fail = "Cannot save board identity before launcher update"; goto out;
+                    }
                     if (esp_ota_begin(target, length > 0 ? (size_t)length : OTA_SIZE_UNKNOWN, &ota) != ESP_OK) {
                         fail = "Cannot open target partition"; goto out;
                     }

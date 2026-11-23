@@ -23,6 +23,8 @@ EspHub has three deployment targets: the EspHub Bootloader, a Runtime, and a Pro
 
 In maintenance mode the ESP-IDF bootloader loads the EspHub Bootloader instead. Normal boots can go directly to the selected application. In the single-slot implementation, updating the EspHub Bootloader itself uses the MicroPython Runtime's native agent to write back to `bl`. A Native Program would need an equivalent writer to retain this OTA capability while it occupies `app`. SDK integration alone does not establish that capability.
 
+Current ESP32-S3 boards share two EspHub Bootloader builds, `esp32s3-8mb` and `esp32s3-16mb`. USB setup writes each board's identity in NVS and installs its partition table independently. Shared bootloaders use that board identity to validate Runtime updates and read the installed partition table at runtime.
+
 ## Partition mapping
 
 The two executable partitions are `bl` (EspHub Bootloader) and `app` (application image). The ESP-IDF subtypes `ota_0` and `ota_1` identify these two different executables. There is only one copy of the EspHub Bootloader. The remaining named partitions serve these purposes:

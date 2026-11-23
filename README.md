@@ -13,12 +13,12 @@ See the [firmware glossary and partition mapping](docs/firmware-terminology.md) 
 
 ## Devices and releases
 
-All supported models use ESP32-S3. Paper Color, PaperDIY, StackChan and StopWatch have 16 MB flash. Cardputer-Adv has 8 MB flash and its own partition layout. Its MicroPython runtime includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for the TCA8418 keyboard. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the launcher, MicroPython runtime, partition table, flash arguments and a SHA-256 manifest. This kit replaces the partition table and app. The separate StopWatch launcher-only kit preserves its legacy partition layout.
+All supported models use ESP32-S3. Paper Color, PaperDIY, StackChan and StopWatch have 16 MB flash. Cardputer-Adv has 8 MB flash and its own partition layout. Its MicroPython runtime includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for the TCA8418 keyboard. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the shared launcher, MicroPython runtime, partition table, board identity, example main.py, flash arguments and a SHA-256 manifest. This kit replaces the partition table and app. The separate StopWatch launcher-only kit preserves its legacy partition layout.
 
-To build the launcher locally, run this from `firmware/launcher` in an ESP-IDF shell, replacing `stopwatch` with the directory name of your board:
+To build the shared launcher locally, use ESP-IDF 5.4.1 from `firmware/bootloader`. Use `esp32s3-8mb` for Cardputer-Adv and `esp32s3-16mb` for the other boards:
 
 ```sh
-idf.py -B build-stopwatch -DSDKCONFIG="$PWD/build-stopwatch/sdkconfig" -DESPHUB_BOARD=stopwatch -DIDF_TARGET=esp32s3 build
+idf.py -B build/esp32s3-16mb -DSDKCONFIG="$PWD/build/esp32s3-16mb/sdkconfig" -DESPHUB_BL=esp32s3-16mb -DIDF_TARGET=esp32s3 build
 ```
 
 Connect the board over USB and call `devices.create`. Download and flash the matching setup kit. Send the returned token and BLE bootstrap key to the launcher at 115200 baud:
@@ -45,6 +45,8 @@ The virtual board supports read-only serial output and private 24-hour source st
 
 ## OTA
 
+On an existing board with the single-slot layout, install the latest board MicroPython runtime before upgrading to the shared launcher. That runtime saves the board identity in NVS when it writes the new launcher. OTA preserves the existing partition table and credentials. For a first install, the board-specific USB setup kit writes the board identity directly.
+
 1. For a local firmware binary, use `ota.prepare_upload` and PUT the file as described below. If you already have an HTTPS download URL, use it directly. For generated Python, call `programs.publish` with the device ID and UTF-8 source (up to 32 KiB). It returns a private HTTPS URL valid for 24 hours. An existing HTTPS URL also works.
 2. Call `launcher.enter` with the device ID. Wait for `devices.get` to report an online launcher. For the official launcher, use `ota.install` with `kind: "launcher"` and omit the URL.
 3. Call `ota.install` with `device_id`, `kind` and `url`. Use a matching official or custom-built OTA binary for `launcher` or `micropython`, or a plain UTF-8 main.py file for `python`. Boot the matching OTA-capable runtime once to initialize its data volume before installing a program.
@@ -62,7 +64,7 @@ Call `devices.get` to get `sources.launcher`, `sources.micropython` and `sources
 
 | OTA kind | What to edit | What to send |
 | --- | --- | --- |
-| `launcher` | Launcher in `firmware/launcher/`, hardware configuration in the board's `launcher/` directory, and the shared hub protocol in `firmware/components/okou_agent/` | The board's `*-ota.bin` release asset |
+| `launcher` | Shared launcher in `firmware/bootloader/`, board flash layout under `firmware/boards/<id>/layout/`, and the hub protocol in `firmware/components/okou_agent/` | The board's `*-ota.bin` release asset |
 | `micropython` | Runtime integration in `firmware/pyrt/`, the board's `micropython/` directory and the linked UIFlow MicroPython upstream. To build a modified upstream, set the repository and commit in `firmware/pyrt/upstream.json`. | The board's `esphub-<board>-micropython-<version>.bin` release asset |
 | `python` | Start from the linked `hello.py` or write your own UTF-8 `main.py`. | The script itself, ready to run without compilation |
 
@@ -100,11 +102,11 @@ Pushes to main run verification on an ephemeral PostgreSQL instance, migrate pro
 
 ### Board firmware CI
 
-Each directory under `firmware/boards/<id>/` owns a board. It contains the display name, model and chip in `board.json`, the provisioning example in `hello.py`, and the tasks in `ci.json`. Each declared task has its own composite GitHub Action in `<task>/action.yml`. Copy a board directory to add a profile. Give it a unique ID, select its upstream MicroPython target and supply its hardware initialization, partition settings and example. The website, registration schema and firmware workflow discover the directory automatically.
+Each `firmware/boards/<id>/board.json` declares the board's chip, flash capacity, and shared bootloader variant. The board directory owns its partition layout, MicroPython hardware configuration, verification example, and MicroPython and USB setup actions.
 
-The top-level Board firmware workflow compares each task's build inputs across the push or PR. The per-board workflow calls only the selected local actions. StopWatch's launcher action adds a fresh-layout USB build. Each action can use shared helpers under `.github/actions` or provide its own steps. Set a task's runner, container and extra repository input globs in its board's `ci.json`. Keep board-specific sources under that task's directory.
+The firmware workflow builds each selected variant once from `firmware/bootloader/variants/<target>-<size>mb/`. On main it publishes the bootloader binaries under an input-fingerprinted `bl-*` tag. Later runs reuse the published binaries when preparing a board with the same variant and build inputs. The shared builds use internal RAM.
 
-On main, CI publishes changed artifacts on GitHub Releases under `<component>-<board>-v<version>`. If one component changes, the USB task combines it with the board's previously released counterpart. The manifest records both exact tags. Release notes record input fingerprints to avoid republishing unchanged artifacts. Manual dispatch checks for unpublished inputs and accepts an optional board ID. The release API selects the highest published version containing that model's assets. Historical shared release tags and pinned download URLs stay accessible.
+The board workflow combines the shared binaries with each board's partition table, and publishes board-facing assets under `<component>-<board>-v<version>`. StopWatch also gets a fresh-layout USB archive using the same launcher binary. USB setup includes the board's MicroPython image and verification example. Its manifest pins both component tags. Historical board download URLs continue to resolve.
 
 ## Origin
 
