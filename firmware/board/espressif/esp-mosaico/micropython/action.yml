@@ -7,7 +7,7 @@ runs:
       id: upstream
       shell: bash
       run: |
-        jq -er '"repository=" + .repository, "ref=" + .ref' "$BOARD_DIR/micropython/upstream.json" >> "$GITHUB_OUTPUT"
+        python3 -c 'import json, sys; config = json.load(open(sys.argv[1])); print("repository=" + config["repository"]); print("ref=" + config["ref"])' "$BOARD_DIR/micropython/upstream.json" >> "$GITHUB_OUTPUT"
     - uses: actions/checkout@v4
       with:
         repository: ${{ steps.upstream.outputs.repository }}
