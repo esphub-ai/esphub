@@ -1,12 +1,10 @@
-// Immutable historical releases may contain several boards. New tags identify one board.
+export function releaseTag(kind, board, version) {
+  return `firmware-${kind}-${board}-v${version}`;
+}
+
 export function releaseVersion(tag, kind, board) {
-  const scoped = `${kind}-${board}-v`;
-  const legacy = kind + "-v";
-  const version = tag.startsWith(scoped)
-    ? tag.slice(scoped.length)
-    : tag.startsWith(legacy)
-      ? tag.slice(legacy.length)
-      : "";
+  const prefix = releaseTag(kind, board, "");
+  const version = tag.startsWith(prefix) ? tag.slice(prefix.length) : "";
   return /^\d+\.\d+\.\d+$/.test(version) ? version : null;
 }
 
@@ -18,7 +16,7 @@ export function newer(a, b) {
 
 export function assetNames(board, chip, kind, version) {
   const base = `esphub-${board}-${chip}-${version}`;
-  if (kind === "launcher")
+  if (kind === "bootloader")
     return {
       manifest: base + ".json",
       ota: base + "-ota.bin",
@@ -55,8 +53,9 @@ export async function publishedFirmware(
     for (const release of releases) {
       if (release.draft || release.prerelease) continue;
       const tag = release.tag_name,
-        kind = tag.split("-")[0];
-      if (!["launcher", "micropython", "setup"].includes(kind)) continue;
+        [namespace, kind] = tag.split("-");
+      if (namespace !== "firmware") continue;
+      if (!["bootloader", "micropython", "setup"].includes(kind)) continue;
       const assets = new Set(
         release.assets.filter((a) => a.state === "uploaded").map((a) => a.name),
       );

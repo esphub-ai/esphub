@@ -86,7 +86,7 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   let before = snapshot();
   put("firmware/board/m5stack/stopwatch/layout/partitions.csv", "new table");
   let after = snapshot();
-  assert.deepEqual(select(before, after), { stopwatch: ["launcher", "setup"] });
+  assert.deepEqual(select(before, after), { stopwatch: ["bootloader", "setup"] });
   assert.equal(after.stopwatch.blFingerprint, before.stopwatch.blFingerprint);
   assert.equal(
     after.stopwatch.blFingerprint,
@@ -116,13 +116,13 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   });
   after = snapshot();
   assert.deepEqual(select(before, after), {
-    "cardputer-adv": ["launcher", "micropython", "setup"],
+    "cardputer-adv": ["bootloader", "micropython", "setup"],
   });
   before = after;
   put("firmware/bootloader/esp32s3-8mb/sdkconfig.defaults", "new defaults");
   after = snapshot();
   assert.deepEqual(select(before, after), {
-    "cardputer-adv": ["launcher", "setup"],
+    "cardputer-adv": ["bootloader", "setup"],
   });
   assert.equal(after.stopwatch.blFingerprint, before.stopwatch.blFingerprint);
   before = after;
@@ -139,14 +139,14 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   after = snapshot();
   assert.deepEqual(
     Object.values(select(before, after)),
-    Array(3).fill(["launcher", "micropython", "setup"]),
+    Array(3).fill(["bootloader", "micropython", "setup"]),
   );
   before = after;
   put("firmware/ble.defaults", "CONFIG_BT_ENABLED=y");
   after = snapshot();
   assert.deepEqual(
     Object.values(select(before, after)),
-    Array(3).fill(["launcher", "micropython", "setup"]),
+    Array(3).fill(["bootloader", "micropython", "setup"]),
   );
   before = after;
   put("services/web/src/app.js", "website");
@@ -161,7 +161,7 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   addBoard("stopwatch", "waveshare", "waveshare-stopwatch");
   after = snapshot();
   assert.deepEqual(select(before, after), {
-    "waveshare-stopwatch": ["launcher", "micropython", "setup"],
+    "waveshare-stopwatch": ["bootloader", "micropython", "setup"],
   });
   assert.equal(
     after["waveshare-stopwatch"].boardDir,

@@ -1,5 +1,5 @@
-# esp-launcher Python runtime (appended to the board's sdkconfig fragments).
-# Size check against a 4 MiB app partition (the launcher layout's `app` slot).
+# esp-bootloader Python runtime (appended to the board's sdkconfig fragments).
+# Size check against a 4 MiB app partition (the bootloader layout's `app` slot).
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_okl_build.csv"
 # okou_agent verifies the hub certificate against the IDF bundle.

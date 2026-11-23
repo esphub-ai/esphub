@@ -14,7 +14,7 @@ export class Device extends DurableObject {
     );
   }
   software(info) {
-    const other = info?.role === "app" ? "launcher" : "app";
+    const other = info?.role === "app" ? "bootloader" : "app";
     const row =
       info?.mac &&
       this.db
@@ -210,7 +210,7 @@ export class Device extends DurableObject {
       if (!d)
         return Response.json({ error: "Stale enrollment" }, { status: 409 });
       if (m.t === "hello") {
-        if (d.board !== m.board || !["app", "launcher"].includes(m.role))
+        if (d.board !== m.board || !["app", "bootloader"].includes(m.role))
           return Response.json(
             { error: "Board or role mismatch" },
             { status: 409 },
@@ -264,7 +264,7 @@ export class Device extends DurableObject {
           m.data?.transfer_id,
         )
       ) {
-        // The launcher can resume a saved transfer in a subsequent boot.
+        // The bootloader can resume a saved transfer in a subsequent boot.
         await db`UPDATE esphub.device_commands SET state=${m.name === "install.done" ? "succeeded" : "failed"},
           result=${JSON.stringify(m.data)}::text::jsonb,args='{}',next_wake=NULL
           WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation='install' AND state IN ('dispatched','unknown')`;

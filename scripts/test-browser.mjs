@@ -118,7 +118,7 @@ try {
     "devices:write",
     "devices.create",
     "programs.publish",
-    "launcher.enter",
+    "bootloader.enter",
     "ota.install",
   ])
     assert.ok(prompt.includes(required));
@@ -198,9 +198,9 @@ try {
   const pid = await mcu.hello({
     board: "paper-color",
     chip: "esp32s3",
-    image_profile: "ESPHUB1/launcher/paper-color",
-    fw: { name: "launcher", version: "test" },
-    role: "launcher",
+    image_profile: "ESPHUB2/bootloader/esp32s3-16mb",
+    fw: { name: "bootloader", version: "test" },
+    role: "bootloader",
     log_flush: true,
   });
   let busy = false,
@@ -243,7 +243,7 @@ try {
     await page.screenshot({ path: process.env.QA_SCREENSHOT });
   await page.getByRole("button", { name: "Firmware", exact: true }).click();
   await page
-    .getByRole("button", { name: "Enter launcher mode", exact: true })
+    .getByRole("button", { name: "Enter Bootloader mode", exact: true })
     .waitFor();
   await page
     .getByRole("button", { name: "Install from URL", exact: true })
@@ -252,14 +252,14 @@ try {
     await page
       .locator('[name="kind"] option')
       .evaluateAll((options) => options.map((o) => o.value)),
-    ["python", "micropython", "launcher"],
+    ["python", "micropython", "bootloader"],
   );
   assert.equal(await page.locator('[name="sha256"]').count(), 0);
   await page.getByRole("button", { name: "Close", exact: true }).click();
   const pythonBoot = await mcu.hello({
     role: "app",
     board: "paper-color",
-    launcher_version: "1.1.17",
+    bootloader_version: "1.1.17",
     micropython_version: "1.27.0",
     fw: { name: "micropython", version: "1.1.18" },
   });
@@ -314,12 +314,12 @@ try {
     "https://api.esphub.ai/releases/stopwatch/setup",
   );
   assert.equal(
-    await page.getByRole("link", { name: "Launcher OTA image" }).count(),
+    await page.getByRole("link", { name: "Bootloader OTA image" }).count(),
     0,
   );
   await page.getByText("Firmware downloads", { exact: true }).click();
   assert.equal(
-    await page.getByRole("link", { name: "Launcher OTA image" }).count(),
+    await page.getByRole("link", { name: "Bootloader OTA image" }).count(),
     1,
   );
   assert.equal(

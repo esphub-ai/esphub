@@ -1,4 +1,4 @@
-// Device-private R2 staging. The download prefix is understood by deployed launchers.
+// Device-private R2 staging. The download prefix is understood by the EspHub Bootloader.
 import { digest, token } from "./auth.js";
 export const artifactBase = "https://api.esphub.ai/api/device/programs/r2-";
 export const maxUploadBytes = 4 * 1024 * 1024;

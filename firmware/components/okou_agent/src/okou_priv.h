@@ -59,11 +59,11 @@ bool okou_log_pending(void);
 cJSON *okou_hello_fields(void); /* hello object without "t" */
 extern okou_config_t g_okou_cfg;
 
-static inline bool okou_is_launcher(void)
+static inline bool okou_is_bootloader(void)
 {
-#ifdef OKOU_LAUNCHER_BUILD
+#ifdef OKOU_BOOTLOADER_BUILD
     return true;
 #else
-    return g_okou_cfg.role == OKOU_ROLE_LAUNCHER;
+    return g_okou_cfg.role == OKOU_ROLE_BOOTLOADER;
 #endif
 }

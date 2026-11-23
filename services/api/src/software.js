@@ -1,17 +1,17 @@
 // The OTA slot/profile is shared by MicroPython and native applications.
 export function softwareInventory(current, previous) {
-  const launcher = current?.role === "launcher" ? current : previous;
+  const bootloader = current?.role === "bootloader" ? current : previous;
   const app = current?.role === "app" ? current : previous;
   const fw = app?.role === "app" ? app.fw : null;
   return {
-    launcher_version:
-      current?.launcher_version ||
-      (launcher?.role === "launcher" && launcher.fw?.version) ||
+    bootloader_version:
+      current?.bootloader_version ||
+      (bootloader?.role === "bootloader" && bootloader.fw?.version) ||
       null,
-    launcher_last_seen:
+    bootloader_last_seen:
       current?.role === "app" &&
-      !current.launcher_version &&
-      launcher?.role === "launcher",
+      !current.bootloader_version &&
+      bootloader?.role === "bootloader",
     application: fw
       ? {
           process_id: app.boot_id,

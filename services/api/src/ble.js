@@ -43,7 +43,7 @@ export async function issueBle(sql, owner, id) {
   if (!d)
     fail(
       409,
-      "For this older registration, use devices.reissue and write the new token and ble_secret over USB",
+      "For a registration missing BLE credentials, use devices.reissue and write the new token and ble_secret over USB",
     );
   const current = await credential(d.ble_secret);
   if (d.ble_pending) current.alternate = await credential(d.ble_pending);
