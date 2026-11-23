@@ -27,6 +27,7 @@ static bool s_stay;
 
 static void on_hello_acked(void)
 {
+    install_resume_pending();
     s_acked_evt = true;
 }
 
@@ -143,7 +144,6 @@ void app_main(void)
                              (int)((autostart_at - now) / 1000));
                 }
             }
-            install_resume_pending();
         }
         if (autostart && (s_req_seen || s_stay)) {
             autostart = false;

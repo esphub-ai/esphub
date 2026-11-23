@@ -620,6 +620,24 @@ try {
   assert.equal((await snapshot(app, watch.token)).status, 409);
   assert.equal((await snapshot(app, d.token)).status, 200);
   assert.equal((await op("programs.get", id)).source, source);
+  // A request dispatched in the launcher is completed by a different boot.
+  const installLauncher = { ...id, kind: "launcher", url: localFiles.launcher };
+  await assert.rejects(op("ota.install", installLauncher), /launcher/);
+  const info = { board: d.board, chip: "esp32s3", single_launcher_ota: true };
+  await mcu.hello({ ...info, role: "launcher", image_profile: "ESPHUB1/launcher/" + d.board });
+  const handoff = await op("ota.install", installLauncher);
+  const [firstAttempt] = await mcu.pull();
+  assert.equal(firstAttempt.id, handoff.command_id);
+  await mcu.hello({ ...info, role: "app", image_profile: "ESPHUB1/micropython/" + d.board });
+  await mcu.send({ t: "event", name: "install.failed",
+    data: { transfer_id: firstAttempt.args.transfer_id, error: "HTTPS read failed" } });
+  assert.equal((await result(firstAttempt.id)).state, "failed");
+  const retry = await op("ota.install", installLauncher);
+  const [nextAttempt] = await mcu.pull();
+  assert.equal(nextAttempt.id, retry.command_id);
+  await mcu.send({ t: "event", name: "install.done",
+    data: { transfer_id: nextAttempt.args.transfer_id, kind: "launcher" } });
+  assert.equal((await result(nextAttempt.id)).state, "succeeded");
   await op("devices.reissue", id);
   assert.equal(
     (
