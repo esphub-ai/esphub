@@ -71,9 +71,11 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
     if (Number(flash) < 8) throw Error("EspHub requires at least 8 MiB Flash: " + path);
     const variant = `${target}-${flash}mb`;
     const container =
-      target === "esp32c5" || target === "esp32c61"
-        ? "espressif/idf:v5.5.4"
-        : "espressif/idf:v5.4.1";
+      target === "esp32s31"
+        ? "espressif/idf:v6.1.1"
+        : target === "esp32c5" || target === "esp32c61"
+          ? "espressif/idf:v5.5.4"
+          : "espressif/idf:v5.4.1";
     const sources = matching([
       ...bootloaderInputs,
       `firmware/bootloader/${variant}/**`,
