@@ -1,6 +1,6 @@
-# ESP Hub
+# EspHub
 
-ESP Hub provisions ESP32 devices over USB and manages them through the web and MCP. This repository owns the production services and launcher firmware.
+EspHub provisions ESP32 devices over USB and manages them through the web and MCP. This repository owns the production services and launcher firmware.
 
 | Host | Component |
 | --- | --- |
@@ -8,6 +8,8 @@ ESP Hub provisions ESP32 devices over USB and manages them through the web and M
 | app.esphub.ai | Same website Worker, authenticated device console |
 | api.esphub.ai | Hono Worker, MQTT uplink processing and authenticated API |
 | api.esphub.ai/mcp | Streamable HTTP JSON-RPC using Clerk OAuth |
+
+See the [firmware glossary and partition mapping](docs/firmware-terminology.md) for the EspHub Bootloader, SDK, Runtime, and Program types.
 
 ## Devices and releases
 
