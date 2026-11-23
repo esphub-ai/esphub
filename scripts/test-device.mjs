@@ -454,6 +454,14 @@ try {
     ).status,
     409,
   );
+  const oldHello = await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
+    t: "hello",
+    proto: 1,
+    board: d.board,
+    role: "app",
+  });
+  assert.equal(oldHello.status, 409);
+  assert.match((await oldHello.json()).error, /firmware protocol/i);
   const sync = (generation) => mcu.post("ble/sync", { generation });
   const offer = await sync(1);
   assert.equal(offer.generation, 2);

@@ -756,7 +756,7 @@ static void handle_req(const cJSON *root)
     } else if (strcmp(op, "param.set") == 0) {
         r = okou_param_set_json(args, data, err, sizeof(err));
     } else if (strcmp(op, "provision.reset") == 0) {
-        const char *keys[] = {"mqtt_identity", "ble_key", "ssid", "pass", "cid", "csec", "hub", OKOU_KEY_TOKEN};
+        const char *keys[] = {"mqtt_identity", "ble_key", "hub", OKOU_KEY_TOKEN};
         r = okou_nvs_set_str(OKOU_KEY_WIFIS, "[]");
         for (size_t i = 0; r == ESP_OK && i < sizeof(keys)/sizeof(keys[0]); ++i) {
             r = okou_nvs_erase(keys[i]);

@@ -358,8 +358,7 @@ esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen)
     /* Persist so a power loss mid-download resumes after reconnecting. */
     cJSON *p = cJSON_Duplicate(args, true);
     char *s = NULL;
-    if (p && cJSON_AddNumberToObject(p, "attempts", 1) &&
-        (strcmp(in->kind, "bootloader") || cJSON_AddTrueToObject(p, "in_place")))
+    if (p && cJSON_AddNumberToObject(p, "attempts", 1))
         s = cJSON_PrintUnformatted(p);
     cJSON_Delete(p);
     esp_err_t saved = s ? okou_nvs_set_str(OKOU_KEY_PENDING, s) : ESP_ERR_NO_MEM;
@@ -383,7 +382,7 @@ esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen)
 static bool runtime_transfer(const cJSON *args)
 {
     const char *kind = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(args, "kind"));
-    return kind && !strcmp(kind, "bootloader") && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(args, "in_place"));
+    return kind && !strcmp(kind, "bootloader");
 }
 
 bool install_bootloader_pending(void)

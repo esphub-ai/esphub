@@ -118,7 +118,7 @@ test("only current board-scoped downloads resolve to immutable GitHub artifacts"
     /Unknown bootloader/,
   );
   await assert.rejects(
-    releaseResponse("stopwatch", "setup", "bootloader-v1.0.1"),
+    releaseResponse("stopwatch", "setup", "setup-stopwatch-v1.1.72"),
     /Unknown setup/,
   );
 });
