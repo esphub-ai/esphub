@@ -193,7 +193,7 @@ try {
     await page
       .locator('[name="kind"] option')
       .evaluateAll((options) => options.map((o) => o.value)),
-    ["python", "micropython", "bootloader"],
+    ["python", "native", "micropython", "bootloader"],
   );
   assert.equal(await page.locator('[name="sha256"]').count(), 0);
   await page.locator('[name="url"]').fill("https://example.org/main.py");
