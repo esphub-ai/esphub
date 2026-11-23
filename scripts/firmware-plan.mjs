@@ -34,7 +34,11 @@ const digest = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 export function profiles(ref, cwd = process.cwd()) {
-  if (!ref || /^0+$/.test(ref)) return {};
+  return firmwareProfiles(ref, cwd).boards;
+}
+
+function firmwareProfiles(ref, cwd = process.cwd()) {
+  if (!ref || /^0+$/.test(ref)) return { boards: {}, variants: new Map() };
   const git = (...args) =>
     execFileSync("git", args, {
       cwd,
@@ -61,6 +65,27 @@ export function profiles(ref, cwd = process.cwd()) {
   const variants = new Map();
   for (const path of files.keys()) {
     const match =
+      /^firmware\/bootloader\/([a-z0-9]+)-(\d+)mb\/sdkconfig\.defaults$/.exec(path);
+    if (!match) continue;
+    const [, target, flash] = match;
+    const variant = `${target}-${flash}mb`;
+    const container =
+      target === "esp32c5" || target === "esp32c61"
+        ? "espressif/idf:v5.5.4"
+        : "espressif/idf:v5.4.1";
+    const sources = matching([
+      ...bootloaderInputs,
+      `firmware/bootloader/${variant}/**`,
+      `firmware/partitions/${flash}mb.csv`,
+    ]);
+    variants.set(variant, {
+      variant,
+      container,
+      fingerprint: digest([variant, container, sources]),
+    });
+  }
+  for (const path of files.keys()) {
+    const match =
       /^firmware\/board\/([a-z0-9-]+)\/([a-z0-9-]+)\/ci\.json$/.exec(path);
     if (!match) continue;
     const dir = posix.dirname(path);
@@ -77,18 +102,10 @@ export function profiles(ref, cwd = process.cwd()) {
       throw Error("Invalid or duplicate board ID: " + board);
     const jobs = json(path),
       tasks = {};
+    const sharedBootloader = variants.get(bootloader);
     if (bootloader) {
-      const config = `firmware/bootloader/${bootloader}/sdkconfig.defaults`;
-      if (bootloader !== `${chip}-${flash_mb}mb` || !files.has(config))
+      if (bootloader !== `${chip}-${flash_mb}mb` || !sharedBootloader)
         throw Error("Invalid bootloader for " + board);
-      if (!variants.has(bootloader)) {
-        const sources = matching([
-          ...bootloaderInputs,
-          `firmware/bootloader/${bootloader}/**`,
-          `firmware/partitions/${flash_mb}mb.csv`,
-        ]);
-        variants.set(bootloader, digest([bootloader, sources]));
-      }
       const layouts = matching([`${dir}/layout/*.csv`]);
       if (!files.has(`${dir}/layout/partitions.csv`))
         throw Error("Missing partition layout for " + board);
@@ -104,11 +121,11 @@ export function profiles(ref, cwd = process.cwd()) {
       tasks.launcher = {
         kind: "launcher",
         runner: "ubuntu-24.04",
-        container: "espressif/idf:v5.4.1",
+        container: sharedBootloader.container,
         fingerprint: digest([
           board,
           chip,
-          variants.get(bootloader),
+          sharedBootloader.fingerprint,
           layouts,
           partitions,
           ...matching(sharedInputs.launcher),
@@ -156,10 +173,10 @@ export function profiles(ref, cwd = process.cwd()) {
       chip,
       tasks,
       bootloader,
-      blFingerprint: variants.get(bootloader),
+      blFingerprint: sharedBootloader?.fingerprint,
     };
   }
-  return boards;
+  return { boards, variants };
 }
 
 export function boardPlans(
@@ -230,8 +247,8 @@ if (
 ) {
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH));
   const manual = process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
-  const after = profiles(process.env.GITHUB_SHA),
-    before = profiles(event.pull_request?.base.sha || event.before);
+  const after = firmwareProfiles(process.env.GITHUB_SHA),
+    before = firmwareProfiles(event.pull_request?.base.sha || event.before);
   const options = {
     manual,
     board: event.inputs?.board ?? "",
@@ -242,30 +259,29 @@ if (
         ? process.env.GITHUB_RUN_NUMBER
         : process.env.GITHUB_RUN_ID),
   };
-  let plans = boardPlans(before, after, {}, options);
+  let plans = boardPlans(before.boards, after.boards, {}, options);
   if (plans.length) {
     const releases = await publishedFirmware(
-      after,
+      after.boards,
       fetch,
       process.env.GH_TOKEN,
       process.env.GITHUB_REPOSITORY,
     );
-    plans = boardPlans(before, after, releases, options);
+    plans = boardPlans(before.boards, after.boards, releases, options);
   }
-  const bootloaders = [
-    ...new Map(
-      plans
-        .filter((p) => p.components.some((task) => task.kind === "launcher"))
-        .map((p) => [
-          p.bootloader,
-          {
-            variant: p.bootloader,
-            fingerprint: p.blFingerprint,
-            version: options.version,
-          },
-        ]),
-    ).values(),
-  ];
+  const boardBootloaders = new Set(
+    plans
+      .filter((plan) => plan.components.some((task) => task.kind === "launcher"))
+      .map((plan) => plan.bootloader),
+  );
+  const bootloaders = [...after.variants.values()]
+    .filter(
+      ({ variant, fingerprint }) =>
+        boardBootloaders.has(variant) ||
+        (!options.board &&
+          (manual || before.variants.get(variant)?.fingerprint !== fingerprint)),
+    )
+    .map((build) => ({ ...build, version: options.version }));
   appendFileSync(
     process.env.GITHUB_OUTPUT,
     `bootloaders=${JSON.stringify(bootloaders)}\n`,

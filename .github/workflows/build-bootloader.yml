@@ -2,6 +2,7 @@ name: Build a shared EspHub bootloader
 on:
   workflow_call:
     inputs:
+      container: {type: string, required: true}
       variant: {type: string, required: true}
       fingerprint: {type: string, required: true}
       version: {type: string, required: true}
@@ -10,6 +11,7 @@ concurrency:
   group: bl-${{ github.ref }}-${{ inputs.variant }}-${{ inputs.fingerprint }}
   cancel-in-progress: false
 env:
+  IDF_IMAGE: ${{ inputs.container }}
   VARIANT: ${{ inputs.variant }}
   VERSION: ${{ inputs.version }}
   TAG: bl-${{ inputs.variant }}-${{ inputs.fingerprint }}
@@ -39,7 +41,7 @@ jobs:
         if: steps.published.outputs.found != 'true'
         run: |
           docker run --rm -v "$PWD:/work" -w /work -e VARIANT -e VERSION -e GITHUB_SHA \
-            espressif/idf:v5.4.1 bash scripts/build-bootloader.sh
+            "$IDF_IMAGE" bash scripts/build-bootloader.sh
       - name: Publish the shared build
         if: steps.published.outputs.found != 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
