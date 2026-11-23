@@ -1,4 +1,5 @@
 import sdk from "../../../shared/sdk.generated.json" with { type: "json" };
+import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import upstream from "../../../firmware/pyrt/upstream.json" with { type: "json" };
 
 const repo = "https://github.com/okou-ai/esphub";
@@ -10,7 +11,7 @@ export function runtimeDownloadUrl(board) {
 }
 
 export function updateSources(board) {
-  const profile = "/firmware/boards/" + board;
+  const profile = "/" + boards[board].directory;
   const sdkSource = tree + "/firmware/components/okou_agent";
   return {
     firmware_update: {
@@ -34,7 +35,9 @@ export function updateSources(board) {
     },
     sources: {
       bootloader: {
-        directory_url: tree + "/firmware/bootloader",
+        directory_url: tree + "/firmware/bootloader/common",
+        variant_directory_url:
+          tree + "/firmware/bootloader/" + boards[board].bootloader,
         board_directory_url: tree + profile + "/layout",
         sdk_directory_url: sdkSource,
         build_action_url: blob + "/scripts/build-bootloader.sh",
@@ -49,7 +52,7 @@ export function updateSources(board) {
       },
       python: {
         directory_url: tree + profile,
-        starter_file_url: blob + profile + "/hello.py",
+        starter_file_url: blob + profile + "/main.py",
         artifact: "Python Program in UTF-8 main.py",
       },
     },

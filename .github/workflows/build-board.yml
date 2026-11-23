@@ -8,6 +8,7 @@ on:
 permissions: {contents: read}
 env:
   BOARD: ${{ fromJSON(inputs.profile).board }}
+  BOARD_DIR: ${{ fromJSON(inputs.profile).boardDir }}
   CHIP: ${{ fromJSON(inputs.profile).chip }}
 jobs:
   reserve:
@@ -54,11 +55,11 @@ jobs:
         run: |
           set -eo pipefail
           source "$IDF_PATH/export.sh"
-          python scripts/package-board-bootloader.py "$BOARD" "$VERSION"
+          python scripts/package-board-bootloader.py "$BOARD" "$VERSION" "$BOARD_DIR"
       - name: Select the board's composite action
         if: matrix.task.kind != 'bootloader'
         shell: bash
-        run: cp -R "firmware/boards/$BOARD/$KIND" .board-task
+        run: cp -R "$BOARD_DIR/$KIND" .board-task
       - uses: ./.board-task
         if: matrix.task.kind != 'bootloader'
       - uses: actions/upload-artifact@v4
@@ -96,7 +97,7 @@ jobs:
           path: components/micropython
       - name: Select the board's USB kit action
         shell: bash
-        run: cp -R "firmware/boards/$BOARD/setup" .board-task
+        run: cp -R "$BOARD_DIR/setup" .board-task
       - uses: ./.board-task
       - uses: actions/upload-artifact@v4
         with:

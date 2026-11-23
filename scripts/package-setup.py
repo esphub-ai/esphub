@@ -9,11 +9,12 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("board")
+parser.add_argument("board_dir", type=Path)
 parser.add_argument("bootloader", type=Path)
 parser.add_argument("runtime", type=Path)
 parser.add_argument("output", type=Path)
 args = parser.parse_args()
-profile = Path(__file__).resolve().parents[1] / "firmware/boards" / args.board
+profile = args.board_dir
 recipe = {"tag": os.environ["TAG"], "bootloader_version": os.environ["BOOTLOADER_VERSION"],
           "runtime_version": os.environ["MICROPYTHON_VERSION"], "bootloader_tag": os.environ["BOOTLOADER_TAG"],
           "runtime_tag": os.environ["MICROPYTHON_TAG"]}
@@ -40,7 +41,7 @@ with ZipFile(args.bootloader) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
         if name not in ("flash_args", "INSTALL.txt"):
             dest.writestr(name, base.read(name))
     dest.writestr("micropython.bin", image)
-    dest.write(profile / "hello.py", "main.py")
+    dest.write(profile / "main.py", "main.py")
     flash_args = base.read("flash_args").rstrip() + f"\n{offset:#x} micropython.bin\n".encode()
     name = "board-nvs.bin"
     assert len(base.read(name)) == int(parts["nvs"][4], 0)

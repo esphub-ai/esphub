@@ -35,6 +35,9 @@ test("each board links to the actual source, build recipes and provisioning exam
         `#define OKOU_SDK_VERSION "${firmware_update.program.sdk_version}"`,
       ),
     );
+    const variant = localPath(sources.bootloader.variant_directory_url, "tree");
+    assert.equal(variant, "firmware/bootloader/" + boards[board].bootloader);
+    assert.ok(statSync(variant + "/CMakeLists.txt").isFile());
     for (const [kind, layer] of Object.entries(sources)) {
       assert.ok(statSync(localPath(layer.directory_url, "tree")).isDirectory());
       if (kind === "python") {
@@ -44,7 +47,7 @@ test("each board links to the actual source, build recipes and provisioning exam
         );
         continue;
       }
-      const expected = `firmware/boards/${board}/${kind === "bootloader" ? "layout" : kind}`;
+      const expected = `${boards[board].directory}/${kind === "bootloader" ? "layout" : kind}`;
       const buildAction =
         kind === "bootloader"
           ? "scripts/build-bootloader.sh"

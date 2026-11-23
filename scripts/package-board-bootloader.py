@@ -10,8 +10,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from zipfile import ZIP_DEFLATED, ZipFile
 
-board, version = sys.argv[1:]
-profile = Path("firmware/boards") / board
+board, version, board_dir = sys.argv[1:]
+profile = Path(board_dir)
 metadata = json.loads((profile / "board.json").read_text())
 shared = Path("shared-bl")
 build = json.loads((shared / "build.json").read_text())
