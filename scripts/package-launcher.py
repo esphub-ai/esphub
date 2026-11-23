@@ -23,7 +23,7 @@ assert f'CONFIG_OKOU_BOARD_PROFILE="{board}"' in config.splitlines()
 table = Path(re.search(r'^CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="([^"]+)"$', config, re.M)[1])
 with table.open() as f:
     apps = [row for row in csv.reader(f, skipinitialspace=True) if len(row) >= 5 and row[1] == "app"]
-    assert [(row[0], row[2]) for row in apps] == [("launcher", "ota_0"), ("app", "ota_1")]
+    assert [(row[0], row[2]) for row in apps] == [("bl", "ota_0"), ("app", "ota_1")]
     offset = int(apps[0][3], 0)
     assert (build / "esp-launcher.bin").stat().st_size <= int(apps[0][4], 0)
 files = parts["flash_files"]

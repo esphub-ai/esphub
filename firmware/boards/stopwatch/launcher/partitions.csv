@@ -2,7 +2,7 @@
 # Name,       Type, SubType,  Offset,   Size
 nvs,          data, nvs,      0x9000,   0x6000
 phy_init,     data, phy,      0xf000,   0x1000
-launcher,     app,  ota_0,   0x10000,   0x140000
+bl,           app,  ota_0,   0x10000,   0x140000
 app,          app,  ota_1,   0x150000,  0x6b0000
 coredump,     data, coredump, 0x800000,  0x10000
 otadata,      data, ota,      0x810000, 0x2000

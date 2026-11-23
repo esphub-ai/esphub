@@ -63,7 +63,7 @@ void app_main(void)
     esp_ota_img_states_t st;
     if (esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY)
         ESP_ERROR_CHECK(esp_ota_mark_app_valid_cancel_rollback());
-    if (strcmp(run->label, "launcher"))
+    if (strcmp(run->label, "bl"))
         ESP_ERROR_CHECK(okou_nvs_set_str(OKOU_KEY_LSLOT, run->label));
 
     uint8_t hold = okou_nvs_get_u8(OKOU_KEY_HOLD, 0);
