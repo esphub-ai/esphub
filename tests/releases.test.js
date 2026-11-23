@@ -22,21 +22,35 @@ test("the latest version is selected independently by board and component across
     ),
   });
   const newest = release(
-    "launcher-stopwatch-v1.1.12",
+    "firmware-bootloader-stopwatch-v1.1.12",
     ["stopwatch"],
-    "launcher",
+    "bootloader",
     "1.1.12",
   );
   const pages = [
     [
-      release("launcher-stopwatch-v1.1.9", ["stopwatch"], "launcher", "1.1.9"),
+      release(
+        "firmware-bootloader-stopwatch-v1.1.9",
+        ["stopwatch"],
+        "bootloader",
+        "1.1.9",
+      ),
       release("setup-v1.0.1", Object.keys(boards), "setup", "1.0.1"),
     ],
     [
       newest,
-      { ...newest, tag_name: "launcher-paper-color-v1.1.12" },
-      release("launcher-v1.0.11", Object.keys(boards), "launcher", "1.0.11"),
-      { ...newest, draft: true, tag_name: "launcher-stopwatch-v2.0.0" },
+      { ...newest, tag_name: "firmware-bootloader-paper-color-v1.1.12" },
+      release(
+        "bootloader-v1.0.11",
+        Object.keys(boards),
+        "bootloader",
+        "1.0.11",
+      ),
+      {
+        ...newest,
+        draft: true,
+        tag_name: "firmware-bootloader-stopwatch-v2.0.0",
+      },
     ],
   ];
   const catalog = await publishedFirmware(boards, async () => {
@@ -45,11 +59,11 @@ test("the latest version is selected independently by board and component across
       headers: pages.length ? { Link: '<some-url>; rel="next"' } : {},
     });
   });
-  assert.equal(catalog.stopwatch.launcher.tag, newest.tag_name);
-  assert.equal(catalog["paper-color"].launcher.tag, "launcher-v1.0.11");
-  assert.equal(catalog.stopwatch.setup.tag, "setup-v1.0.1");
+  assert.equal(catalog.stopwatch.bootloader.tag, newest.tag_name);
+  assert.equal(catalog["paper-color"].bootloader, undefined);
+  assert.equal(catalog.stopwatch.setup, undefined);
   assert.equal(
-    releaseVersion(newest.tag_name, "launcher", "paper-color"),
+    releaseVersion(newest.tag_name, "bootloader", "paper-color"),
     null,
   );
 });
@@ -71,37 +85,40 @@ test("a fork checks its own published components", async () => {
   assert.deepEqual(releases, { stopwatch: {} });
 });
 
-test("pinned old and board-scoped downloads resolve to immutable GitHub artifacts", async () => {
+test("only current board-scoped downloads resolve to immutable GitHub artifacts", async () => {
   for (const [kind, tag, asset] of [
-    ["setup", "setup-v1.0.1", "esphub-stopwatch-esp32s3-1.0.1-setup.zip"],
     [
       "setup-manifest",
-      "setup-stopwatch-v1.1.3",
+      "firmware-setup-stopwatch-v1.1.3",
       "esphub-stopwatch-esp32s3-1.1.3-setup.json",
     ],
     [
       "micropython",
-      "micropython-v1.0.3",
+      "firmware-micropython-stopwatch-v1.0.3",
       "esphub-stopwatch-micropython-1.0.3.bin",
     ],
     [
       "ota",
-      "launcher-stopwatch-v1.1.4",
+      "firmware-bootloader-stopwatch-v1.1.4",
       "esphub-stopwatch-esp32s3-1.1.4-ota.bin",
     ],
   ]) {
-    const r = await releaseResponse("stopwatch", kind, tag, false);
+    const r = await releaseResponse("stopwatch", kind, tag);
     assert.equal(
       r.headers.get("Location"),
       `https://github.com/okou-ai/esphub/releases/download/${tag}/${asset}`,
     );
   }
   await assert.rejects(
-    releaseResponse("paper-color", "ota", "launcher-stopwatch-v1.1.3", false),
-    /Unknown launcher/,
+    releaseResponse(
+      "paper-color",
+      "ota",
+      "firmware-bootloader-stopwatch-v1.1.3",
+    ),
+    /Unknown bootloader/,
   );
   await assert.rejects(
-    releaseResponse("stopwatch", "setup", "launcher-v1.0.1", false),
+    releaseResponse("stopwatch", "setup", "setup-stopwatch-v1.1.72"),
     /Unknown setup/,
   );
 });

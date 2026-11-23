@@ -1,4 +1,4 @@
-name: Build ESP Hub MicroPython
+name: Build EspHub MicroPython
 description: Apply the board overlay and compile the MicroPython image.
 runs:
   using: composite
@@ -45,7 +45,7 @@ runs:
         make -C m5stack submodules
         make -C m5stack patch
         make -C m5stack littlefs
-    - name: Apply the esp-launcher overlay
+    - name: Apply the esp-bootloader overlay
       shell: bash
       run: |
         target=$(jq -er .target "$BOARD_DIR/micropython/profile.json")
@@ -61,7 +61,7 @@ runs:
       shell: bash
       run: |
         image="uiflow/m5stack/build-${MP_TARGET}/micropython.bin"
-        python3 -c 'import sys; assert open(sys.argv[1], "rb").read(400)[288:].startswith(("ESPHUB1/micropython/" + sys.argv[2] + "\0dual-launcher-v1\0").encode())' "$image" "$BOARD"
+        python3 -c 'import sys; assert open(sys.argv[1], "rb").read(400)[288:].startswith(("ESPHUB2/micropython/" + sys.argv[2] + "\0bootloader-ota-v2\0").encode())' "$image" "$BOARD"
         test "$(stat -c %s "$image")" -le 4194304
         grep -Fx "CONFIG_PM_ENABLE=y" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"
         grep -Fx "CONFIG_OKOU_BLE_WIFI=y" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"

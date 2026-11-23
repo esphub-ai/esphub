@@ -9,4 +9,4 @@ done
 for setting in BT_NIMBLE_ROLE_CENTRAL ESP_WIFI_SOFTAP_SUPPORT SPIRAM; do
   if grep -Fx "CONFIG_${setting}=y" sdkconfig; then exit 1; fi
 done
-python ../../../scripts/package-launcher.py "$VARIANT" "$VERSION"
+python ../../../scripts/package-bootloader.py "$VARIANT" "$VERSION"

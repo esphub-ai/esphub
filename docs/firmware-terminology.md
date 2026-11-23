@@ -7,7 +7,7 @@ EspHub has three deployment targets: the EspHub Bootloader, a Runtime, and a Pro
 | Term | What it does | Flash location |
 | --- | --- | --- |
 | ESP-IDF bootloader | After the ESP32 ROM starts it, it reads the partition table and OTA boot-selection metadata, then loads the selected executable. | Bootloader region before the partition table. |
-| EspHub Bootloader | Provides device setup, maintenance, and OTA installation. It selects the application image to start on reboot. Existing code and API identifiers call it the launcher. | `launcher_a` and `launcher_b`, ESP-IDF subtypes `ota_0` and `ota_1`. |
+| EspHub Bootloader | Provides device setup, maintenance, and OTA installation. It selects the application image to start on reboot. | `launcher_a` and `launcher_b`, ESP-IDF subtypes `ota_0` and `ota_1`. |
 | EspHub SDK | Provides device-side integration with EspHub, including networking, commands, and console forwarding. A Native Program can integrate it too. | Linked into each firmware image that uses it. It has no separate partition. |
 | Runtime | Provides an execution environment for a Program. EspHub currently provides the MicroPython Runtime. | `app` partition, type/subtype `app/ota_2`. |
 | Program | The application the user wants the device to run. Its form determines how it starts and how it is installed. | One of the two forms below. |
@@ -45,13 +45,12 @@ The remaining named partitions serve these purposes:
 | 16 MiB | 2 MiB | 4 MiB | 7.8125 MiB |
 | 32 MiB | 2 MiB | 4 MiB | 23.8125 MiB |
 
-The separate StopWatch compatibility layout preserves the SPIFFS partition at `0x812000`. Its two 2.5 MiB BL slots precede the 2.9375 MiB native application slot. The fresh setup kit uses the standard 16 MiB layout.
 
 ## Implementation status and API names
 
 | Product term | Current `ota.install` kind | Status |
 | --- | --- | --- |
-| EspHub Bootloader | `launcher` | Supported |
+| EspHub Bootloader | `bootloader` | Supported |
 | MicroPython Runtime | `micropython` | Supported |
 | Python Program | `python` | Supported |
 | Native Program | No kind defined | Target design. A native install target and image identification still need implementation. |

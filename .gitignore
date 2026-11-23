@@ -13,3 +13,5 @@ services/web/public/tools.json
 wrangler.local.json
 wrangler.e2e.json
 shared/boards.generated.json
+
+shared/sdk.generated.json

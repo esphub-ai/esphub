@@ -31,7 +31,6 @@ api.get("/releases/:board/:asset", (c) =>
     c.req.param("board"),
     c.req.param("asset"),
     c.req.query("tag"),
-    c.req.query("tag") !== undefined,
   ),
 );
 api.use(

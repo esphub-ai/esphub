@@ -346,10 +346,8 @@ esp_err_t okou_nvs_erase(const char *key)
     return e;
 }
 
-const esp_partition_t *okou_launcher_partition(void)
+const esp_partition_t *okou_bootloader_partition(void)
 {
-    const esp_partition_t *part = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, "bl");
-    if (part) return part;
     /* The runtime returns to the last bootloader that passed startup. */
     char label[17] = "";
     if (okou_nvs_get_str(OKOU_KEY_LSLOT, label, sizeof(label)) == ESP_OK &&

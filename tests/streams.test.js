@@ -67,7 +67,7 @@ test("reject invalid board, boot scope, firmware URLs and cursor", () => {
     validate("ota.install", {
       device_id: crypto.randomUUID(),
       url: "http://e.test/a",
-      kind: "launcher",
+      kind: "bootloader",
     }),
   );
   assert.doesNotThrow(() =>

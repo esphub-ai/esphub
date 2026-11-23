@@ -1,4 +1,4 @@
-# esp-launcher Python runtime on PaperColor: a script, not firmware.
+# esp-bootloader Python runtime on PaperColor: a script, not firmware.
 # Update without reflashing:  tools/pyrt.py <device> put papercolor_hello.py main.py && tools/pyrt.py <device> reset
 import time
 import M5

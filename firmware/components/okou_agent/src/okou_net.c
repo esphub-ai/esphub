@@ -144,7 +144,7 @@ esp_err_t okou_net_start(bool manage)
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_RETURN_ON_ERROR(esp_wifi_init(&cfg), OKOU_TAG, "wifi init");
     esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, on_wifi, NULL);
-    /* load (and migrate driver-stored credentials) before the driver switches to RAM storage */
+    /* Load saved networks before the driver switches to RAM storage */
     ESP_RETURN_ON_ERROR(okou_wifi_init(), OKOU_TAG, "wifi manager");
     esp_wifi_set_storage(WIFI_STORAGE_RAM); /* networks live in okl/wifis, not in the driver */
     esp_wifi_set_mode(WIFI_MODE_STA);

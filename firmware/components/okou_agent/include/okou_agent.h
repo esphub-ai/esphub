@@ -1,5 +1,5 @@
 /*
- * okou_agent - device side of the esp-launcher protocol (docs/protocol.md, v1).
+ * okou_agent - device side of the esp-bootloader protocol.
  *
  * Link this component into an app, register commands/params, call okou_agent_start().
  * Nothing in this API blocks on the network: logs, metrics and events are queued into
@@ -10,7 +10,7 @@
  */
 #pragma once
 
-#define OKOU_SDK_VERSION "1.0.0"
+#define OKOU_SDK_VERSION "2.0.0"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -23,7 +23,7 @@ extern "C" {
 
 typedef enum {
     OKOU_ROLE_APP = 0,      /* normal apps */
-    OKOU_ROLE_LAUNCHER = 1, /* only the esp-launcher firmware */
+    OKOU_ROLE_BOOTLOADER = 1, /* only the esp-bootloader firmware */
 } okou_role_t;
 
 typedef struct {
@@ -37,7 +37,7 @@ typedef struct {
      * true: `cmd` requests are queued and run inside okou_poll() on the caller's task. */
     bool handlers_in_poll;
     /* false (default): the SDK marks a freshly installed app valid once the hub acknowledged
-     * its hello, and boots the launcher after CONFIG_OKOU_MAX_FAIL_BOOTS boots without a hub
+     * its hello, and boots the bootloader after CONFIG_OKOU_MAX_FAIL_BOOTS boots without a hub
      * ack. true: the app runs its own startup health check and then calls okou_app_mark_valid();
      * the SDK neither marks the app valid nor applies the fail_boots safety net. Use this for
      * devices that must keep working offline. */
@@ -49,7 +49,7 @@ typedef struct {
 #define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .app_validates = false, .micropython_version = NULL }
 
 /* One-call init: NVS, log tee, network (optional), agent task. cfg may be NULL (defaults).
- * For role=app it also implements the fail_boots safety net (may reboot into the launcher). */
+ * For role=app it also implements the fail_boots safety net (may reboot into the bootloader). */
 esp_err_t okou_agent_start(const okou_config_t *cfg);
 
 /* For app_validates apps: confirm the running image after the app's own health check. Marks a
@@ -61,8 +61,8 @@ esp_err_t okou_app_mark_valid(void);
 /* True while the hub MQTT session is up and our hello has been acknowledged. */
 bool okou_connected(void);
 
-/* Hand the device to the launcher for (re-)provisioning: sets the one-shot NVS flag okl/setup
- * and reboots into the launcher, which keeps USB provisioning open and does not auto-start
+/* Hand the device to the bootloader for (re-)provisioning: sets the one-shot NVS flag okl/setup
+ * and reboots into the bootloader, which keeps USB provisioning open and does not auto-start
  * the app until it has reached the hub again. Apps with a display call this after showing setup
  * instructions (e-paper keeps them visible). Does not return on success. */
 esp_err_t okou_enter_setup(void);

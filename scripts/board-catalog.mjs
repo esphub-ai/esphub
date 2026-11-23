@@ -42,3 +42,19 @@ await writeFile(
   new URL("../shared/boards.generated.json", import.meta.url),
   JSON.stringify(boards) + "\n",
 );
+
+const sdkHeader = await readFile(
+  new URL(
+    "../firmware/components/okou_agent/include/okou_agent.h",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const sdkVersion = sdkHeader.match(
+  /^#define OKOU_SDK_VERSION "([^"]+)"$/m,
+)?.[1];
+if (!sdkVersion) throw Error("Missing EspHub SDK version");
+await writeFile(
+  new URL("../shared/sdk.generated.json", import.meta.url),
+  JSON.stringify({ version: sdkVersion }) + "\n",
+);

@@ -6,7 +6,7 @@ import boards from "../../../shared/boards.generated.json" with { type: "json" }
 import { maxUploadBytes } from "./uploads.js";
 import { updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
-import { launcherManifest } from "./releases.js";
+import { bootloaderManifest } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
 import { createVirtual, operateVirtual } from "./virtual-device.js";
 const programByteLimit = 32 * 1024;
@@ -14,7 +14,7 @@ const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
 const id = strings("device_id"),
   session = { ...id, ...strings("process_id") };
-const otaKind = { type: "string", enum: ["launcher", "micropython", "python"] };
+const otaKind = { type: "string", enum: ["bootloader", "micropython", "python"] };
 const additive = {
   readOnlyHint: false,
   destructiveHint: false,
@@ -43,7 +43,7 @@ const defs = [
   [
     "devices.get",
     readOnly,
-    "Show device kind, identity and connection status. Physical boards include GitHub source directories for all three OTA layers, even while offline.",
+    "Show device kind, identity and connection status. Physical boards include EspHub Bootloader, Runtime, and Program update guidance, official downloads, and SDK information, even while offline.",
     id,
   ],
   [
@@ -101,15 +101,15 @@ const defs = [
     { ...id, ...strings("ssid") },
   ],
   [
-    "launcher.enter",
+    "bootloader.enter",
     destructive,
-    "Reports launcher mode if the physical device is already in the launcher. Otherwise, requests a reboot into the launcher for over-the-air updates.",
+    "Enter EspHub Bootloader mode for OTA updates. If already in Bootloader mode, returns the current boot session.",
     id,
   ],
   [
     "firmware.get",
     readOnly,
-    "Read firmware metadata for a physical or virtual board. Physical boards include official GitHub sources.",
+    "Read firmware metadata for a physical or virtual board. Physical boards also include EspHub Bootloader, Runtime, and Program update guidance and SDK information.",
     id,
   ],
   [
@@ -118,14 +118,14 @@ const defs = [
     "Returns a short-lived PUT URL, authorization headers, and an artifact URL for one file of the specified kind and byte size. A successful upload of exactly that size returns HTTP 201. The device can be offline.",
     {
       ...id,
-      kind: { type: "string", enum: ["launcher", "micropython"] },
+      kind: { type: "string", enum: ["bootloader", "micropython"] },
       size: { type: "integer", minimum: 1, maximum: maxUploadBytes },
     },
   ],
   [
     "ota.install",
     { ...destructive, openWorldHint: true },
-    "Installs an HTTPS artifact on the registered board from launcher mode. The kind selects a launcher, MicroPython runtime, or UTF-8 main.py. Omitting the URL for a launcher selects the official board release. The command result records the transfer outcome.",
+    "Update a registered device. For the latest official EspHub Bootloader, use kind bootloader and omit url. Use bootloader.enter before any OTA installation. For a Python Program, use kind python and a UTF-8 main.py URL. For a Native Program, read the SDK version and board-specific guidance from devices.get. Native Program binaries require a separate OTA path. Confirm completion from the install event and the next boot.",
     {
       ...id,
       kind: otaKind,
@@ -201,7 +201,7 @@ function queueable(name) {
     [
       "devices.reboot",
       "devices.reset",
-      "launcher.enter",
+      "bootloader.enter",
       "ota.install",
       "firmware.get",
       "logs.flush",
@@ -253,7 +253,7 @@ export function validate(name, a) {
       (new TextEncoder().encode(a[k]).length > max || a[k].includes("\0"))
     )
       fail(400, "Invalid " + k);
-  if (name === "ota.install" && !a.url && a.kind !== "launcher")
+  if (name === "ota.install" && !a.url && a.kind !== "bootloader")
     fail(400, "Artifact URL required");
   if (a.url) {
     let u;
@@ -405,27 +405,25 @@ export async function operate(c, owner, name, a) {
   const info = d.boot_info;
   if (name === "uart.write")
     return queue("term.write", { data: a.text }, a.process_id);
-  if (name === "launcher.enter")
-    return info?.role === "launcher"
-      ? { mode: "launcher", process_id: d.boot_id }
-      : queue("reboot", { target: "launcher" }, d.boot_id);
+  if (name === "bootloader.enter")
+    return info?.role === "bootloader"
+      ? { mode: "bootloader", process_id: d.boot_id }
+      : queue("reboot", { target: "bootloader" }, d.boot_id);
   if (name === "ota.install") {
     const variant = boards[d.board]?.bootloader;
-    const launcher = info?.role === "launcher" && (
-      info.image_profile === "ESPHUB1/launcher/" + d.board ||
-      (variant && info.image_profile === "ESPHUB2/launcher/" + variant)
-    );
-    if (info?.board !== d.board || !launcher)
-      fail(409, "Start a compatible launcher first");
-    if ((a.kind ?? "launcher") === "launcher" && info.dual_launcher_ota !== true)
-      fail(409, "Back up this device and install the dual-slot USB setup kit first");
+    const bootloader = info?.role === "bootloader" &&
+      info.image_profile === "ESPHUB2/bootloader/" + variant;
+    if (info?.board !== d.board || !bootloader)
+      fail(409, "Enter compatible EspHub Bootloader mode first using bootloader.enter");
+    if (a.kind === "bootloader" && info.dual_bootloader_ota !== true)
+      fail(409, "Back up the device and install the A/B USB setup kit first");
     if (!a.url) {
-      const manifest = await launcherManifest(d.board);
+      const manifest = await bootloaderManifest(d.board);
       if (info.chip !== manifest.chip) fail(409, "Release target mismatch");
       return queue(
         "install",
         {
-          kind: "launcher",
+          kind: "bootloader",
           board: d.board,
           transfer_id: key,
           url:
@@ -471,6 +469,6 @@ export async function operate(c, owner, name, a) {
     args = { target: "self" };
   }
   if (name === "devices.reset") op = "provision.reset";
-  if (name === "firmware.get") op = "status";
+  if (name === "firmware.get") return withSources(await queue("status", {}));
   return queue(op, args);
 }

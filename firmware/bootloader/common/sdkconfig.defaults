@@ -10,7 +10,7 @@ CONFIG_PM_ENABLE=y
 CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
 CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y
 
-# The launcher connects to MQTT on port 8883 and downloads artifacts over HTTPS.
+# The bootloader connects to MQTT on port 8883 and downloads artifacts over HTTPS.
 CONFIG_MQTT_TRANSPORT_SSL=y
 CONFIG_WS_TRANSPORT=n
 CONFIG_MQTT_TRANSPORT_WEBSOCKET=n
@@ -21,7 +21,7 @@ CONFIG_MQTT_TRANSPORT_WEBSOCKET_SECURE=n
 CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
 CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n
 
-# The launcher streams USB bytes with a fixed console configuration and log level.
+# The bootloader streams USB bytes with a fixed console configuration and log level.
 CONFIG_VFS_SUPPORT_TERMIOS=n
 CONFIG_LOG_TAG_LEVEL_IMPL_NONE=y
 CONFIG_LOG_DYNAMIC_LEVEL_CONTROL=n

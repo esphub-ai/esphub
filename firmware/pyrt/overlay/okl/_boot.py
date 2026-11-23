@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# esp-launcher Python runtime boot (replaces UIFlow's _boot.py): no UIFlow menu, Wi-Fi or cloud.
+# esp-bootloader Python runtime boot (replaces UIFlow's _boot.py): no UIFlow menu, Wi-Fi or cloud.
 # The okou_agent SDK (C) already owns Wi-Fi and the hub connection before this runs.
 import gc
 import os
@@ -29,12 +29,6 @@ if _p:
         vfs.mount(_p[0], "/flash")
     os.chdir("/flash")
     sys.path.append("/flash/lib")
-    # Finish an OTA handed off by a pre-direct-write launcher.
-    try:
-        os.rename(".esphub-next.py", "main.py")
-    except OSError as exc:
-        if exc.errno != 2:
-            raise
     # Snapshot the file selected for this boot, including locally installed files.
     def _report_main():
         try:

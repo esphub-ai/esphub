@@ -45,23 +45,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        if: matrix.task.kind == 'launcher'
+        if: matrix.task.kind == 'bootloader'
         with:
           name: bl-${{ fromJSON(inputs.profile).bootloader }}
           path: shared-bl
-      - name: Assemble launcher release for the board
-        if: matrix.task.kind == 'launcher'
+      - name: Assemble bootloader release for the board
+        if: matrix.task.kind == 'bootloader'
         shell: bash
         run: |
           set -eo pipefail
           source "$IDF_PATH/export.sh"
-          python scripts/package-board-launcher.py "$BOARD" "$VERSION" "$BOARD_DIR"
+          python scripts/package-board-bootloader.py "$BOARD" "$VERSION" "$BOARD_DIR"
       - name: Select the board's composite action
-        if: matrix.task.kind != 'launcher'
+        if: matrix.task.kind != 'bootloader'
         shell: bash
         run: cp -R "$BOARD_DIR/$KIND" .board-task
       - uses: ./.board-task
-        if: matrix.task.kind != 'launcher'
+        if: matrix.task.kind != 'bootloader'
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BOARD }}-${{ matrix.task.kind }}
@@ -76,20 +76,20 @@ jobs:
     env:
       VERSION: ${{ fromJSON(inputs.profile).kit.version }}
       TAG: ${{ fromJSON(inputs.profile).kit.tag }}
-      LAUNCHER_VERSION: ${{ fromJSON(inputs.profile).kit.launcher.version }}
-      LAUNCHER_TAG: ${{ fromJSON(inputs.profile).kit.launcher.tag }}
+      BOOTLOADER_VERSION: ${{ fromJSON(inputs.profile).kit.bootloader.version }}
+      BOOTLOADER_TAG: ${{ fromJSON(inputs.profile).kit.bootloader.tag }}
       MICROPYTHON_VERSION: ${{ fromJSON(inputs.profile).kit.micropython.version }}
       MICROPYTHON_TAG: ${{ fromJSON(inputs.profile).kit.micropython.tag }}
-      LOCAL_LAUNCHER: ${{ toJSON(fromJSON(inputs.profile).kit.local_launcher) }}
+      LOCAL_BOOTLOADER: ${{ toJSON(fromJSON(inputs.profile).kit.local_bootloader) }}
       LOCAL_MICROPYTHON: ${{ toJSON(fromJSON(inputs.profile).kit.local_micropython) }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        if: fromJSON(inputs.profile).kit.local_launcher
+        if: fromJSON(inputs.profile).kit.local_bootloader
         with:
-          name: ${{ env.BOARD }}-launcher
-          path: components/launcher
+          name: ${{ env.BOARD }}-bootloader
+          path: components/bootloader
       - uses: actions/download-artifact@v4
         if: fromJSON(inputs.profile).kit.local_micropython
         with:
@@ -120,7 +120,7 @@ jobs:
           JOBS: ${{ toJSON(fromJSON(inputs.profile).jobs) }}
         run: |
           set -euo pipefail
-          for kind in launcher micropython setup; do
+          for kind in bootloader micropython setup; do
             job=$(jq -c --arg kind "$kind" '.[] | select(.kind == $kind)' <<< "$JOBS")
             [[ -n "$job" ]] || continue
             tag=$(jq -r .tag <<< "$job")

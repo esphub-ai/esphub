@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Turn a UIFlow2 MicroPython checkout (m5stack/uiflow-micropython) into the esp-launcher
+"""Turn a UIFlow2 MicroPython checkout (m5stack/uiflow-micropython) into the esp-bootloader
 Python runtime for one board. Every edit asserts its anchor, so an upstream change fails the
 build instead of silently producing a different firmware.
 
-  apply_overlay.py <uiflow checkout> <esp-launcher firmware dir> <board> <version> <board directory>
+  apply_overlay.py <uiflow checkout> <EspHub firmware dir> <board> <version> <board directory>
 """
 import json
 import re
@@ -34,7 +34,7 @@ shutil.copytree(ov / "cmodules" / "okou", m5 / "cmodules" / "okou", dirs_exist_o
 shutil.copytree(ov / "okl", m5 / "okl", dirs_exist_ok=True)
 shutil.copy(ov / "partitions_okl_build.csv", m5 / "partitions_okl_build.csv")
 (m5 / "cmodules" / "cmodules.cmake").open("a").write(
-    "\n# esp-launcher Python runtime\ninclude(${CMAKE_CURRENT_LIST_DIR}/okou/micropython.cmake)\n")
+    "\n# esp-bootloader Python runtime\ninclude(${CMAKE_CURRENT_LIST_DIR}/okou/micropython.cmake)\n")
 print("edited cmodules/cmodules.cmake")
 edit("CMakeListsDefault.cmake", "    esp_driver_ppa\n)", "    esp_driver_ppa\n    okou_agent\n)")
 

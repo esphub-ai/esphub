@@ -1,5 +1,5 @@
 /*
- * okou_agent extension API - used by the esp-launcher firmware itself. Apps should not
+ * okou_agent extension API - used by the esp-bootloader firmware itself. Apps should not
  * need anything in here.
  *
  * SPDX-License-Identifier: MIT
@@ -21,23 +21,23 @@ extern "C" {
 /* Signal strength of the current station connection, in dBm. */
 bool okou_wifi_rssi(int *rssi);
 
-/* NVS namespace and keys shared between launcher and SDK (docs/protocol.md). */
+/* NVS namespace and keys shared between bootloader and SDK (docs/protocol.md). */
 #define OKOU_NVS_NS          "okl"
 #define OKOU_KEY_PENDING     "pending"    /* str: install args JSON + "attempts" */
+#define OKOU_KEY_LSLOT "lslot" /* Last validated A/B bootloader slot. */
 #define OKOU_KEY_STAY        "stay"       /* u8: never auto-start the app */
 #define OKOU_KEY_FAIL_BOOTS  "fail_boots" /* u8: app boots without a hub ack */
-#define OKOU_KEY_HOLD        "hold"       /* u8: one-shot "stay in launcher on next boot" (extension) */
+#define OKOU_KEY_HOLD        "hold"       /* u8: one-shot "stay in bootloader on next boot" (extension) */
 #define OKOU_KEY_WIFIS       "wifis"      /* str: saved Wi-Fi networks, JSON, most recent first */
-#define OKOU_KEY_SETUP       "setup"      /* u8: one-shot "stay in the launcher until the hub acks" */
+#define OKOU_KEY_SETUP       "setup"      /* u8: one-shot "stay in the bootloader until the hub acks" */
 #define OKOU_KEY_RB          "rb"         /* str: unreported rollback record (JSON) */
 #define OKOU_KEY_RB_LAST     "rb_last"    /* str: label of the invalid partition already recorded */
 #define OKOU_KEY_TOKEN       "tok"        /* str: hub device token okl_dev_... (pull only; bearer) */
-#define OKOU_KEY_LSLOT       "lslot"      /* str: label of the last validated launcher slot (extension) */
 
 /* Custom op handler. Fill `data` (a cJSON object, owned by the caller) and return ESP_OK,
  * or write a message into err and return an error. Runs on the agent task: must be quick. */
 typedef esp_err_t (*okou_op_handler_t)(const cJSON *args, cJSON *data, char *err, size_t errlen);
-/* Registers or overrides an op (e.g. the launcher overrides "install"). */
+/* Registers or overrides an op (e.g. the bootloader overrides "install"). */
 esp_err_t okou_op_register(const char *op, okou_op_handler_t handler);
 
 /* Deferred op: for work that runs on another task (e.g. an interpreter). Return ESP_OK to keep
@@ -70,8 +70,8 @@ void okou_set_install_state(const char *state);
 /* Queue an event; takes ownership of data (may be NULL). Never blocks. */
 void okou_event_json(const char *name, cJSON *data);
 
-/* Single launcher partition, or the last booted launcher on a legacy table. */
-const esp_partition_t *okou_launcher_partition(void);
+/* Find the bl partition. */
+const esp_partition_t *okou_bootloader_partition(void);
 
 /* Builds https://<host> from the registered plain hostname. */
 esp_err_t okou_hub_http_base(char *buf, size_t len);

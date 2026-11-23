@@ -1,6 +1,8 @@
 # Physical device protocol
 
-The launcher and MicroPython share one device agent. Firmware keeps a single authenticated MQTT session with AWS IoT Core in us-west-2. A device needs its registration token and P-256 key to enroll. USB installs the initial registration token and BLE bootstrap key. The SDK stores a plain ASCII hostname in `okl/hub` (up to 99 bytes). It builds HTTPS request URLs internally. USB rejects a scheme, port, path, query or fragment before writing any part of the registration. Replace old URL-valued settings by sending `OKL-PROVISION {"hub":"api.esphub.ai"}` over USB. The virtual ESP32 has no device credentials or network transport.
+In the MQTT hello, the EspHub Bootloader reports role `bootloader` and Runtime and Native Program builds report role `app`.
+
+The bootloader and MicroPython share one device agent. Firmware keeps a single authenticated MQTT session with AWS IoT Core in us-west-2. A device needs its registration token and P-256 key to enroll. USB installs the initial registration token and BLE bootstrap key. The SDK stores a plain ASCII hostname in `okl/hub` (up to 99 bytes). It builds HTTPS request URLs internally. USB rejects a scheme, port, path, query or fragment before writing any part of the registration. Replace old URL-valued settings by sending `OKL-PROVISION {"hub":"api.esphub.ai"}` over USB. The virtual ESP32 has no device credentials or network transport.
 
 | Operation | Device path | Evidence of completion |
 | --- | --- | --- |
@@ -31,7 +33,7 @@ Hello, command receipts, install outcomes and log batches request an application
 
 1. Apply `deploy/iot.yaml` in us-west-2. Set the stack’s `RelaySecret` and the GitHub production environment’s `IOT_RELAY_SECRET` to the same high-entropy secret. The stack uses IAM resources and outputs the managed policy to attach to the Worker AWS principal. Set `UplinkUrl` to the Worker endpoint for that environment.
 2. Configure `IOT_ACCOUNT_ID`, `IOT_DATA_ENDPOINT`, `IOT_ACCESS_KEY_ID` and `IOT_SECRET_ACCESS_KEY`. The data endpoint is the regional `iot:Data-ATS` hostname. Use an IAM access key pair for the API Worker.
-3. Test the stack, migration, Worker, launcher and MicroPython together in a separate environment. Enroll two devices, check isolation across topics, verify a cloud Wi-Fi save and a BLE rotation, then install an image and observe the next boot.
+3. Test the stack, migration, Worker, bootloader and MicroPython together in a separate environment. Enroll two devices, check isolation across topics, verify a cloud Wi-Fi save and a BLE rotation, then install an image and observe the next boot.
 4. Coordinate the production cutover. Existing firmware depends on removed endpoints; firmware for both boot roles and the new backend must be available together. Stage both images using the old control plane or arrange local USB recovery before switching the production Worker. Carry active work through to a terminal result before migration. The migration retires ambiguous in-flight work as unknown.
 
 ## Local verification
