@@ -150,14 +150,17 @@ edit(f"{bdir}/mpconfigboard.cmake", "if(NOT MICROPY_FROZEN_MANIFEST)",
 edit("components/M5Unified/CMakeLists.txt",
      "    USR_FONT_ALIBABASANS_KR24=${FONT_ALIBABASANS_KR24}\n)",
      "    USR_FONT_ALIBABASANS_KR24=${FONT_ALIBABASANS_KR24}\n"
-     "    ALIBABAPUHUITI_CN24=${FONT_ALIBABAPUHUITI_CN24}\n"
      "    ALIBABASANS_JP24=${FONT_ALIBABASANS_JA24}\n"
      "    ALIBABASANS_KR24=${FONT_ALIBABASANS_KR24}\n)")
-gfx = m5 / "components/M5Unified/mpy_m5gfx.cpp"
-font, count = re.subn(r"(extern const lv_font_t AlibabaPuHuiTi_CN24;.*?gfx_font_AlibabaPuHuiTi_CN24_obj = [^;]+;)",
-                      r"#if USR_FONT_ALIBABAPUHUITI_CN24\n\1\n#endif", gfx.read_text(), flags=re.S)
-assert count == 1, "missing Chinese font definition"
-gfx.write_text(font)
+# Unit C6L exposes the large efont tables directly under two Python names
+# per locale. Its board-specific branch otherwise ignores the font flags.
+if board == "M5STACK_Unit_C6L":
+    for path, expected_lines in (("components/M5Unified/mpy_m5gfx.cpp", 3),
+                                 ("cmodules/m5unified/m5unified_gfx.c", 6)):
+        source = m5 / path
+        text, count = re.subn(r"^.*gfx_font_efont(?:CN|JA|KR)_24_obj.*\n", "", source.read_text(), flags=re.M)
+        assert count == expected_lines, f"{path}: unmatched Unit C6L bitmap fonts"
+        source.write_text(text)
 edit("components/M5Unified/mpy_m5gfx.cpp",
      "// FONT_ALIBABASANS_JA24\nextern const lv_font_t AlibabaSans_JP24;\n"
      "const M5LvglFont AlibabaSans_JP24_obj(&AlibabaSans_JP24);\n"
