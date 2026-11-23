@@ -1,5 +1,5 @@
 /*
- * esp-bootloader: headless bootloader. Boot/rollback rules from docs/protocol.md:
+ * esp-bootloader: headless bootloader:
  *  - auto-starts the app when the app partition holds an
  *    image, unless okl/pending exists, okl/stay is set, or a hub request arrived;
  *  - reports an interrupted transfer after the hub acknowledges hello;
@@ -10,7 +10,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "esp_system.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
@@ -78,9 +77,6 @@ void app_main(void)
     char *pending = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
     bool has_pending = pending != NULL;
     free(pending);
-    const esp_partition_t *invalid = esp_ota_get_last_invalid_partition();
-    bool app_failed = invalid && strcmp(invalid->label, "app") == 0;
-
     okou_param_bool("stay_in_bootloader", &s_stay, false); /* stored in okl/stay by param_hook */
     okou_param_set_hook(param_hook);
     okou_op_register("install", install_op);
@@ -93,20 +89,15 @@ void app_main(void)
     ESP_ERROR_CHECK(okou_agent_start(&cfg));
 
     const esp_partition_t *app = app_partition_with_image();
-    ESP_LOGI(TAG, "running %s; app image %s; pending=%d stay=%d hold=%d app_failed=%d",
+    ESP_LOGI(TAG, "running %s; app image %s; pending=%d stay=%d hold=%d",
              run->label, app ? "present" : "absent",
-             has_pending, s_stay, hold, app_failed);
+             has_pending, s_stay, hold);
     prov_serial_start();
-    esp_ota_img_states_t st;
-    if (esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY)
-        ESP_ERROR_CHECK(esp_ota_mark_app_valid_cancel_rollback());
     ESP_ERROR_CHECK(okou_nvs_set_str(OKOU_KEY_LSLOT, run->label));
     if (hold) {
         ESP_LOGI(TAG, "held in bootloader; use USB setup or reboot target=app");
     }
 
-    const int64_t recovery_delay_us = app_failed ? (int64_t)CONFIG_OKL_FAILSAFE_WAIT_S * 1000000 : 0;
-    int64_t autostart_at = esp_timer_get_time() + recovery_delay_us;
     /* An unprovisioned device must stay in the bootloader: the app cannot provision over USB, so
      * leaving would close the setup window. The app starts after the first hub ack instead. */
     char *p_hub = okou_nvs_get_str_alloc("hub");
@@ -124,7 +115,6 @@ void app_main(void)
     bool acked_once = false;
 
     for (;;) {
-        int64_t now = esp_timer_get_time();
         if (s_acked_evt) {
             s_acked_evt = false;
             if (!acked_once) {
@@ -132,18 +122,13 @@ void app_main(void)
                 char *still_pending = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
                 bool resume = app && !still_pending && !s_stay && !hold && !s_req_seen;
                 free(still_pending);
-                if (resume && !autostart) {
-                    autostart = true;
-                    autostart_at = now + recovery_delay_us;
-                    ESP_LOGI(TAG, "auto-starting app in %d ms unless a hub request arrives",
-                             (int)((autostart_at - now) / 1000));
-                }
+                if (resume) autostart = true;
             }
         }
         if (autostart && (s_req_seen || s_stay)) {
             autostart = false;
         }
-        bool ready = autostart && now >= autostart_at;
+        bool ready = autostart;
 #if CONFIG_OKOU_BLE_WIFI
         ready = ready && !okou_ble_host_owned();
 #endif

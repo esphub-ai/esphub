@@ -29,8 +29,6 @@ bool okou_wifi_rssi(int *rssi);
 #define OKOU_KEY_HOLD        "hold"       /* u8: one-shot "stay in bootloader on next boot" (extension) */
 #define OKOU_KEY_WIFIS       "wifis"      /* str: saved Wi-Fi networks, JSON, most recent first */
 #define OKOU_KEY_SETUP       "setup"      /* u8: one-shot "stay in the bootloader until the hub acks" */
-#define OKOU_KEY_RB          "rb"         /* str: unreported rollback record (JSON) */
-#define OKOU_KEY_RB_LAST     "rb_last"    /* str: label of the invalid partition already recorded */
 #define OKOU_KEY_TOKEN       "tok"        /* str: hub device token okl_dev_... (HTTPS bearer) */
 
 /* Called by the bootloader download worker, never by the MQTT agent task. */

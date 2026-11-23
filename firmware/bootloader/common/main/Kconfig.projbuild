@@ -8,11 +8,4 @@ menu "esp-bootloader"
         bool
         default y
 
-    config OKL_FAILSAFE_WAIT_S
-        int "Auto-start delay after an app rollback (s)"
-        default 30
-        help
-            After an app rollback, the bootloader waits longer before starting the app
-            again so an operator can intervene. Any hub request cancels auto-start.
-
 endmenu

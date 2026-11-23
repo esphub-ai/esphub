@@ -43,7 +43,7 @@ typedef struct {
 
 #define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .micropython_version = NULL, .ble_setup = false }
 
-/* Start the SDK and confirm a pending application image. cfg may be NULL (defaults). */
+/* Start the SDK. cfg may be NULL (defaults). */
 esp_err_t okou_agent_start(const okou_config_t *cfg);
 
 /* True while the hub MQTT session is up and our hello has been acknowledged. */

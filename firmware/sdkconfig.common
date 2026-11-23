@@ -1,5 +1,5 @@
 # Shared by bootloader and apps (loaded first; per-project and per-target files override).
-CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=n
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="../../partitions/16mb.csv"
 CONFIG_PARTITION_TABLE_OFFSET=0x8000
