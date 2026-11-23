@@ -35,12 +35,11 @@ static const ble_uuid128_t channel = BLE_UUID128_INIT(0x02, 0x21, 0x91, 0xfa, 0x
 static StreamBufferHandle_t rx, tx;
 static TaskHandle_t worker;
 static SemaphoreHandle_t key_lock;
-static uint8_t address_type, root_key[32], session_key[32];
+static uint8_t address_type, root_key[32], tls_psk[32];
 static atomic_uint connection = NO_CONN;
 static atomic_bool synced;
 static atomic_bool host_owned;
 bool okou_ble_host_owned(void) { return atomic_load(&host_owned); }
-static unsigned session_generation;
 static int64_t io_deadline;
 
 static int nibble(char ch)
@@ -61,50 +60,21 @@ static bool decode(const char *hex, uint8_t key[32])
     return true;
 }
 
-// A single NVS value commits key and generation together.
-static unsigned read_key(uint8_t *out)
+static bool read_key(uint8_t *out)
 {
-    char record[84];
-    if (okou_nvs_get_str("ble_key", record, sizeof(record)) != ESP_OK) return 0;
-    char *end;
-    unsigned long gen = strtoul(record, &end, 10);
-    bool valid = *end == ':' && gen > 0 && gen <= INT32_MAX && (!out || decode(end + 1, out));
+    char record[65];
+    bool valid = okou_nvs_get_str("ble_key", record, sizeof(record)) == ESP_OK && decode(record, out);
     mbedtls_platform_zeroize(record, sizeof(record));
-    return valid ? (unsigned)gen : 0;
+    return valid;
 }
 
-unsigned okou_ble_generation(void) { return read_key(NULL); }
-bool okou_ble_busy(void) { return connection != NO_CONN; }
-
-esp_err_t okou_ble_install(unsigned gen, const char *hex, bool usb)
+esp_err_t okou_ble_install(const char *hex)
 {
-    uint8_t key[32], old[32];
-    if (!key_lock || !decode(hex, key)) return ESP_ERR_INVALID_ARG;
+    if (!key_lock) return ESP_ERR_INVALID_STATE;
     xSemaphoreTake(key_lock, portMAX_DELAY);
-    unsigned current = read_key(old);
-    esp_err_t rc = ESP_ERR_INVALID_STATE;
-    if (current == gen && !memcmp(old, key, sizeof(key)))
-        rc = ESP_OK;
-    else if ((usb && !current && gen == 1) || (!usb && current && gen == current + 1)) {
-        char record[84];
-        snprintf(record, sizeof(record), "%u:%s", gen, hex);
-        rc = okou_nvs_set_str("ble_key", record);
-        mbedtls_platform_zeroize(record, sizeof(record));
-        if (rc == ESP_OK && connection != NO_CONN) ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
-    }
+    esp_err_t rc = okou_nvs_set_str("ble_key", hex);
     xSemaphoreGive(key_lock);
-    mbedtls_platform_zeroize(key, sizeof(key));
-    mbedtls_platform_zeroize(old, sizeof(old));
     return rc;
-}
-
-static bool derive(const char *label, const uint8_t nonce[8], uint8_t out[32])
-{
-    uint8_t buf[64];
-    int n = snprintf((char *)buf, sizeof(buf), "esphub/wifi/uuid-v1/%s", label) + 1;
-    memcpy(buf + n, nonce, 8);
-    return mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), root_key, sizeof(root_key), buf,
-                           n + 8, out) == 0;
 }
 
 static int gap_event(struct ble_gap_event *e, void *unused)
@@ -212,7 +182,7 @@ static void tls_session(void)
 #if ESP_IDF_VERSION_MAJOR < 6
     mbedtls_ssl_conf_rng(&conf, rng, NULL);
 #endif
-    if (mbedtls_ssl_conf_psk(&conf, session_key, 32, (const unsigned char *)"wifi", 4) ||
+    if (mbedtls_ssl_conf_psk(&conf, tls_psk, 32, (const unsigned char *)"wifi", 4) ||
         mbedtls_ssl_setup(&ssl, &conf))
         goto end;
     mbedtls_ssl_set_bio(&ssl, NULL, push, pull, NULL);
@@ -235,7 +205,7 @@ static void tls_session(void)
         }
         xSemaphoreTake(key_lock, portMAX_DELAY);
         uint8_t live_key[32];
-        if (read_key(live_key) == session_generation && !memcmp(live_key, root_key, 32) && connection != NO_CONN)
+        if (read_key(live_key) && !memcmp(live_key, root_key, 32) && connection != NO_CONN)
             command(request, reply);
         else
             cJSON_AddStringToObject(reply, "error", "credential revoked");
@@ -268,7 +238,7 @@ static void radio(void *unused)
                                        .uuids128_is_complete = 1};
     struct ble_gap_adv_params adv = {.conn_mode = BLE_GAP_CONN_MODE_UND, .disc_mode = BLE_GAP_DISC_MODE_GEN};
     for (;;) {
-        if (!synced || !okou_ble_generation()) {
+        if (!synced || !read_key(root_key)) {
             vTaskDelay(pdMS_TO_TICKS(500));
             continue;
         }
@@ -285,23 +255,16 @@ static void radio(void *unused)
         } while (connection == NO_CONN && ble_gap_adv_active());
         if (connection == NO_CONN) continue;
 
-        // The host sends the issued nonce and tag as the first 16 stream bytes.
-        uint8_t preface[16], tag[32];
-        session_generation = read_key(root_key);
+        static const unsigned char label[] = "esphub/wifi/tls-psk";
         io_deadline = esp_timer_get_time() + 45000000;
-        size_t pos = 0;
-        while (pos < sizeof(preface)) {
-            int n = pull(NULL, preface + pos, sizeof(preface) - pos);
-            if (n <= 0) break;
-            pos += n;
-        }
-        if (session_generation && pos == sizeof(preface) && derive("beacon", preface, tag) &&
-            memcmp(tag, preface + 8, 8) == 0 && derive("session", preface, session_key))
+        if (read_key(root_key) &&
+            mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), root_key, sizeof(root_key),
+                            label, sizeof(label) - 1, tls_psk) == 0)
             tls_session();
         if (connection != NO_CONN) ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
         while (connection != NO_CONN)
             vTaskDelay(pdMS_TO_TICKS(50));
-        mbedtls_platform_zeroize(session_key, sizeof(session_key));
+        mbedtls_platform_zeroize(tls_psk, sizeof(tls_psk));
         mbedtls_platform_zeroize(root_key, sizeof(root_key));
     }
 }
@@ -348,10 +311,9 @@ fail:
     vTaskDelete(NULL);
 }
 
-void okou_ble_init(bool enable)
+void okou_ble_init(void)
 {
     key_lock = xSemaphoreCreateMutex();
-    if (!enable) return;
     atomic_store(&host_owned, true);
     if (!key_lock || xTaskCreate(launch_nimble, "ble_init", 4096, NULL, 3, NULL) != pdPASS) {
         atomic_store(&host_owned, false);

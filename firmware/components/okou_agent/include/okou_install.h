@@ -10,4 +10,4 @@
 #define OKOU_OTA_CAPABILITY "bootloader-ota-v2"
 
 esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen);
-void install_report_interrupted(void);
+void install_reconcile_boot(void);

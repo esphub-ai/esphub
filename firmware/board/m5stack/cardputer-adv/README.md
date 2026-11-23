@@ -6,7 +6,7 @@ Register this ESP32-S3 board as `cardputer-adv`. It has 8 MiB of flash, a 240 ×
 
 1. Download the first-time kit for this board and verify the ZIP against the SHA-256 in its manifest. The install command in the ZIP erases the entire flash. [USB kit](https://api.esphub.ai/releases/cardputer-adv/setup) · [Manifest](https://api.esphub.ai/releases/cardputer-adv/setup-manifest)
 2. Use the port belonging to the Cardputer-Adv and follow `INSTALL.txt`. The bootloader runs the USB provisioning console at 115200 baud. Write the token and BLE bootstrap key returned by registration. Run the Mac BLE tool while the board is in the bootloader and select the Wi-Fi network on the Mac.
-3. Wait for `OKL-PROVISION-OK` on USB. Check `devices.get` for an online device reporting role `app` and image profile `ESPHUB2/micropython/cardputer-adv`. The USB device can re-enumerate when the bootloader starts MicroPython.
+3. Wait for `OKL-PROVISION-OK` on USB. After Wi-Fi setup, call `bootloader.exit` or power-cycle the board. Check `devices.get` for an online device reporting role `app` and image profile `ESPHUB2/micropython/cardputer-adv`. The USB device can re-enumerate when the bootloader starts MicroPython.
 
 ## Display and keyboard check
 

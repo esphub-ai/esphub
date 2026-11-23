@@ -69,25 +69,14 @@ class Channel:
         return result
 
 
-async def authenticate(ble, credential):
-    preface = bytes.fromhex(credential["beacon"])
-    key = bytes.fromhex(credential["psk"])
-    if len(preface) != 16 or len(key) != 32:
-        raise ValueError("Invalid credential")
-    await ble.write_gatt_char(CHANNEL, preface, response=True)
-    session = Channel(ble, key)
-    await session.run(session.tls.do_handshake)
-    return session
-
-
 @contextlib.asynccontextmanager
 async def direct_session(credential):
     from bleak import BleakClient, BleakScanner
     from bleak.exc import BleakError
 
-    credentials = [credential]
-    if credential.get("alternate"):
-        credentials.append(credential["alternate"])
+    psk = bytes.fromhex(credential["psk"])
+    if len(psk) != 32:
+        raise ValueError("Invalid credential")
     tried = set()
     deadline = asyncio.get_running_loop().time() + 90
     while (remaining := deadline - asyncio.get_running_loop().time()) > 0:
@@ -99,17 +88,17 @@ async def direct_session(credential):
         if device is None:
             break
         tried.add(device.address)
-        for candidate in credentials:
-            async with contextlib.AsyncExitStack() as stack:
-                try:
-                    async with asyncio.timeout(45):
-                        ble = await stack.enter_async_context(BleakClient(device))
-                        session = await authenticate(ble, candidate)
-                except (BleakError, OSError, TimeoutError):
-                    # Nearby boards share the service UUID. Only the target can authenticate.
-                    continue
-                yield session
-                return
+        async with contextlib.AsyncExitStack() as stack:
+            try:
+                async with asyncio.timeout(45):
+                    ble = await stack.enter_async_context(BleakClient(device))
+                    session = Channel(ble, psk)
+                    await session.run(session.tls.do_handshake)
+            except (BleakError, OSError, TimeoutError):
+                # Nearby boards share the service UUID. Only the target can authenticate.
+                continue
+            yield session
+            return
     raise RuntimeError("No board authenticated. Check bootloader mode and obtain a fresh credential.")
 
 
@@ -158,7 +147,7 @@ async def provision(credential):
 def unwrap(payload):
     # Accept raw operation JSON, native MCP content and Okou's result wrapper.
     if isinstance(payload, dict):
-        if "beacon" in payload and "psk" in payload:
+        if "psk" in payload:
             return payload
         for field in ("result", "data", "structuredContent", "content"):
             if field in payload:

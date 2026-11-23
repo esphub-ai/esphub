@@ -9,7 +9,7 @@
  */
 #pragma once
 
-#define OKOU_SDK_VERSION "4.1.1"
+#define OKOU_SDK_VERSION "5.0.0"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -37,11 +37,9 @@ typedef struct {
     bool handlers_in_poll;
     /* Static interpreter version string, set only by the MicroPython port. */
     const char *micropython_version;
-    /* BL only: reserved for source compatibility; provisioning is always available in the bootloader. */
-    bool ble_setup;
 } okou_config_t;
 
-#define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .micropython_version = NULL, .ble_setup = false }
+#define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .micropython_version = NULL }
 
 /* Start the SDK. cfg may be NULL (defaults). */
 esp_err_t okou_agent_start(const okou_config_t *cfg);
@@ -49,10 +47,7 @@ esp_err_t okou_agent_start(const okou_config_t *cfg);
 /* True while the hub MQTT session is up and our hello has been acknowledged. */
 bool okou_connected(void);
 
-/* Hand the device to the bootloader for (re-)provisioning: sets the one-shot NVS flag okl/setup
- * and reboots into the bootloader, which keeps USB provisioning open and does not auto-start
- * the app until it has reached the hub again. Apps with a display call this after showing setup
- * instructions (e-paper keeps them visible). Does not return on success. */
+/* Reboot into the bootloader and hold it for this boot. Does not return on success. */
 esp_err_t okou_enter_bootloader(void);
 
 /* Queue a Wi-Fi trial on the SDK-managed station. Returns false if the input is

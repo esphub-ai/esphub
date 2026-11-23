@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-test("USB and the SDK accept plain hub hostnames and reject URLs before changing registration", () => {
+test("native USB registration and one-shot bootloader selection", () => {
   const dir = mkdtempSync(join(tmpdir(), "esphub-usb-"));
   const component = "firmware/components/okou_agent";
   try {
@@ -12,8 +12,10 @@ test("USB and the SDK accept plain hub hostnames and reject URLs before changing
     // Substitute only ESP-IDF types, flash writes and the BLE installation.
     for (const [file, contents] of Object.entries({
       "esp_err.h":
-        "#include <stdint.h>\ntypedef int esp_err_t;\n#define ESP_OK 0\n",
-      "esp_partition.h": "typedef struct esp_partition_t esp_partition_t;\n",
+        "#include <stdint.h>\ntypedef int esp_err_t;\n#define ESP_OK 0\n#include <assert.h>\n#define ESP_ERROR_CHECK(e) assert((e) == ESP_OK)\nconst char *esp_err_to_name(esp_err_t);\n",
+      "esp_partition.h": "typedef struct { char label[17]; } esp_partition_t;\n",
+      "esp_system.h": "void esp_restart(void);",
+      "esp_ota_ops.h": '#include "esp_partition.h"\nconst esp_partition_t *esp_ota_get_running_partition(void);',
       "esp_http_client.h":
         "typedef struct esp_http_client *esp_http_client_handle_t;\n",
       "sdkconfig.h": "#define CONFIG_OKOU_BLE_WIFI 1\n",
@@ -27,15 +29,27 @@ test("USB and the SDK accept plain hub hostnames and reject URLs before changing
       .trim()
       .split(/\s+/);
     const exe = join(dir, "usb-test");
-    execFileSync("cc", [
+    const flags = [
       "-std=c11",
       "-Werror",
       "-I" + dir,
       "-I" + component + "/include",
       "-Ifirmware/bootloader/common/main",
+    ];
+    execFileSync("cc", [
+      ...flags,
       component + "/src/okou_hub.c",
       "firmware/bootloader/common/main/prov_common.c",
       "tests/fixtures/bootloader-hub/usb.c",
+      ...cjson,
+      "-o",
+      exe,
+    ]);
+    execFileSync(exe);
+    execFileSync("cc", [
+      ...flags,
+      "firmware/bootloader/common/main/main.c",
+      "tests/fixtures/bootloader-hub/boot.c",
       ...cjson,
       "-o",
       exe,

@@ -8,7 +8,6 @@ The bootloader and MicroPython share one device agent. Firmware keeps a single a
 | --- | --- | --- |
 | Connect to a Wi-Fi network on site | BLE scan and join using an MCP-issued credential | The board reports the join result over the encrypted BLE session |
 | Save a network remotely | Cloud `wifi.add` via MQTT | Receipt after the NVS write. The queue erases the password on completion or timeout |
-| Rotate BLE credentials | MQTT hello includes `ble_generation`. Its ACK can include `rotate: {generation, secret}` | After committing to NVS the device sends `ble.confirm` with the installed generation. A later hello also confirms it |
 | Obtain MQTT credentials | HTTPS `POST /api/device/iot/enroll` with `{csr}` | NVS stores the certificate, broker endpoint and device ID, bound to the registration and hub. The private key stays on the board |
 | Receive a command | QoS 1 MQTT downlink `{boot_id, command: {id, seq, op, args}}` | The device executes it and returns `{t:"res", id, ok, data}` or an error |
 | Report device state and execution | QoS 1 MQTT publish to `devices/<uuid>/up` | The hub processes hello, receipts and events, including drawing events and final OTA results |
@@ -27,13 +26,13 @@ The queue expires undelivered commands after five minutes. A dispatched command 
 
 Each uplink contains a `frame` with a per-boot message ID. The AWS rule attaches the device UUID from the topic and the certificate ID from the broker principal. A Lambda relay forwards the envelope to the Worker. The Worker checks the registered certificate and the active boot. The device policy scopes publish and subscribe to the attached thing.
 
-Hello, BLE confirmations, command receipts and install outcomes request an application acknowledgement on the downlink. The ACK echoes the boot ID and message ID. The hello acknowledgement confirms that the hub has recorded the boot. A successful OTA write and boot selection completes installation locally. First boot and Hub connectivity do not affect image acceptance. ESP-IDF uses the OTA state `undefined` for images selected with rollback disabled. Ordinary events use MQTT QoS 1. Console output is available locally over USB.
+Hello, command receipts and install outcomes request an application acknowledgement on the downlink. The ACK echoes the boot ID and message ID. The hello acknowledgement confirms that the hub has recorded the boot. A successful OTA write and boot selection completes installation locally. First boot and Hub connectivity do not affect image acceptance. ESP-IDF uses the OTA state `undefined` for images selected with rollback disabled. Ordinary events use MQTT QoS 1. Console output is available locally over USB.
 
 ## Deployment
 
 1. Apply `deploy/iot.yaml` in us-west-2. Set the stack’s `RelaySecret` and the GitHub production environment’s `IOT_RELAY_SECRET` to the same high-entropy secret. The stack uses IAM resources and outputs the managed policy to attach to the Worker AWS principal. Set `UplinkUrl` to the Worker endpoint for that environment.
 2. Configure `IOT_ACCOUNT_ID`, `IOT_DATA_ENDPOINT`, `IOT_ACCESS_KEY_ID` and `IOT_SECRET_ACCESS_KEY`. The data endpoint is the regional `iot:Data-ATS` hostname. Use an IAM access key pair for the API Worker.
-3. Test the stack, migration, Worker, bootloader and MicroPython together in a separate environment. Enroll two devices, check isolation across topics, verify a cloud Wi-Fi save and a BLE rotation, then install an image and observe the next boot.
+3. Test the stack, migration, Worker, bootloader and MicroPython together in a separate environment. Enroll two devices, check isolation across topics, verify a cloud Wi-Fi save and repeated BLE provisioning, then install an image and observe the next boot.
 4. Coordinate the production cutover. Existing firmware depends on removed endpoints; firmware for both boot roles and the new backend must be available together. Stage both images using the old control plane or arrange local USB recovery before switching the production Worker. Carry active work through to a terminal result before migration. The migration retires ambiguous in-flight work as unknown.
 
 ## Local verification

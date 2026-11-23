@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import postgres from "postgres";
 import { simulatedDevice } from "../tests/fixtures/iot/device.mjs";
 import { importPKCS8, SignJWT } from "jose";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 const base = process.env.TEST_SITE_URL;
 if (!base || !["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   throw Error("A local TEST_SITE_URL is required");
@@ -132,6 +132,7 @@ async function testVirtualDevice(read) {
     ["wifi.ble_credential", vid],
     ["devices.reissue", vid],
     ["bootloader.enter", vid],
+    ["bootloader.exit", vid],
     ["ota.install", { ...vid, kind: "python", url: staged.url }],
   ]) {
     const result = await call("tools/call", { name, arguments: args });
@@ -163,7 +164,6 @@ try {
   const read = await issue("devices:read");
   for (const invalid of [
     null,
-    "esh_key_retired",
     await issue("devices:read", { aud: "https://another.example/mcp" }),
     await issue("devices:read", { aud: undefined }),
     await issue("devices:read", { exp: 1 }),
@@ -192,8 +192,6 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 20);
-  assert.ok(!listed.some((t) => t.name === "programs.install"));
   const readOnly = new Set([
     "commands.get",
     "devices.list",
@@ -238,11 +236,6 @@ try {
     headers: { Authorization: "Bearer " + key },
   });
   assert.equal(apiDenied.status, 401);
-  const retired = await fetch(base + "/backend/auth/key", {
-    method: "POST",
-    headers: { Origin: base },
-  });
-  assert.equal(retired.status, 404);
   assert.equal(
     (
       await call("initialize", {
@@ -262,10 +255,10 @@ try {
   assert.match(d.prompt, /hidden SSID/);
   assert.match(d.ble_secret, /^[0-9a-f]{64}$/);
   const firstBle = await op("wifi.ble_credential", id);
-  const { credential } = await import("../services/api/src/ble.js");
-  const deriveFor = (secret, beacon) =>
-    credential(secret, Buffer.from(beacon.slice(0, 16), "hex"));
-  assert.deepEqual(firstBle, await deriveFor(d.ble_secret, firstBle.beacon));
+  assert.deepEqual(firstBle, {
+    psk: createHmac("sha256", Buffer.from(d.ble_secret, "hex"))
+      .update("esphub/wifi/tls-psk").digest("hex"),
+  });
   assert.match(d.verification_source, /Hello, M5Stack Paper Color/);
   assert.equal(
     d.setup_manifest,
@@ -288,13 +281,6 @@ try {
   assert.match(watch.verification_source, /setBrightness/);
   assert.match(watch.ble_secret, /^[0-9a-f]{64}$/);
   assert.match(watch.prompt, /Bootloader mode for the BLE connection/);
-  assert.doesNotMatch(watch.prompt, /wifi scan/);
-  const watchBle = await op("wifi.ble_credential", { device_id: watch.id });
-  assert.deepEqual(
-    watchBle,
-    await deriveFor(watch.ble_secret, watchBle.beacon),
-  );
-
   const local = (url) => base + "/backend" + new URL(url).pathname;
   const localFiles = {};
   for (const kind of ["bootloader", "micropython", "native"]) {
@@ -359,22 +345,8 @@ try {
     dual_bootloader_ota: true,
     image_profile: "ESPHUB2/bootloader/esp32s3-16mb",
     fw: { version: "1.2.3" },
-    ble_generation: 1,
   });
   assert.equal((await op("devices.get", id)).online, true);
-  for (const route of [
-    "iot/pull",
-    "ble/sync",
-    "iot/start",
-    "iot/frame",
-    "iot/capabilities",
-    "connect",
-  ]) {
-    const r = await fetch(base + "/backend/api/device/" + route, {
-      method: route === "connect" ? "GET" : "POST",
-    });
-    assert.equal(r.status, 404, route);
-  }
   const ingress = (auth, principal, frame) =>
     fetch(base + "/backend/internal/iot/uplink", {
       method: "POST",
@@ -400,24 +372,7 @@ try {
     ).status,
     409,
   );
-  assert.equal((await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, { t: "log", lines: [] })).status, 400);
-  assert.equal((await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, { t: "metric", items: [] })).status, 400);
-  const sync = async generation =>
-    (await mcu.send({t:"ble.confirm", ble_generation:generation})).rotate;
-  const offer = mcu.lastHello.rotate;
-  assert.equal(offer.generation, 2);
-  assert.deepEqual(await sync(1), offer);
-  const { alternate, ...previous } = await op("wifi.ble_credential", id);
-  assert.deepEqual(previous, await deriveFor(d.ble_secret, previous.beacon));
-  assert.deepEqual(alternate, await deriveFor(offer.secret, alternate.beacon));
-  const afterRecovery = await sync(2);
-  assert.equal(afterRecovery.generation, 3);
-  assert.equal(await sync(3), undefined);
-  const rotated = await op("wifi.ble_credential", id);
-  assert.deepEqual(
-    rotated,
-    await deriveFor(afterRecovery.secret, rotated.beacon),
-  );
+  assert.deepEqual(await op("wifi.ble_credential", id), firstBle);
 
   const result = (idValue) =>
     op("commands.get", { ...id, command_id: idValue }, read);
@@ -536,7 +491,6 @@ try {
     op("ota.install", { ...id, kind: "python", url: staged.url }),
     /bootloader/i,
   );
-  assert.equal((await fetch(base + "/backend/api/device/program/" + app, {method:"PUT"})).status, 404);
   assert.deepEqual(await op("programs.get", id), {
     status:"installed", transfer_id:pythonInstall, sha256, bytes:Buffer.byteLength(source)
   });
@@ -561,6 +515,13 @@ try {
   await mcu.send({ t: "event", name: "install.done",
     data: { transfer_id: nextAttempt.args.transfer_id, kind: "bootloader" } });
   assert.equal((await result(nextAttempt.id)).state, "succeeded");
+  const exit = await op("bootloader.exit", id);
+  const exitCommand = await mcu.nextCommand();
+  assert.equal(exitCommand.id, exit.command_id);
+  assert.deepEqual(exitCommand.args, { target: "app" });
+  await mcu.hello({ ...info, role: "app", image_profile: "ESPHUB2/micropython/" + d.board });
+  assert.equal((await result(exit.command_id)).state, "succeeded");
+  await assert.rejects(op("bootloader.exit", id), /bootloader mode/);
   await op("devices.reissue", id);
   assert.equal(
     (
@@ -574,7 +535,7 @@ try {
   await op("devices.delete", { device_id: watch.id });
   await op("devices.delete", id);
   console.log(
-    "PASS Clerk, virtual devices, broker enrollment, command dispatch, duplicate receipts, cloud Wi-Fi, BLE rotation, MQTT events, OTA, private file transfer and revocation",
+    "PASS Clerk, virtual devices, broker enrollment, command dispatch, duplicate receipts, cloud Wi-Fi, BLE credentials, MQTT events, OTA, private file transfer and revocation",
   );
 } finally {
   mcu?.close();

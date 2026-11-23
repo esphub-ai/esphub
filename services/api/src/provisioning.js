@@ -31,7 +31,7 @@ export function provisioning(board) {
       usb,
       wifi,
       reconnectGuidance,
-      "Check devices.get with this registration ID to confirm it is online with the matching board and MicroPython Runtime (role app). Stage verification_source with programs.publish. Call bootloader.enter, wait for the device to come online in EspHub Bootloader mode, then call ota.install with kind python and the staged URL. For a queued response, use commands.get with command_id until succeeded. Check programs.get for the confirmed transfer ID and devices.get for a new app boot. Verify the board-specific hello on the display or USB console. Report what the board confirmed.",
+      "Once the bootloader is online after Wi-Fi setup, call bootloader.exit to start the installed runtime, or power-cycle the board. Check devices.get with this registration ID to confirm it is online with the matching board and MicroPython Runtime (role app). Stage verification_source with programs.publish. Call bootloader.enter, wait for the device to come online in EspHub Bootloader mode, then call ota.install with kind python and the staged URL. For a queued response, use commands.get with command_id until succeeded. Check programs.get for the confirmed transfer ID and devices.get for a new app boot. Verify the board-specific hello on the display or USB console. Report what the board confirmed.",
     ].join("\n"),
     setup_manifest: base + "setup-manifest",
     verification_source: profile.hello,

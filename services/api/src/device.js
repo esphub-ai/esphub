@@ -2,7 +2,6 @@ import { withDatabase } from "./database.js";
 import { dispatch, enqueue, receipt, retryDue, nextRetry } from "./commands.js";
 import { DurableObject } from "cloudflare:workers";
 import { connectedSince } from "./iot.js";
-import { syncBle } from "./ble.js";
 import { Uploads } from "./uploads.js";
 import { Stream } from "./streams.js";
 import { softwareInventory } from "./software.js";
@@ -149,7 +148,7 @@ export class Device extends DurableObject {
     const pid = m.boot_id;
     return withDatabase(this.env, async (db) => {
       const [d] =
-        await db`SELECT board,boot_id,token_hash FROM esphub.devices WHERE id=${device}
+        await db`SELECT board,boot_id FROM esphub.devices WHERE id=${device}
         AND cert_ready AND cert_id=${principal}`;
       if (!d)
         return Response.json({ error: "Stale enrollment" }, { status: 409 });
@@ -191,25 +190,10 @@ export class Device extends DurableObject {
           JSON.stringify(m),
         );
         await dispatch(db, this.env, device, pid, true);
-        const rotate = await syncBle(
-          db,
-          device,
-          d.token_hash,
-          m.ble_generation,
-        );
-        return Response.json({ rotate });
+        return Response.json({});
       }
       if (d.boot_id !== pid || this.current()?.pid !== pid)
         return Response.json({ error: "Hello required" }, { status: 409 });
-      if (m.t === "ble.confirm") {
-        const rotate = await syncBle(
-          db,
-          device,
-          d.token_hash,
-          m.ble_generation,
-        );
-        return Response.json({ rotate });
-      }
       if (m.t === "res") {
         if (
           typeof m.ok !== "boolean" ||
