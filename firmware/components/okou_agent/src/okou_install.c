@@ -150,10 +150,12 @@ static bool valid_header(const uint8_t *header, const char *kind, const char *bo
     const esp_image_header_t *ih = (const esp_image_header_t *)header;
     if (ih->magic != ESP_IMAGE_HEADER_MAGIC || ih->chip_id != CONFIG_IDF_FIRMWARE_CHIP_ID) return false;
     const uint8_t *profile = header + PROFILE_OFFSET;
-    if (!strcmp(kind, "launcher") && CONFIG_OKOU_BL_PROFILE[0] &&
+    bool launcher = !strcmp(kind, "launcher");
+    if (launcher && CONFIG_OKOU_BL_PROFILE[0] &&
         matches_profile(profile, OKOU_BL_IMAGE_PREFIX CONFIG_OKOU_BL_PROFILE, true)) return true;
     char expected[sizeof("ESPHUB1/micropython/") + OKOU_BOARD_CAPACITY];
-    snprintf(expected, sizeof(expected), "ESPHUB1/%s/%s", kind, board);
+    const char *prefix = launcher ? "ESPHUB1/launcher/" : "ESPHUB1/micropython/";
+    snprintf(expected, sizeof(expected), "%s%s", prefix, board);
     return matches_profile(profile, expected, true);
 }
 
