@@ -25,7 +25,6 @@
 #define CHUNK 4096
 #define PROGRAM_LIMIT (32 * 1024)
 #define PROGRAM "/flash/main.py"
-#define MAX_ATTEMPTS 3
 #define PROFILE_OFFSET (sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) + sizeof(esp_app_desc_t))
 static bool device_board(char board[OKOU_BOARD_CAPACITY])
 {
@@ -79,12 +78,15 @@ static bool parse_args(const cJSON *a, inst_t *in, char *err, size_t n)
 static cJSON *receipt(const inst_t *in)
 {
     cJSON *d = cJSON_CreateObject();
-    cJSON_AddStringToObject(d, "kind", in->kind);
-    if (*in->id) cJSON_AddStringToObject(d, "transfer_id", in->id);
+    if (!d || !cJSON_AddStringToObject(d, "kind", in->kind) ||
+        !cJSON_AddStringToObject(d, "transfer_id", in->id)) {
+        cJSON_Delete(d);
+        return NULL;
+    }
     return d;
 }
 
-// Replace the download job atomically. Either the job or its final receipt
+// Replace the in-progress marker atomically. Either the marker or its final receipt
 // survives power loss. The agent erases the receipt only after the relay ACK.
 static bool save_result(const char *name, cJSON *data, const char *target)
 {
@@ -359,12 +361,9 @@ esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen)
         free(in);
         return ESP_ERR_INVALID_ARG;
     }
-    /* Persist so a power loss mid-download resumes after reconnecting. */
-    cJSON *p = cJSON_Duplicate(args, true);
-    char *s = NULL;
-    if (p && cJSON_AddNumberToObject(p, "attempts", 1) &&
-        (strcmp(in->kind, "bootloader") || cJSON_AddStringToObject(p, "source_slot", esp_ota_get_running_partition()->label)))
-        s = cJSON_PrintUnformatted(p);
+    /* Keep only the identity needed to report an interrupted transfer. */
+    cJSON *p = receipt(in);
+    char *s = p ? cJSON_PrintUnformatted(p) : NULL;
     cJSON_Delete(p);
     esp_err_t saved = s ? okou_nvs_set_str(OKOU_KEY_PENDING, s) : ESP_ERR_NO_MEM;
     free(s);
@@ -384,62 +383,25 @@ esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen)
     return ESP_OK;
 }
 
-void install_resume_pending(void)
+void install_report_interrupted(void)
 {
-    if (s_running) {
-        return;
-    }
-    char *p = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
-    if (!p) {
-        return;
-    }
-    cJSON *j = cJSON_Parse(p);
-    free(p);
-    inst_t *in = malloc(sizeof(*in));
-    char err[160] = "";
-    if (!j || !in) {
-        ESP_LOGE(TAG, "Cannot load pending install");
-        cJSON_Delete(j);
-        free(in);
-        return;
-    }
-    if (cJSON_GetObjectItem(j, "t")) {
-        free(in);
-        cJSON_Delete(j);
-        return; // Terminal record is owned by the MQTT agent.
-    }
-    const cJSON *att = cJSON_GetObjectItemCaseSensitive(j, "attempts");
-    const char *source = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(j, "source_slot"));
-    const char *running = esp_ota_get_running_partition()->label;
-    int attempts = cJSON_IsNumber(att) ? att->valueint : 0;
-    if (!parse_args(j, in, err, sizeof(err))) {
-        emit_failed(in, err);
-    } else if (!strcmp(in->kind, "bootloader") && (!source || strcmp(source, running))) {
-        // A completed write has already replaced this job with a verified receipt.
-        emit_failed(in, "Bootloader slot changed before the write completed");
-    } else if (attempts >= MAX_ATTEMPTS) {
-        emit_failed(in, "giving up after 3 attempts");
-    } else {
-        cJSON_DeleteItemFromObject(j, "attempts");
-        cJSON_AddNumberToObject(j, "attempts", attempts + 1);
-        char *s = cJSON_PrintUnformatted(j);
-        if (!s || okou_nvs_set_str(OKOU_KEY_PENDING, s) != ESP_OK) {
-            free(s);
-            emit_failed(in, "Cannot record install retry");
-            cJSON_Delete(j);
-            free(in);
-            return;
+    if (s_running) return;
+    char *saved = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
+    if (!saved) return;
+    cJSON *marker = cJSON_Parse(saved);
+    free(saved);
+    if (cJSON_IsObject(marker) && !cJSON_GetObjectItem(marker, "t")) {
+        // Older bootloaders also stored the URL and retry count here.
+        const char *kind = cJSON_GetStringValue(cJSON_GetObjectItem(marker, "kind"));
+        const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(marker, "transfer_id"));
+        cJSON *data = cJSON_CreateObject();
+        if (kind && id && cJSON_AddStringToObject(data, "kind", kind) &&
+            cJSON_AddStringToObject(data, "transfer_id", id) &&
+            cJSON_AddStringToObject(data, "error", "Installation interrupted")) {
+            save_result("install.failed", data, NULL);
+        } else {
+            cJSON_Delete(data);
         }
-        free(s);
-        ESP_LOGI(TAG, "resuming pending install %.12s (attempt %d)", in->kind, attempts + 1);
-        cJSON_Delete(j);
-        if (start_task(in)) {
-            return;
-        }
-        emit_failed(in, "cannot start install task");
-        free(in);
-        return;
     }
-    cJSON_Delete(j);
-    free(in);
+    cJSON_Delete(marker);
 }

@@ -2,7 +2,7 @@
  * esp-bootloader: headless bootloader. Boot/rollback rules from docs/protocol.md:
  *  - auto-starts the app when the app partition holds an
  *    image, unless okl/pending exists, okl/stay is set, or a hub request arrived;
- *  - resumes okl/pending after the hub acked hello;
+ *  - reports an interrupted transfer after the hub acknowledges hello;
  *
  * SPDX-License-Identifier: MIT
  */
@@ -28,7 +28,7 @@ static bool s_stay;
 
 static void on_hello_acked(void)
 {
-    install_resume_pending();
+    install_report_interrupted();
     s_acked_evt = true;
 }
 

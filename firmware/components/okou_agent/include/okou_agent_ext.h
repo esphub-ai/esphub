@@ -23,7 +23,7 @@ bool okou_wifi_rssi(int *rssi);
 
 /* NVS namespace and keys shared between bootloader and SDK (docs/protocol.md). */
 #define OKOU_NVS_NS          "okl"
-#define OKOU_KEY_PENDING     "pending"    /* str: resumable install job or unacknowledged final event */
+#define OKOU_KEY_PENDING     "pending"    /* str: in-progress transfer identity or unacknowledged final event */
 #define OKOU_KEY_LSLOT "lslot" /* Last validated A/B bootloader slot. */
 #define OKOU_KEY_STAY        "stay"       /* u8: never auto-start the app */
 #define OKOU_KEY_HOLD        "hold"       /* u8: one-shot "stay in bootloader on next boot" (extension) */

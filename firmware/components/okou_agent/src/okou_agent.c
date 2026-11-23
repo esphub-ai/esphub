@@ -806,15 +806,10 @@ static bool report_install_result(void)
         const char *label = cJSON_GetStringValue(cJSON_GetObjectItem(frame, "target"));
         const esp_partition_t *run = esp_ota_get_running_partition();
         if (label && strcmp(label, run->label)) {
-            // Power was lost between saving the verified receipt and boot selection.
 #if CONFIG_OKL_URL_OTA
-            const esp_partition_t *target = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
-                ESP_PARTITION_SUBTYPE_ANY, label);
-            const esp_partition_t *invalid = esp_ota_get_last_invalid_partition();
+            // Boot selection succeeded and the installer's reboot is still pending.
             const esp_partition_t *selected = esp_ota_get_boot_partition();
-            if (target && (!invalid || invalid->address != target->address) &&
-                ((selected && selected->address == target->address) ||
-                 esp_ota_set_boot_partition(target) == ESP_OK)) {
+            if (selected && !strcmp(selected->label, label)) {
                 okou_schedule_reboot(300);
                 cJSON_Delete(frame);
                 return false;
