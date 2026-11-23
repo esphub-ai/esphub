@@ -34,7 +34,7 @@ After `OKL-PROVISION-OK`, start the Mac BLE tool, wait for **Beacon ready**, res
 
 On an online device, use `wifi.add` with an SSID and optional password to save a network remotely. Read `commands.get` for the result. First-time and offline setup use the [Mac BLE tool](tools/ble-wifi/README.md).
 
-On ordinary boots, applications use the saved Wi-Fi networks and can initialize their own Bluetooth stack immediately. The bootloader scans for a provisioning beacon when its Wi-Fi list is empty or when an application explicitly requests setup. For offline recovery, expose an application menu item or startup key that calls `okou_enter_setup()` in C or `okou.enter_setup()` in MicroPython. Start the Mac beacon before selecting setup.
+On ordinary boots, applications use the saved Wi-Fi networks and can initialize their own Bluetooth stack immediately. The bootloader scans for a provisioning beacon when its Wi-Fi list is empty or when an application explicitly requests setup. For offline recovery, expose an application menu item or startup key that calls `okou_enter_bootloader()` in C or `okou.enter_bootloader()` in MicroPython. Start the Mac beacon before selecting setup.
 
 Applications with their own Wi-Fi settings screen can use the SDK-managed station to try a new network:
 

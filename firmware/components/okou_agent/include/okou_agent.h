@@ -66,7 +66,7 @@ bool okou_connected(void);
  * and reboots into the bootloader, which keeps USB provisioning open and does not auto-start
  * the app until it has reached the hub again. Apps with a display call this after showing setup
  * instructions (e-paper keeps them visible). Does not return on success. */
-esp_err_t okou_enter_setup(void);
+esp_err_t okou_enter_bootloader(void);
 
 /* Queue a Wi-Fi trial on the SDK-managed station. Returns false if the input is
  * invalid, another trial is active, or SDK-managed Wi-Fi is unavailable.

@@ -67,7 +67,7 @@ void app_main(void)
     if (hold) {
         okou_nvs_erase(OKOU_KEY_HOLD);
     }
-    /* okou_enter_setup() from the app: stay here with provisioning open until the hub acks,
+    /* okou_enter_bootloader() from the app: stay here with provisioning open until the hub acks,
      * then the first-ack resume below starts the app again. */
     uint8_t setup = okou_nvs_get_u8(OKOU_KEY_SETUP, 0);
     if (setup) {

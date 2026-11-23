@@ -105,12 +105,12 @@ static mp_obj_t okou_wifi_rssi_py(void)
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(okou_wifi_rssi_obj, okou_wifi_rssi_py);
 
-static mp_obj_t okou_enter_setup_py(void)
+static mp_obj_t okou_enter_bootloader_py(void)
 {
-    esp_err_t rc = okou_enter_setup();
+    esp_err_t rc = okou_enter_bootloader();
     mp_raise_OSError(rc);
 }
-static MP_DEFINE_CONST_FUN_OBJ_0(okou_enter_setup_obj, okou_enter_setup_py);
+static MP_DEFINE_CONST_FUN_OBJ_0(okou_enter_bootloader_obj, okou_enter_bootloader_py);
 
 static mp_obj_t okou_wifi_join_py(size_t n_args, const mp_obj_t *args, mp_map_t *kw_args)
 {
@@ -149,7 +149,7 @@ static mp_obj_t okou_wifi_join_state_py(void)
 static MP_DEFINE_CONST_FUN_OBJ_0(okou_wifi_join_state_obj, okou_wifi_join_state_py);
 
 static const mp_rom_map_elem_t okou_module_globals_table[] = {
-    { MP_ROM_QSTR(MP_QSTR_enter_setup), MP_ROM_PTR(&okou_enter_setup_obj) },
+    { MP_ROM_QSTR(MP_QSTR_enter_bootloader), MP_ROM_PTR(&okou_enter_bootloader_obj) },
     { MP_ROM_QSTR(MP_QSTR_wifi_join), MP_ROM_PTR(&okou_wifi_join_obj) },
     { MP_ROM_QSTR(MP_QSTR_wifi_join_state), MP_ROM_PTR(&okou_wifi_join_state_obj) },
     { MP_ROM_QSTR(MP_QSTR_wifi_rssi), MP_ROM_PTR(&okou_wifi_rssi_obj) },

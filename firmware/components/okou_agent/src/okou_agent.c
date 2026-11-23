@@ -753,7 +753,7 @@ static void report_rollback(void)
     okou_nvs_erase(OKOU_KEY_RB);
 }
 
-esp_err_t okou_enter_setup(void)
+esp_err_t okou_enter_bootloader(void)
 {
     const esp_partition_t *lp = okou_bootloader_partition();
     if (!lp) {
