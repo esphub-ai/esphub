@@ -41,7 +41,6 @@ await writeFile(
         "IOT_DATA_ENDPOINT",
         "IOT_ACCESS_KEY_ID",
         "IOT_SECRET_ACCESS_KEY",
-        "IOT_SESSION_TOKEN",
       ]
         .filter((k) => process.env[k])
         .map((k) => [k, process.env[k]]),
