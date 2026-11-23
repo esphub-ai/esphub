@@ -24,14 +24,7 @@ export async function enqueue(
     WHERE device_commands.fingerprint=excluded.fingerprint
     RETURNING id AS command_id,state,seq AS sequence`;
   if (!row) fail(409, "Boot or request ID conflict");
-  if (row.state === "queued") {
-    // The committed next_wake survives a failed publish or Worker exit.
-    try {
-      await dispatch(c.sql, c.env, device);
-    } catch {
-      /* scheduled retry */
-    }
-  }
+  if (row.state === "queued") await dispatch(c.sql, c.env, device);
   return row;
 }
 
@@ -60,21 +53,27 @@ export async function dispatch(
   boot = null,
   reconnect = false,
 ) {
-  if (!boot) {
-    const session = await connectedSince(env, device);
-    if (!session) return;
-    const [d] =
-      await db`SELECT boot_id FROM esphub.devices WHERE id=${device} AND cert_ready
-      AND mqtt_connected_since=${session}`;
-    if (!d?.boot_id) return;
-    boot = d.boot_id;
+  // The next attempt is already committed. A broker outage must not turn a
+  // persisted enqueue or the preceding command's receipt into a failed request.
+  try {
+    if (!boot) {
+      const session = await connectedSince(env, device);
+      if (!session) return;
+      const [d] =
+        await db`SELECT boot_id FROM esphub.devices WHERE id=${device} AND cert_ready
+        AND mqtt_connected_since=${session}`;
+      if (!d?.boot_id) return;
+      boot = d.boot_id;
+    }
+    const [command] = await claimCommand(db, device, boot, reconnect);
+    if (command)
+      await publishDownlink(env, device, {
+        boot_id: boot,
+        command: { ...command, seq: Number(command.seq) },
+      });
+  } catch {
+    console.warn("MQTT command delivery deferred", device);
   }
-  const [command] = await claimCommand(db, device, boot, reconnect);
-  if (command)
-    await publishDownlink(env, device, {
-      boot_id: boot,
-      command: { ...command, seq: Number(command.seq) },
-    });
 }
 
 export async function receipt(db, device, boot, frame) {
@@ -88,6 +87,7 @@ export async function receipt(db, device, boot, frame) {
     state=${state},result=${result}::text::jsonb,args='{}',next_wake=NULL
     WHERE device_id=${device} AND id=${frame.id} AND dispatched_boot=${boot}
     AND state IN ('dispatched','unknown') AND receipt_hash IS NULL
+    AND (operation<>'install' OR NOT ${frame.ok})
     RETURNING state`;
   if (row) return row;
   const [existing] =
@@ -121,14 +121,10 @@ export async function retryDue(db, env, device = null) {
                    WHEN state='queued' AND expires_at>now() THEN now()+interval '1 minute' END
     FROM due WHERE q.id=due.id RETURNING device_id,state`;
   for (const id of new Set(rows.map((r) => r.device_id))) {
-    try {
-      const retry = rows.some(
-        (r) => r.device_id === id && r.state === "dispatched",
-      );
-      await dispatch(db, env, id, null, retry);
-    } catch {
-      /* The next retry is already durable. */
-    }
+    const retry = rows.some(
+      (r) => r.device_id === id && r.state === "dispatched",
+    );
+    await dispatch(db, env, id, null, retry);
   }
 }
 

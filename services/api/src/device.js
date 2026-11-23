@@ -242,7 +242,7 @@ export class Device extends DurableObject {
           return Response.json({ error: "Invalid receipt" }, { status: 400 });
         try {
           await receipt(db, device, pid, m);
-          await dispatch(db, this.env, device, pid);
+          await dispatch(db, this.env, device);
         } catch (e) {
           if (e.status === 409)
             return Response.json({ error: e.message }, { status: 409 });
@@ -263,7 +263,7 @@ export class Device extends DurableObject {
         await db`UPDATE esphub.device_commands SET state=${m.name === "install.done" ? "succeeded" : "failed"},
           result=${JSON.stringify(m.data)}::text::jsonb,args='{}',next_wake=NULL
           WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation='install' AND state IN ('dispatched','unknown')`;
-        await dispatch(db, this.env, device, pid);
+        await dispatch(db, this.env, device);
       }
       return Response.json((await this.recordFrame(pid, m)) ?? {});
     });

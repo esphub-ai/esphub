@@ -22,6 +22,7 @@ test(
     const calls = [];
     let deny = true,
       status = "ACTIVE",
+      notAfter = Date.now() / 1000 + 3600,
       issued = 0;
     t.mock.method(globalThis, "fetch", async (req) => {
       const url = new URL(req.url);
@@ -36,9 +37,7 @@ test(
         return Response.json({
           certificateDescription: {
             status,
-            validity: {
-              notAfter: status === "expired" ? 1 : Date.now() / 1000 + 3600,
-            },
+            validity: { notAfter },
           },
         });
       if (url.pathname.startsWith("/target-policies/") && deny)
@@ -64,7 +63,8 @@ test(
       assert.equal(issued, 1);
       status = "INACTIVE";
       await assert.rejects(enroll(env, db, id, hash, csr, true), /disabled/);
-      status = "expired";
+      status = "ACTIVE";
+      notAfter = 1;
       await enroll(env, db, id, hash, csr, true);
       assert.equal(issued, 2);
       await publishDownlink(env, id, { boot_id: "boot", mid: 42 });

@@ -119,6 +119,9 @@ static char s_install_state[20] = "queued";
 static char s_inflight_id[37];
 static uint64_t s_last_sequence;
 static char *s_last_receipt;
+#if CONFIG_OKOU_BLE_WIFI
+static cJSON *s_ble_offer;
+#endif
 static bool s_iot_started;
 static bool s_started, s_cfg_ok;
 static char s_hub[OKOU_HUB_HOST_MAX + 1], s_tok[96];
@@ -163,12 +166,19 @@ static void ensure_queues(void)
 
 static bool load_config(void)
 {
-    s_hub[0] = s_tok[0] = 0;
-    if (okou_nvs_get_str("hub", s_hub, sizeof(s_hub)) != ESP_OK || !okou_hub_host_valid(s_hub)) {
-        s_hub[0] = 0;
-        return false;
+    char hub[sizeof(s_hub)] = "", token[sizeof(s_tok)] = "";
+    bool valid = okou_nvs_get_str("hub", hub, sizeof(hub)) == ESP_OK && okou_hub_host_valid(hub) &&
+                 okou_nvs_get_str(OKOU_KEY_TOKEN, token, sizeof(token)) == ESP_OK && token[0];
+    if (!valid) hub[0] = token[0] = 0;
+    if (strcmp(s_hub, hub) || strcmp(s_tok, token)) {
+        s_last_sequence = 0;
+        s_inflight_id[0] = 0;
+        free(s_last_receipt);
+        s_last_receipt = NULL;
+        strlcpy(s_hub, hub, sizeof(s_hub));
+        strlcpy(s_tok, token, sizeof(s_tok));
     }
-    return okou_nvs_get_str(OKOU_KEY_TOKEN, s_tok, sizeof(s_tok)) == ESP_OK && s_tok[0];
+    return valid;
 }
 
 esp_err_t okou_hub_http_base(char *buf, size_t len)
@@ -425,6 +435,10 @@ static bool send_text(const char *s, size_t len)
 
 static void mqtt_teardown(const char *why)
 {
+#if CONFIG_OKOU_BLE_WIFI
+    cJSON_Delete(s_ble_offer);
+    s_ble_offer = NULL;
+#endif
     if (s_iot_started) {
         okou_iot_stop();
         s_iot_started = false;
@@ -1019,28 +1033,36 @@ static void service_control(void)
         }
     }
 #if CONFIG_OKOU_BLE_WIFI
-    const cJSON *rotate = cJSON_GetObjectItem(frame, "rotate");
+    cJSON *rotate = cJSON_DetachItemFromObjectCaseSensitive(frame, "rotate");
     if (rotate) {
-        const cJSON *gen = cJSON_GetObjectItem(rotate, "generation");
-        const char *secret = cJSON_GetStringValue(cJSON_GetObjectItem(rotate, "secret"));
-        if (cJSON_IsNumber(gen) && gen->valueint > 0 && gen->valueint < (int)okou_ble_generation()) {
-            // A duplicate QoS 1 offer from a generation we already superseded.
-        } else if (cJSON_IsNumber(gen) && secret && okou_ble_install(gen->valueint, secret, false) == ESP_OK) {
-            cJSON *confirm = cJSON_CreateObject();
-            int64_t unused;
-            if (!cJSON_AddStringToObject(confirm, "t", "ble.confirm") ||
-                !cJSON_AddNumberToObject(confirm, "ble_generation", okou_ble_generation()) ||
-                !okou_iot_publish(confirm, true, &unused))
-                s_mqtt_broken = true;
-            cJSON_Delete(confirm);
-        } else {
-            s_mqtt_broken = true; // Retry the outstanding offer on the next hello.
-        }
+        cJSON_Delete(s_ble_offer);
+        s_ble_offer = rotate;
     }
 #endif
     cJSON_Delete(frame);
     okou_agent_notify();
 }
+
+#if CONFIG_OKOU_BLE_WIFI
+static void service_ble_offer(void)
+{
+    if (!s_ble_offer || okou_ble_busy()) return;
+    const cJSON *gen = cJSON_GetObjectItem(s_ble_offer, "generation");
+    const char *secret = cJSON_GetStringValue(cJSON_GetObjectItem(s_ble_offer, "secret"));
+    if (cJSON_IsNumber(gen) && gen->valueint >= (int)okou_ble_generation()) {
+        cJSON *confirm = cJSON_CreateObject();
+        int64_t unused;
+        if (!secret || okou_ble_install(gen->valueint, secret, false) != ESP_OK ||
+            !cJSON_AddStringToObject(confirm, "t", "ble.confirm") ||
+            !cJSON_AddNumberToObject(confirm, "ble_generation", okou_ble_generation()) ||
+            !okou_iot_publish(confirm, true, &unused))
+            s_mqtt_broken = true; // Retry the outstanding generation on the next hello.
+        cJSON_Delete(confirm);
+    }
+    cJSON_Delete(s_ble_offer);
+    s_ble_offer = NULL;
+}
+#endif
 
 static void agent_task(void *arg)
 {
@@ -1103,8 +1125,12 @@ static void agent_task(void *arg)
             if (s_hello_acked && atomic_exchange(&s_result_due, false) && !report_install_result())
                 s_hello_acked = false;
 #endif
-            if (s_hello_acked && !s_mqtt_broken)
+            if (s_hello_acked && !s_mqtt_broken) {
                 service_control();
+#if CONFIG_OKOU_BLE_WIFI
+                service_ble_offer();
+#endif
+            }
             service_mqtt_log_batch(now);
             if (now - s_last_flush_us >= FLUSH_INTERVAL_US) {
                 s_last_flush_us = now;
