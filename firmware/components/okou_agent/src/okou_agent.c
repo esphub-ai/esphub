@@ -771,7 +771,7 @@ esp_err_t okou_enter_bootloader(void)
     return ESP_OK;
 }
 
-static esp_err_t mark_app_valid(const char *by)
+static esp_err_t mark_app_valid(void)
 {
     const esp_partition_t *run = esp_ota_get_running_partition();
     esp_ota_img_states_t st;
@@ -784,18 +784,13 @@ static esp_err_t mark_app_valid(const char *by)
     }
     e = esp_ota_mark_app_valid_cancel_rollback();
     if (e == ESP_OK) {
-        ESP_LOGI(TAG, "app marked valid by %s", by);
+        ESP_LOGI(TAG, "app marked valid at SDK startup");
         cJSON *d = cJSON_CreateObject();
         cJSON_AddStringToObject(d, "partition", run->label);
-        cJSON_AddStringToObject(d, "by", by);
+        cJSON_AddStringToObject(d, "by", "sdk");
         okou_event_json("app.valid", d); /* queued; delivered once the hub is reachable */
     }
     return e;
-}
-
-esp_err_t okou_app_mark_valid(void)
-{
-    return mark_app_valid("app");
 }
 
 // Called after hello in either role. A completed OTA may have switched slots
@@ -1070,8 +1065,8 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
 #if CONFIG_OKL_URL_OTA || CONFIG_OKOU_MICROPYTHON_RUNTIME
     xTaskCreate(sntp_task, "okl_sntp", 3072, NULL, 3, NULL);
 #endif
-    if (e == ESP_OK && !okou_is_bootloader() && !g_okou_cfg.app_validates) {
-        esp_err_t confirmed = mark_app_valid("sdk");
+    if (!okou_is_bootloader()) {
+        esp_err_t confirmed = mark_app_valid();
         if (confirmed != ESP_OK) ESP_LOGW(TAG, "app confirmation: %s", esp_err_to_name(confirmed));
     }
     return ESP_OK;

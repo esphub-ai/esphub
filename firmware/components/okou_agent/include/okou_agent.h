@@ -35,26 +35,16 @@ typedef struct {
     /* false (default): command handlers run on the agent task.
      * true: `cmd` requests are queued and run inside okou_poll() on the caller's task. */
     bool handlers_in_poll;
-    /* false (default): the SDK marks a freshly installed app valid after successful local network and
-     * agent initialization. true: the app confirms the image by calling okou_app_mark_valid()
-     * after its own startup health check, which can run offline. */
-    bool app_validates;
     /* Static interpreter version string, set only by the MicroPython port. */
     const char *micropython_version;
     /* BL only: scan for a BLE provisioning beacon on this boot. */
     bool ble_setup;
 } okou_config_t;
 
-#define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .app_validates = false, .micropython_version = NULL, .ble_setup = false }
+#define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .micropython_version = NULL, .ble_setup = false }
 
-/* One-call init: NVS, network (optional), agent task. cfg may be NULL (defaults). */
+/* Start the SDK and confirm a pending application image. cfg may be NULL (defaults). */
 esp_err_t okou_agent_start(const okou_config_t *cfg);
-
-/* For app_validates apps: confirm the running image after the app's own health check. Marks a
- * PENDING_VERIFY image valid (cancelling rollback) and reports `app.valid` (by=app) to the hub,
- * queued until the hub is reachable. ESP_OK if the image is already valid or has no otadata
- * entry (flashed over USB); ESP_ERR_INVALID_STATE for an image marked invalid. */
-esp_err_t okou_app_mark_valid(void);
 
 /* True while the hub MQTT session is up and our hello has been acknowledged. */
 bool okou_connected(void);

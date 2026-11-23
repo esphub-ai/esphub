@@ -27,7 +27,7 @@ The queue expires undelivered commands after five minutes. A dispatched command 
 
 Each uplink contains a `frame` with a per-boot message ID. The AWS rule attaches the device UUID from the topic and the certificate ID from the broker principal. A Lambda relay forwards the envelope to the Worker. The Worker checks the registered certificate and the active boot. The device policy scopes publish and subscribe to the attached thing.
 
-Hello, BLE confirmations, command receipts and install outcomes request an application acknowledgement on the downlink. The ACK echoes the boot ID and message ID. The hello acknowledgement confirms that the hub has recorded the boot. The SDK confirms pending app images after successful local initialization. Apps with their own health checks call okou_app_mark_valid() explicitly. Ordinary events use MQTT QoS 1. Console output is available locally over USB.
+Hello, BLE confirmations, command receipts and install outcomes request an application acknowledgement on the downlink. The ACK echoes the boot ID and message ID. The hello acknowledgement confirms that the hub has recorded the boot. The SDK confirms a pending application image at SDK startup, including when the device is offline. Ordinary events use MQTT QoS 1. Console output is available locally over USB.
 
 ## Deployment
 
