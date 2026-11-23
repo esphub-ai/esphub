@@ -13,9 +13,9 @@ See the [firmware glossary and partition mapping](docs/firmware-terminology.md) 
 
 ## Devices and releases
 
-All supported models use ESP32-S3. Paper Color, PaperDIY, StackChan and StopWatch have 16 MB flash. Cardputer-Adv has 8 MB flash and its own partition layout. Its MicroPython runtime includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for the TCA8418 keyboard. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the shared EspHub Bootloader, MicroPython runtime, partition table, board identity, example main.py, flash arguments and a SHA-256 manifest. This kit erases flash and replaces the partition table and app. Back up device data before installing it.
+The M5Stack board catalog covers ESP32, ESP32-S3, ESP32-C5, ESP32-C6 and ESP32-C61 models with Wi-Fi, Bluetooth and 8–32 MiB of flash. The [board matrix](docs/m5stack-boards.md) lists hardware revisions, bundled controllers, flash, SRAM, runtime port and manufacturer firmware. Cardputer-Adv includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for its TCA8418 keyboard controller. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the shared EspHub Bootloader, MicroPython runtime, partition table, board identity, example main.py, flash arguments and a SHA-256 manifest. This kit erases flash and replaces the partition table and app. Back up device data before installing it.
 
-To build the shared bootloader locally, use ESP-IDF 5.4.1 from the selected `firmware/bootloader/<target>-<size>mb/` directory. Use ESP-IDF 5.5.4 for `esp32c5-16mb` and `esp32c61-16mb`. Use `esp32s3-8mb` for Cardputer-Adv and `esp32s3-16mb` for the other boards:
+To build the shared bootloader locally, use ESP-IDF 5.4.1 from the selected `firmware/bootloader/<target>-<size>mb/` directory. Use ESP-IDF 5.5.4 for `esp32c5-16mb` and `esp32c61-16mb`. Select the `bootloader` identifier from the board’s `firmware/board/m5stack/<board>/board.json`. For example, build the 16 MiB ESP32-S3 variant with the following command.
 
 ```sh
 cd firmware/bootloader/esp32s3-16mb
