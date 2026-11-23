@@ -338,10 +338,10 @@ esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen)
 #endif
     /* Persist so a power loss mid-download resumes after reconnecting. */
     cJSON *p = cJSON_Duplicate(args, true);
-    cJSON_DeleteItemFromObject(p, "attempts");
-    cJSON_AddNumberToObject(p, "attempts", 1);
-    if (!strcmp(in->kind, "launcher")) cJSON_AddTrueToObject(p, "in_place");
-    char *s = cJSON_PrintUnformatted(p);
+    char *s = NULL;
+    if (p && cJSON_AddNumberToObject(p, "attempts", 1) &&
+        (strcmp(in->kind, "launcher") || cJSON_AddTrueToObject(p, "in_place")))
+        s = cJSON_PrintUnformatted(p);
     cJSON_Delete(p);
     esp_err_t saved = s ? okou_nvs_set_str(OKOU_KEY_PENDING, s) : ESP_ERR_NO_MEM;
     free(s);

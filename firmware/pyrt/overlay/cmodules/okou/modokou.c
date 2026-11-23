@@ -251,10 +251,12 @@ bool okl_runtime_start(void)
     ESP_ERROR_CHECK(okou_nvs_init());
     bool maintenance = install_launcher_pending();
     okou_op_register("install", install_op);
-    okou_op_register("py.interrupt", op_py_interrupt);
-    s_input = xMessageBufferCreate(4096);
-    okou_op_register("py.safe_boot", op_py_safe_boot);
-    okou_op_register("term.write", op_term_write);
+    if (!maintenance) {
+        okou_op_register("py.interrupt", op_py_interrupt);
+        s_input = xMessageBufferCreate(4096);
+        okou_op_register("py.safe_boot", op_py_safe_boot);
+        okou_op_register("term.write", op_term_write);
+    }
     okou_config_t cfg = OKOU_CONFIG_DEFAULT(); /* role app, SDK-managed Wi-Fi */
     cfg.micropython_version = MICROPY_VERSION_STRING;
     okou_hooks_t hooks = {.on_connected_poll = send_program, .on_hello_acked = install_resume_pending};
