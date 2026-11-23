@@ -1,4 +1,4 @@
-# Shared by launcher and apps (loaded first; per-project and per-target files override).
+# Shared by bootloader and apps (loaded first; per-project and per-target files override).
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/16mb.csv"
@@ -8,7 +8,7 @@ CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 CONFIG_LOG_COLORS=n
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
-# Crash evidence for the launcher `coredump` op.
+# Crash evidence for the bootloader `coredump` op.
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
 CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y

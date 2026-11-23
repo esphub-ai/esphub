@@ -153,7 +153,7 @@ function softwareFields(device) {
   if (device.kind === "virtual") return [["Simulated firmware", device.info.fw.version]];
   const software = device.software;
   const app = software?.application;
-  const fields = [["Bootloader", (software?.launcher_version || "Not reported") + (software?.launcher_last_seen ? " (last seen)" : "")]];
+  const fields = [["Bootloader", (software?.bootloader_version || "Not reported") + (software?.bootloader_last_seen ? " (last seen)" : "")]];
   if (!app) return fields;
   if (app.kind === "micropython") {
     fields.push(["MicroPython", app.micropython_version || "Not reported"], ["Runtime build", app.version]);
@@ -187,7 +187,7 @@ const devicePrompt = `Connect to ${mcpEndpoint} with CIMD OAuth and the devices:
 
 For a new board, identify it over USB. Ask me if the model is unclear, then call devices.create and follow its setup instructions.
 
-For a program update, confirm the target and what I want it to do. Use an existing HTTPS download URL, upload a local firmware binary with ota.prepare_upload, or stage main.py with programs.publish. Call launcher.enter, wait for Bootloader mode, then use ota.install with the matching kind and download URL. Check the next boot’s output before reporting success.`;
+For a program update, confirm the target and what I want it to do. Use an existing HTTPS download URL, upload a local firmware binary with ota.prepare_upload, or stage main.py with programs.publish. Call bootloader.enter, wait for Bootloader mode, then use ota.install with the matching kind and download URL. Check the next boot’s output before reporting success.`;
 function devicePromptPanel() {
   return `<section class="mcp-setup" aria-labelledby="mcp-title"><h2 id="mcp-title">Use EspHub with your assistant</h2>
     <div class="mcp-grid"><div class="panel"><blockquote id="mcp-prompt">${esc(devicePrompt)}</blockquote>${button("copy-prompt", "Copy prompt")}</div></div></section>`;
@@ -404,9 +404,7 @@ async function refresh() {
         ? ""
         : button("enter", "Enter Bootloader mode") +
           button("install", "Install from URL") +
-          (device.info?.role === "launcher" && !device.info?.image_profile
-            ? button("launcher", "Upgrade legacy launcher")
-            : "") +
+          button("bootloader", "Update Bootloader") +
           link("/setup?board=" + device.board, "Firmware downloads ↗")) +
       '</div><pre id="out" hidden></pre></div>';
     const app = device.software?.application;
@@ -536,19 +534,19 @@ async function action(k) {
   }
   if (k === "enter") {
     dialog("Enter Bootloader mode", "<p>The running application pauses while the EspHub Bootloader handles updates.</p>", "Enter Bootloader mode", async () => {
-      const result = await op("launcher.enter", id);
-      notify(result.mode === "launcher" ? "Bootloader ready" : "Restarting into Bootloader mode");
+      const result = await op("bootloader.enter", id);
+      notify(result.mode === "bootloader" ? "Bootloader ready" : "Restarting into Bootloader mode");
       await refresh();
     });
     return;
   }
-  if (k === "launcher") {
+  if (k === "bootloader") {
     dialog(
-      "Update launcher",
-      "<p>Install the latest verified release for this specific board. The connected launcher must report a matching board profile.</p>",
-      "Install launcher",
+      "Update Bootloader",
+      "<p>Install the latest verified release for this specific board. The connected bootloader must report a matching board profile.</p>",
+      "Install Bootloader",
       async () => {
-        await op("ota.install", { ...id, kind: "launcher" });
+        await op("ota.install", { ...id, kind: "bootloader" });
         tab = "Serial";
         await refresh();
         notify("Bootloader image installed");
@@ -559,7 +557,7 @@ async function action(k) {
   if (k === "install") {
     dialog(
       "Install from URL",
-      '<label>Update target<select class="field" name="kind"><option value="python">Python Program (main.py)</option><option value="micropython">MicroPython Runtime</option><option value="launcher">Bootloader</option></select></label>' +
+      '<label>Update target<select class="field" name="kind"><option value="python">Python Program (main.py)</option><option value="micropython">MicroPython Runtime</option><option value="bootloader">Bootloader</option></select></label>' +
         field("url", "HTTPS artifact URL", "url", "required"),
       "Install",
       async (a) => {
@@ -633,7 +631,7 @@ async function explorer() {
     board: Object.keys(boardName)[0],
     ssid: "",
     url: "",
-    kind: "launcher",
+    kind: "bootloader",
   };
   const select = () => {
     const t = tools.find((t) => t.name === $("#tool").value);
@@ -666,7 +664,7 @@ async function explorer() {
           "devices.reset",
           "devices.reboot",
           "wifi.remove",
-          "launcher.enter",
+          "bootloader.enter",
           "ota.install",
           "uart.write",
         ].includes(name)

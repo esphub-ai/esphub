@@ -1,5 +1,5 @@
 /*
- * esp-launcher: headless launcher. Boot/rollback rules from docs/protocol.md:
+ * esp-bootloader: headless bootloader. Boot/rollback rules from docs/protocol.md:
  *  - auto-starts the app CONFIG_OKL_AUTOSTART_MS after boot if the app partition holds an
  *    image, unless okl/pending exists, okl/stay is set, or a hub request arrived;
  *  - resumes okl/pending after the hub acked hello;
@@ -15,11 +15,11 @@
 #include "esp_partition.h"
 #include "okou_agent.h"
 #include "okou_agent_ext.h"
-#include "launcher.h"
+#include "bootloader.h"
 #include "okou_ble.h"
 #include "sdkconfig.h"
 
-static const char *TAG = "launcher";
+static const char *TAG = "bootloader";
 
 static volatile bool s_acked_evt;
 static volatile bool s_req_seen;
@@ -41,7 +41,7 @@ static void on_request(const char *op)
 
 static void param_hook(const char *name)
 {
-    if (strcmp(name, "stay_in_launcher") == 0) {
+    if (strcmp(name, "stay_in_bootloader") == 0) {
         okou_nvs_set_u8(OKOU_KEY_STAY, s_stay ? 1 : 0);
     }
 }
@@ -63,8 +63,7 @@ void app_main(void)
     esp_ota_img_states_t st;
     if (esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY)
         ESP_ERROR_CHECK(esp_ota_mark_app_valid_cancel_rollback());
-    if (strcmp(run->label, "bl"))
-        ESP_ERROR_CHECK(okou_nvs_set_str(OKOU_KEY_LSLOT, run->label));
+    ESP_ERROR_CHECK(strcmp(run->label, "bl") ? ESP_ERR_INVALID_STATE : ESP_OK);
 
     uint8_t hold = okou_nvs_get_u8(OKOU_KEY_HOLD, 0);
     if (hold) {
@@ -84,14 +83,14 @@ void app_main(void)
     const esp_partition_t *invalid = esp_ota_get_last_invalid_partition();
     bool app_failed = (invalid && strcmp(invalid->label, "app") == 0) || fail_boots >= 3;
 
-    okou_param_bool("stay_in_launcher", &s_stay, false); /* stored in okl/stay by param_hook */
+    okou_param_bool("stay_in_bootloader", &s_stay, false); /* stored in okl/stay by param_hook */
     okou_param_set_hook(param_hook);
     okou_op_register("install", install_op);
     coredump_ops_register();
     okou_hooks_t hooks = {.on_hello_acked = on_hello_acked, .on_request = on_request};
     okou_set_hooks(&hooks);
     okou_config_t cfg = OKOU_CONFIG_DEFAULT();
-    cfg.role = OKOU_ROLE_LAUNCHER;
+    cfg.role = OKOU_ROLE_BOOTLOADER;
     ESP_ERROR_CHECK(okou_agent_start(&cfg));
 
     const esp_partition_t *app = app_partition_with_image();
@@ -100,13 +99,13 @@ void app_main(void)
              has_pending, s_stay, hold, fail_boots, app_failed);
     prov_serial_start();
     if (hold) {
-        ESP_LOGI(TAG, "held in launcher; use USB setup or reboot target=app");
+        ESP_LOGI(TAG, "held in bootloader; use USB setup or reboot target=app");
     }
 
     int64_t t0 = esp_timer_get_time();
     int64_t autostart_at = t0 + (app_failed ? (int64_t)CONFIG_OKL_FAILSAFE_WAIT_S * 1000000
                                             : (int64_t)CONFIG_OKL_AUTOSTART_MS * 1000);
-    /* An unprovisioned device must stay in the launcher: the app cannot provision over USB, so
+    /* An unprovisioned device must stay in the bootloader: the app cannot provision over USB, so
      * leaving would close the setup window. The app starts after the first hub ack instead. */
     char *p_hub = okou_nvs_get_str_alloc("hub");
     char *p_tok = okou_nvs_get_str_alloc(OKOU_KEY_TOKEN);
@@ -118,7 +117,7 @@ void app_main(void)
         ESP_LOGI(TAG, "setup requested by the app: provisioning open, app starts after the next hub ack");
     }
     if (app && !provisioned) {
-        ESP_LOGI(TAG, "not provisioned: staying in the launcher (USB provisioning open)");
+        ESP_LOGI(TAG, "not provisioned: staying in the bootloader (USB provisioning open)");
     }
     if (autostart) {
         ESP_LOGI(TAG, "auto-starting app in %d ms unless a hub request arrives",

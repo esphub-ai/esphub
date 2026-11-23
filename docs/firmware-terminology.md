@@ -7,7 +7,7 @@ EspHub has three deployment targets: the EspHub Bootloader, a Runtime, and a Pro
 | Term | What it does | Where it lives in the single-slot design |
 | --- | --- | --- |
 | ESP-IDF bootloader | After the ESP32 ROM starts it, it reads the partition table and OTA boot-selection metadata, then loads the selected executable. | Bootloader region before the partition table. |
-| EspHub Bootloader | Provides device setup, maintenance, and OTA installation. It selects the application image to start on reboot. Existing code and API identifiers call it the launcher. | `bl` partition, ESP-IDF type/subtype `app/ota_0`. |
+| EspHub Bootloader | Provides device setup, maintenance, and OTA installation. It selects the application image to start on reboot. Existing code and API identifiers call it the bootloader. | `bl` partition, ESP-IDF type/subtype `app/ota_0`. |
 | EspHub SDK | Provides device-side integration with EspHub, including networking, commands, and console forwarding. A Native Program can integrate it too. | Linked into each firmware image that uses it. It has no separate partition. |
 | Runtime | Provides an execution environment for a Program. EspHub currently provides the MicroPython Runtime. | `app` partition, type/subtype `app/ota_1`. |
 | Program | The application the user wants the device to run. Its form determines how it starts and how it is installed. | One of the two forms below. |
@@ -47,15 +47,13 @@ These are partition capacities, not compiled binary sizes or available RAM. Addr
 | 8 MiB Cardputer-Adv | 1.25 MiB at `0x20000` | 4 MiB at `0x160000` | 2.5625 MiB at `0x570000` |
 | 16 MiB fresh setup (Paper Color, PaperDIY, StackChan, StopWatch) | 1.25 MiB at `0x20000` | 4 MiB at `0x160000` | 10.5625 MiB at `0x570000` |
 
-The 4 MiB layout needs an application image that fits its 2.0625 MiB budget. The separate StopWatch compatibility layout places the EspHub Bootloader at `0x10000`, the application at `0x150000`, and preserves the existing SPIFFS `storage` partition at `0x812000`. The LittleFS `main.py` path above applies to the fresh setup kit.
+The 4 MiB layout needs an application image that fits its 2.0625 MiB budget.
 
 ## Implementation status and API names
 
 | Product term | Current `ota.install` kind | Status |
 | --- | --- | --- |
-| EspHub Bootloader | `launcher` | Supported |
+| EspHub Bootloader | `bootloader` | Supported |
 | MicroPython Runtime | `micropython` | Supported |
 | Python Program | `python` | Supported |
 | Native Program | No kind defined | Target design. A native install target and image identification still need implementation. |
-
-The baseline at commit `b734edb` uses `launcher_a`, `launcher_b`, and `app`. The single-slot tables above describe PR #19. Updating an image over OTA keeps the installed partition table. Existing devices reclaim the old slot's capacity when provisioned with the new layout. [Baseline partition table](https://github.com/okou-ai/esphub/blob/b734edb/firmware/partitions/16mb.csv) · [Single-slot implementation and board tables](https://github.com/okou-ai/esphub/pull/19)

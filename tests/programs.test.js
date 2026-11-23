@@ -44,9 +44,9 @@ test("each board links to the actual source, build recipes and provisioning exam
         );
         continue;
       }
-      const expected = `firmware/boards/${board}/${kind === "launcher" ? "layout" : kind}`;
+      const expected = `firmware/boards/${board}/${kind === "bootloader" ? "layout" : kind}`;
       const buildAction =
-        kind === "launcher"
+        kind === "bootloader"
           ? "scripts/build-bootloader.sh"
           : expected + "/action.yml";
       assert.equal(localPath(layer.board_directory_url, "tree"), expected);
@@ -139,7 +139,7 @@ test("publishing bounds UTF-8 byte size and OTA accepts only the three HTTPS tar
       validate("programs.publish", { device_id, source: "é".repeat(16385) }),
     /Invalid source/,
   );
-  for (const kind of ["launcher", "micropython", "python"])
+  for (const kind of ["bootloader", "micropython", "python"])
     validate("ota.install", {
       device_id,
       kind,
@@ -167,7 +167,7 @@ test("publishing bounds UTF-8 byte size and OTA accepts only the three HTTPS tar
   );
 });
 
-test("runtime reports directly installed source, including broken programs and legacy OTA handoffs", () => {
+test("runtime reports directly installed source, including broken programs", () => {
   const script = `import os, sys, tempfile, types
 from pathlib import Path
 boot = compile(Path("firmware/pyrt/overlay/okl/_boot.py").read_text(), "_boot.py", "exec")
@@ -181,18 +181,14 @@ with tempfile.TemporaryDirectory() as root:
     module("micropython", alloc_emergency_exception_buf=lambda size: None)
     module("os", chdir=lambda path: os.chdir(root), rename=os.rename, remove=os.remove, dupterm=lambda *a: None)
     main = Path(root, "main.py")
-    staged = Path(root, ".esphub-next.py")
     main.write_text("print('old')")
     Path(root, ".esphub-download").write_text("print('partial')")
     exec(boot, {})
     assert main.read_text() == "print('old')"
-    staged.write_text("print('new')")
-    exec(boot, {})
-    assert main.read_text() == "print('new')" and not staged.exists()
     main.write_text("if (")
     exec(boot, {})
-    assert main.read_text() == "if (" and not staged.exists()
-    assert reports == [("available", b"print('old')"), ("available", b"print('new')"), ("available", b"if (")]
+    assert main.read_text() == "if ("
+    assert reports == [("available", b"print('old')"), ("available", b"if (")]
     main.unlink()
     exec(boot, {})
     assert reports[-1] == ("missing", b"")
@@ -256,7 +252,21 @@ body.set_servo_power.assert_not_called()
   });
 });
 
-test("local upload sizes match the launcher limits", () => {
+test("OTA rejects the retired launcher tool and kind", () => {
+  const device_id = "00000000-0000-4000-8000-000000000001";
+  assert.throws(
+    () => validate("launcher.enter", { device_id }),
+    /Unknown tool/,
+  );
+  assert.throws(() => validate("ota.install", { device_id, kind: "launcher" }));
+  assert.throws(() =>
+    validate("ota.prepare_upload", { device_id, kind: "launcher", size: 1 }),
+  );
+  validate("bootloader.enter", { device_id });
+  validate("ota.install", { device_id, kind: "bootloader" });
+});
+
+test("local upload sizes match the bootloader limits", () => {
   const device_id = crypto.randomUUID();
   validate("programs.publish", { device_id, source: "x".repeat(32768) });
   assert.throws(() =>
@@ -266,7 +276,7 @@ test("local upload sizes match the launcher limits", () => {
     validate("ota.prepare_upload", { device_id, kind: "python", size: 20 }),
   );
   for (const [kind, limit] of [
-    ["launcher", 4194304],
+    ["bootloader", 4194304],
     ["micropython", 4194304],
   ]) {
     validate("ota.prepare_upload", { device_id, kind, size: limit });

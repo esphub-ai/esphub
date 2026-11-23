@@ -104,7 +104,7 @@ export function simulatedDevice(site, token) {
           sub.on("error", reject);
         });
       }
-      await send({ t: "hello", ...info });
+      await send({ t: "hello", proto: 2, ...info });
       return boot;
     },
     async pull() {

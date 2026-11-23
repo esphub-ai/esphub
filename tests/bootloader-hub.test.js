@@ -35,7 +35,7 @@ test("USB and the SDK accept plain hub hostnames and reject URLs before changing
       "-Ifirmware/bootloader/main",
       component + "/src/okou_hub.c",
       "firmware/bootloader/main/prov_common.c",
-      "tests/fixtures/launcher-hub/usb.c",
+      "tests/fixtures/bootloader-hub/usb.c",
       ...cjson,
       "-o",
       exe,

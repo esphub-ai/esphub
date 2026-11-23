@@ -7,7 +7,7 @@
 #include <string.h>
 #include "cJSON.h"
 #include "okou_agent_ext.h"
-#include "launcher.h"
+#include "bootloader.h"
 #include "okou_ble.h"
 
 static bool str_field(const cJSON *o, const char *k, size_t max, const char **out, char *err, size_t n)

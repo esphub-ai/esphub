@@ -16,7 +16,7 @@ if(NOT "${IDF_TARGET}" STREQUAL "${variant_target}" OR
 endif()
 set(SDKCONFIG_DEFAULTS "../sdkconfig.common;sdkconfig.defaults;variants/${ESPHUB_BL}/sdkconfig.defaults;../ble.defaults")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(esp-launcher)
+project(esp-bootloader)
 
 if(NOT "${CONFIG_OKOU_BL_PROFILE}" STREQUAL "${ESPHUB_BL}" OR
    NOT "${CONFIG_ESPTOOLPY_FLASHSIZE}" STREQUAL "${variant_flash}" OR
@@ -24,6 +24,6 @@ if(NOT "${CONFIG_OKOU_BL_PROFILE}" STREQUAL "${ESPHUB_BL}" OR
     message(FATAL_ERROR "Use a clean sdkconfig for bootloader variant '${ESPHUB_BL}'.")
 endif()
 
-# Let the SDK omit app-only command and boot paths from the launcher image.
+# Let the SDK omit app-only command and boot paths from the bootloader image.
 idf_component_get_property(agent_library okou_agent COMPONENT_LIB)
-target_compile_definitions(${agent_library} PRIVATE OKOU_LAUNCHER_BUILD)
+target_compile_definitions(${agent_library} PRIVATE OKOU_BOOTLOADER_BUILD)

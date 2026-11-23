@@ -17,9 +17,9 @@ shared = Path("shared-bl")
 build = json.loads((shared / "build.json").read_text())
 assert build["variant"] == metadata["bootloader"]
 assert re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", board) and len(board) < 32
-image = (shared / "esp-launcher.bin").read_bytes()
+image = (shared / "esp-bootloader.bin").read_bytes()
 assert sha256(image).hexdigest() == build["ota_sha256"]
-assert image[288:].startswith(f"ESPHUB2/launcher/{metadata['bootloader']}\0single-launcher-v1\0".encode())
+assert image[288:].startswith(f"ESPHUB2/bootloader/{metadata['bootloader']}\0bootloader-ota-v2\0".encode())
 chip = metadata["chip"]
 prefix = f"esphub-{board}-{chip}-{version}"
 out = Path("dist")
@@ -53,12 +53,12 @@ def package(table, suffix):
         offsets = {
             build["bootloader_offset"]: "bootloader.bin",
             build["partition_offset"]: table_bin.name,
-            bl[3]: "esp-launcher.bin",
+            bl[3]: "esp-bootloader.bin",
             ota_data[3]: "ota-data-initial.bin",
         }
         with ZipFile(out / usb, "w", ZIP_DEFLATED) as z:
             z.write(shared / "bootloader.bin", "bootloader.bin")
-            z.write(shared / "esp-launcher.bin", "esp-launcher.bin")
+            z.write(shared / "esp-bootloader.bin", "esp-bootloader.bin")
             z.write(table_bin, table_bin.name)
             z.write(table, "partitions.csv")
             z.write(nvs_bin, nvs_bin.name)
@@ -66,18 +66,14 @@ def package(table, suffix):
             z.writestr("flash_args", " ".join(build["write_flash_args"]) + "\n" +
                        "".join(f"{offset} {name}\n" for offset, name in offsets.items()))
             z.writestr("INSTALL.txt", f"""For {board} only. Use the setup kit for a first installation.
-This archive preserves NVS and resets boot selection to the launcher.
-Use OTA to migrate an installed board to the shared bootloader and save its board identity.
+This archive preserves NVS and resets boot selection to the bootloader.
+Use the full USB setup kit to switch from firmware using an earlier protocol.
 """)
     return {"file": usb, "sha256": sha256((out / usb).read_bytes()).hexdigest()}, offsets
 
 
 table = profile / "layout/partitions.csv"
 usb, offsets = package(table, "-usb")
-fresh = profile / "layout/fresh.csv"
-if fresh.exists():
-    fresh_usb, _ = package(fresh, "-fresh-usb")
-    (out / (prefix + "-fresh-usb.sha256")).write_text(f"{fresh_usb['sha256']}  {fresh_usb['file']}\n")
 manifest = {"source_commit": build["source_commit"], "board": board, "chip": chip,
             "version": version, "flash_mb": metadata["flash_mb"],
             "bootloader": build["variant"], "bootloader_version": build["version"],

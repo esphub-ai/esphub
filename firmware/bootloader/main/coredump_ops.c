@@ -1,10 +1,10 @@
-/* Launcher ops `coredump` and `coredump.erase`. SPDX-License-Identifier: MIT */
+/* Bootloader ops `coredump` and `coredump.erase`. SPDX-License-Identifier: MIT */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include "esp_core_dump.h"
 #include "okou_agent_ext.h"
-#include "launcher.h"
+#include "bootloader.h"
 
 static esp_err_t op_coredump(const cJSON *args, cJSON *data, char *err, size_t errlen)
 {

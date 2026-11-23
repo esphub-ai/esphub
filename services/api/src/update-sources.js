@@ -15,14 +15,15 @@ export function updateSources(board) {
   return {
     firmware_update: {
       bootloader: {
+        setup_manifest_url: `https://api.esphub.ai/releases/${board}/setup-manifest`,
         download_url: `https://api.esphub.ai/releases/${board}/ota`,
         instructions:
-          "For the latest official EspHub Bootloader, call ota.install with kind launcher and omit url. On older single-slot MicroPython devices, update the board Runtime first and wait for it to boot. Then request the Bootloader update.",
+          "For the latest official EspHub Bootloader, call ota.install with kind bootloader and omit url. For devices on the previous protocol, back up device data and install the current board USB setup kit before using OTA.",
       },
       runtime: {
         download_url: runtimeDownloadUrl(board),
         instructions:
-          "Use launcher.enter, wait for EspHub Bootloader mode (role launcher), then call ota.install with kind micropython and this URL. Verify the install event and the new Runtime boot.",
+          "Use bootloader.enter, wait for EspHub Bootloader mode (role bootloader), then call ota.install with kind micropython and this URL. Verify the install event and the new Runtime boot.",
       },
       program: {
         sdk_version: sdk.version,
@@ -32,7 +33,7 @@ export function updateSources(board) {
       },
     },
     sources: {
-      launcher: {
+      bootloader: {
         directory_url: tree + "/firmware/bootloader",
         board_directory_url: tree + profile + "/layout",
         sdk_directory_url: sdkSource,

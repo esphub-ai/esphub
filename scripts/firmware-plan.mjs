@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, appendFileSync } from "node:fs";
 import { matchesGlob, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { publishedFirmware } from "../shared/firmware-releases.js";
+import { publishedFirmware, releaseTag } from "../shared/firmware-releases.js";
 
 const bootloaderInputs = [
   "firmware/bootloader/**",
@@ -12,12 +12,12 @@ const bootloaderInputs = [
   "firmware/ble.defaults",
   "firmware/version.txt",
   "scripts/build-bootloader.sh",
-  "scripts/package-launcher.py",
+  "scripts/package-bootloader.py",
   ".github/workflows/build-bootloader.yml",
 ];
 const sharedInputs = {
-  launcher: [
-    "scripts/package-board-launcher.py",
+  bootloader: [
+    "scripts/package-board-bootloader.py",
     ".github/workflows/build-board.yml",
   ],
   micropython: [
@@ -68,7 +68,7 @@ export function profiles(ref, cwd = process.cwd()) {
     const { chip, flash_mb, bootloader } = json(dir + "/board.json"),
       jobs = json(path),
       tasks = {};
-    if (bootloader) {
+    {
       const config = `firmware/bootloader/variants/${bootloader}/sdkconfig.defaults`;
       if (bootloader !== `${chip}-${flash_mb}mb` || !files.has(config))
         throw Error("Invalid bootloader for " + board);
@@ -95,8 +95,8 @@ export function profiles(ref, cwd = process.cwd()) {
         if (!files.has(target)) throw Error("Unknown layout " + target);
         return files.get(target);
       });
-      tasks.launcher = {
-        kind: "launcher",
+      tasks.bootloader = {
+        kind: "bootloader",
         runner: "ubuntu-24.04",
         container: "espressif/idf:v5.4.1",
         fingerprint: digest([
@@ -105,14 +105,14 @@ export function profiles(ref, cwd = process.cwd()) {
           variants.get(bootloader),
           layouts,
           partitions,
-          ...matching(sharedInputs.launcher),
+          ...matching(sharedInputs.bootloader),
         ]),
       };
     }
     for (const [kind, job] of Object.entries(jobs)) {
       if (
         !Object.hasOwn(sharedInputs, kind) ||
-        (bootloader && kind === "launcher") ||
+        kind === "bootloader" ||
         !files.has(`${dir}/${kind}/action.yml`)
       )
         throw Error(`Invalid CI task ${board}/${kind}`);
@@ -137,11 +137,11 @@ export function profiles(ref, cwd = process.cwd()) {
       };
     }
     if (tasks.setup) {
-      if (!tasks.launcher || !tasks.micropython)
+      if (!tasks.bootloader || !tasks.micropython)
         throw Error("USB setup requires both component tasks: " + board);
       tasks.setup.fingerprint = digest([
         tasks.setup.fingerprint,
-        tasks.launcher.fingerprint,
+        tasks.bootloader.fingerprint,
         tasks.micropython.fingerprint,
       ]);
     }
@@ -179,7 +179,7 @@ export function boardPlans(
     }
     if (!Object.values(changed).some(Boolean)) continue;
     if (changed.setup) {
-      for (const kind of ["launcher", "micropython"]) {
+      for (const kind of ["bootloader", "micropython"]) {
         if (published[kind]?.fingerprint !== tasks[kind].fingerprint)
           changed[kind] = true;
       }
@@ -188,7 +188,7 @@ export function boardPlans(
       .filter((task) => changed[task.kind])
       .map((task) => ({
         ...task,
-        tag: `${task.kind}-${board}-v${version}`,
+        tag: releaseTag(task.kind, board, version),
         version,
       }));
     const components = jobs.filter((t) => t.kind !== "setup"),
@@ -205,9 +205,9 @@ export function boardPlans(
       kit: kit
         ? {
             ...kit,
-            launcher: input("launcher"),
+            bootloader: input("bootloader"),
             micropython: input("micropython"),
-            local_launcher: !!changed.launcher,
+            local_bootloader: !!changed.bootloader,
             local_micropython: !!changed.micropython,
           }
         : null,
@@ -247,7 +247,7 @@ if (
   const bootloaders = [
     ...new Map(
       plans
-        .filter((p) => p.components.some((task) => task.kind === "launcher"))
+        .filter((p) => p.components.some((task) => task.kind === "bootloader"))
         .map((p) => [
           p.bootloader,
           {

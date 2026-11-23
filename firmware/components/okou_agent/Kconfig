@@ -1,4 +1,4 @@
-menu "okou agent (esp-launcher SDK)"
+menu "okou agent (esp-bootloader SDK)"
 
     config OKOU_BOARD_PROFILE
         string "Board profile reported by a board-specific application"
@@ -62,7 +62,7 @@ menu "okou agent (esp-launcher SDK)"
         default 2
 
     config OKOU_MAX_FAIL_BOOTS
-        int "Boots without a hub ack before the SDK boots the launcher (0 = never)"
+        int "Boots without a hub ack before the SDK boots the bootloader (0 = never)"
         range 0 20
         default 3
 

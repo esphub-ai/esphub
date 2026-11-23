@@ -1,4 +1,4 @@
-menu "esp-launcher"
+menu "esp-bootloader"
 
     config OKL_URL_OTA
         bool
@@ -13,7 +13,7 @@ menu "esp-launcher"
         default 30
         help
             Extension to docs/protocol.md: after the app failed (bootloader rollback or
-            okl/fail_boots >= 3) the launcher waits longer before starting it again so an
+            okl/fail_boots >= 3) the bootloader waits longer before starting it again so an
             operator can catch it; any hub request cancels auto-start.
 
 endmenu

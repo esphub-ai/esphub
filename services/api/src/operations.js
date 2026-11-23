@@ -4,9 +4,9 @@ import { connected } from "./iot.js";
 import { artifactBase } from "./uploads.js";
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import { maxUploadBytes } from "./uploads.js";
-import { runtimeDownloadUrl, updateSources } from "./update-sources.js";
+import { updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
-import { launcherManifest } from "./releases.js";
+import { bootloaderManifest } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
 import { createVirtual, operateVirtual } from "./virtual-device.js";
 const programByteLimit = 32 * 1024;
@@ -14,7 +14,7 @@ const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
 const id = strings("device_id"),
   session = { ...id, ...strings("process_id") };
-const otaKind = { type: "string", enum: ["launcher", "micropython", "python"] };
+const otaKind = { type: "string", enum: ["bootloader", "micropython", "python"] };
 const additive = {
   readOnlyHint: false,
   destructiveHint: false,
@@ -101,9 +101,9 @@ const defs = [
     { ...id, ...strings("ssid") },
   ],
   [
-    "launcher.enter",
+    "bootloader.enter",
     destructive,
-    "Enter EspHub Bootloader mode for OTA updates. The protocol reports this mode as launcher. If already in Bootloader mode, returns the current boot session.",
+    "Enter EspHub Bootloader mode for OTA updates. If already in Bootloader mode, returns the current boot session.",
     id,
   ],
   [
@@ -118,14 +118,14 @@ const defs = [
     "Returns a short-lived PUT URL, authorization headers, and an artifact URL for one file of the specified kind and byte size. A successful upload of exactly that size returns HTTP 201. The device can be offline.",
     {
       ...id,
-      kind: { type: "string", enum: ["launcher", "micropython"] },
+      kind: { type: "string", enum: ["bootloader", "micropython"] },
       size: { type: "integer", minimum: 1, maximum: maxUploadBytes },
     },
   ],
   [
     "ota.install",
     { ...destructive, openWorldHint: true },
-    "Update a registered device. For the latest official EspHub Bootloader, use kind launcher and omit url. Before migrating an older MicroPython device to the shared Bootloader, first install its official board Runtime with kind micropython and the HTTPS URL from devices.get. Use launcher.enter for Runtime or Python Program updates. For a Python Program, use kind python and a UTF-8 main.py URL. A compatible MicroPython Runtime can also start a Bootloader update directly. For a Native Program, read the SDK version and board-specific guidance from devices.get. Native Program binaries require a separate OTA path. Confirm completion from the install event and the next boot.",
+    "Update a registered device. For the latest official EspHub Bootloader, use kind bootloader and omit url. Devices on the previous protocol need the current USB setup kit before using OTA. Use bootloader.enter for Runtime or Python Program updates. For a Python Program, use kind python and a UTF-8 main.py URL. A compatible MicroPython Runtime can also start a Bootloader update directly. For a Native Program, read the SDK version and board-specific guidance from devices.get. Native Program binaries require a separate OTA path. Confirm completion from the install event and the next boot.",
     {
       ...id,
       kind: otaKind,
@@ -201,7 +201,7 @@ function queueable(name) {
     [
       "devices.reboot",
       "devices.reset",
-      "launcher.enter",
+      "bootloader.enter",
       "ota.install",
       "firmware.get",
       "logs.flush",
@@ -253,7 +253,7 @@ export function validate(name, a) {
       (new TextEncoder().encode(a[k]).length > max || a[k].includes("\0"))
     )
       fail(400, "Invalid " + k);
-  if (name === "ota.install" && !a.url && a.kind !== "launcher")
+  if (name === "ota.install" && !a.url && a.kind !== "bootloader")
     fail(400, "Artifact URL required");
   if (a.url) {
     let u;
@@ -295,7 +295,7 @@ async function summary(c, d) {
       serial_input: false,
     };
   const [online, broker] = await Promise.all([
-    d.cert_ready && d.boot_id === d.enrolled_boot && connected(c.env, d.id),
+    d.boot_info?.proto === 2 && d.cert_ready && d.boot_id === d.enrolled_boot && connected(c.env, d.id),
     internal(c, d.id, "summary"),
   ]);
   return {
@@ -405,35 +405,34 @@ export async function operate(c, owner, name, a) {
   const info = d.boot_info;
   if (name === "uart.write")
     return queue("term.write", { data: a.text }, a.process_id);
-  if (name === "launcher.enter")
-    return info?.role === "launcher"
-      ? { mode: "launcher", process_id: d.boot_id }
-      : queue("reboot", { target: "launcher" }, d.boot_id);
+  if (name === "bootloader.enter") {
+    if (info?.proto !== 2)
+      fail(409, "Install the current EspHub USB setup kit before using OTA");
+    return info?.role === "bootloader"
+      ? { mode: "bootloader", process_id: d.boot_id }
+      : queue("reboot", { target: "bootloader" }, d.boot_id);
+  }
   if (name === "ota.install") {
     const runtimeWriter =
-      (a.kind ?? "launcher") === "launcher" &&
+      a.kind === "bootloader" &&
       info?.role === "app" &&
-      info.single_launcher_ota === true &&
-      info.image_profile === "ESPHUB1/micropython/" + d.board;
+      info.bootloader_ota === true &&
+      info.bootloader_profile === boards[d.board]?.bootloader &&
+      info.image_profile === "ESPHUB2/micropython/" + d.board;
     const variant = boards[d.board]?.bootloader;
-    const launcher = info?.role === "launcher" && (
-      info.image_profile === "ESPHUB1/launcher/" + d.board ||
-      (variant && info.image_profile === "ESPHUB2/launcher/" + variant)
-    );
-    if (info?.board !== d.board || (!launcher && !runtimeWriter))
-      fail(409, "Enter compatible EspHub Bootloader mode first using launcher.enter");
+    const bootloader = info?.role === "bootloader" &&
+      info.image_profile === "ESPHUB2/bootloader/" + variant;
+    if (info?.proto !== 2)
+      fail(409, "Install the current EspHub USB setup kit before using OTA");
+    if (info.board !== d.board || (!bootloader && !runtimeWriter))
+      fail(409, "Enter compatible EspHub Bootloader mode first using bootloader.enter");
     if (!a.url) {
-      const manifest = await launcherManifest(d.board);
+      const manifest = await bootloaderManifest(d.board);
       if (info.chip !== manifest.chip) fail(409, "Release target mismatch");
-      if (manifest.bootloader && runtimeWriter && info.bootloader_profile !== manifest.bootloader)
-        fail(
-          409,
-          `Install the latest MicroPython Runtime from ${runtimeDownloadUrl(d.board)} before updating to the shared EspHub Bootloader`,
-        );
       return queue(
         "install",
         {
-          kind: "launcher",
+          kind: "bootloader",
           board: d.board,
           transfer_id: key,
           url:

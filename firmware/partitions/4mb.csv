@@ -1,4 +1,4 @@
-# Single launcher and MicroPython application.
+# Single bootloader and MicroPython application.
 # Name,       Type, SubType,  Offset,   Size
 nvs,          data, nvs,      0x9000,   0x6000
 otadata,      data, ota,      0xf000,   0x2000

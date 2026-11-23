@@ -1,5 +1,5 @@
 /*
- * okou agent core: hub connection, framing and request dispatch (docs/protocol.md v1).
+ * okou agent core: hub connection, framing and request dispatch (docs/protocol.md v2).
  *
  * The agent task owns MQTT publishing, HTTPS requests and command dispatch.
  * Producer tasks only write bounded queues.
@@ -282,11 +282,11 @@ void okou_metric(const char *name, double value)
 #include "okou_install.h"
 
 /* IDF places this directly after esp_app_desc_t in the first image segment.
- * The launcher can check the artifact type and board before erasing a slot. */
+ * The bootloader can check the artifact type and board before erasing a slot. */
 #if CONFIG_OKL_URL_OTA
 #define OKOU_IMAGE_PROFILE OKOU_BL_IMAGE_PREFIX CONFIG_OKOU_BL_PROFILE
 #elif CONFIG_OKOU_MICROPYTHON_RUNTIME
-#define OKOU_IMAGE_PROFILE "ESPHUB1/micropython/" CONFIG_OKOU_BOARD_PROFILE
+#define OKOU_IMAGE_PROFILE "ESPHUB2/micropython/" CONFIG_OKOU_BOARD_PROFILE
 #endif
 #ifdef OKOU_IMAGE_PROFILE
 static const char image_profile[] __attribute__((section(".rodata_custom_desc"), aligned(4))) = OKOU_IMAGE_PROFILE "\0" OKOU_OTA_CAPABILITY;
@@ -299,11 +299,11 @@ static void hello_fill(cJSON *o)
     okou_hex(d->app_elf_sha256, 32, sha);
     okou_mac_str(mac);
     const esp_partition_t *run = esp_ota_get_running_partition();
-    cJSON_AddNumberToObject(o, "proto", 1);
+    cJSON_AddNumberToObject(o, "proto", 2);
     cJSON_AddBoolToObject(o, "log_flush", true);
 #ifdef OKOU_IMAGE_PROFILE
     cJSON_AddStringToObject(o, "image_profile", image_profile);
-    cJSON_AddBoolToObject(o, "single_launcher_ota", true);
+    cJSON_AddBoolToObject(o, "bootloader_ota", true);
     if (CONFIG_OKOU_BL_PROFILE[0]) cJSON_AddStringToObject(o, "bootloader_profile", CONFIG_OKOU_BL_PROFILE);
 #endif
 #if CONFIG_OKL_URL_OTA
@@ -314,7 +314,7 @@ static void hello_fill(cJSON *o)
     if (CONFIG_OKOU_BOARD_PROFILE[0]) cJSON_AddStringToObject(o, "board", CONFIG_OKOU_BOARD_PROFILE);
 #endif
     cJSON_AddStringToObject(o, "boot_id", s_boot_id);
-    cJSON_AddStringToObject(o, "role", okou_is_launcher() ? "launcher" : "app");
+    cJSON_AddStringToObject(o, "role", okou_is_bootloader() ? "bootloader" : "app");
     cJSON *fw = cJSON_AddObjectToObject(o, "fw");
     cJSON_AddStringToObject(fw, "name", d->project_name);
     cJSON_AddStringToObject(fw, "version", d->version);
@@ -323,10 +323,10 @@ static void hello_fill(cJSON *o)
     cJSON_AddStringToObject(o, "sdk_version", OKOU_SDK_VERSION);
     if (g_okou_cfg.micropython_version)
         cJSON_AddStringToObject(o, "micropython_version", g_okou_cfg.micropython_version);
-    const esp_partition_t *launcher = okou_is_launcher() ? run : okou_launcher_partition();
-    esp_app_desc_t launcher_desc;
-    if (launcher && esp_ota_get_partition_description(launcher, &launcher_desc) == ESP_OK)
-        cJSON_AddStringToObject(o, "launcher_version", launcher_desc.version);
+    const esp_partition_t *bootloader = okou_is_bootloader() ? run : okou_bootloader_partition();
+    esp_app_desc_t bootloader_desc;
+    if (bootloader && esp_ota_get_partition_description(bootloader, &bootloader_desc) == ESP_OK)
+        cJSON_AddStringToObject(o, "bootloader_version", bootloader_desc.version);
     cJSON_AddStringToObject(o, "partition", run ? run->label : "");
     cJSON_AddStringToObject(o, "ota_state", run ? okou_ota_state_str(run) : "");
     cJSON_AddStringToObject(o, "chip", CONFIG_IDF_TARGET);
@@ -624,9 +624,9 @@ static esp_err_t op_reboot(const cJSON *args, cJSON *data, char *err, size_t err
 {
     const cJSON *jt = cJSON_GetObjectItemCaseSensitive(args, "target");
     const char *target = cJSON_IsString(jt) ? jt->valuestring : "self";
-    bool launcher = okou_is_launcher();
+    bool bootloader = okou_is_bootloader();
     if (strcmp(target, "app") == 0) {
-        if (launcher) {
+        if (bootloader) {
             const esp_partition_t *app = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY,
                                                                   "app");
             esp_err_t e = app ? esp_ota_set_boot_partition(app) : ESP_ERR_NOT_FOUND;
@@ -637,18 +637,18 @@ static esp_err_t op_reboot(const cJSON *args, cJSON *data, char *err, size_t err
             okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);
             okou_nvs_erase(OKOU_KEY_HOLD);
         }
-    } else if (strcmp(target, "launcher") == 0) {
-        if (!launcher) {
-            const esp_partition_t *lp = okou_launcher_partition();
+    } else if (strcmp(target, "bootloader") == 0) {
+        if (!bootloader) {
+            const esp_partition_t *lp = okou_bootloader_partition();
             esp_err_t e = lp ? esp_ota_set_boot_partition(lp) : ESP_ERR_NOT_FOUND;
             if (e != ESP_OK) {
-                snprintf(err, errlen, "cannot select launcher: %s", esp_err_to_name(e));
+                snprintf(err, errlen, "cannot select bootloader: %s", esp_err_to_name(e));
                 return e;
             }
         }
         okou_nvs_set_u8(OKOU_KEY_HOLD, 1);
     } else if (strcmp(target, "self") == 0) {
-        if (launcher) {
+        if (bootloader) {
             okou_nvs_set_u8(OKOU_KEY_HOLD, 1);
         }
     } else {
@@ -761,8 +761,8 @@ static void handle_req(const cJSON *root)
         for (size_t i = 0; r == ESP_OK && i < sizeof(keys)/sizeof(keys[0]); ++i) {
             r = okou_nvs_erase(keys[i]);
         }
-        if (r == ESP_OK && !okou_is_launcher()) {
-            const esp_partition_t *lp = okou_launcher_partition();
+        if (r == ESP_OK && !okou_is_bootloader()) {
+            const esp_partition_t *lp = okou_bootloader_partition();
             r = lp ? esp_ota_set_boot_partition(lp) : ESP_ERR_NOT_FOUND;
         }
         if (r == ESP_OK) {
@@ -772,8 +772,8 @@ static void handle_req(const cJSON *root)
         if (r != ESP_OK) snprintf(err, sizeof(err), "reset failed: %s", esp_err_to_name(r));
     } else if (strcmp(op, "reboot") == 0) {
         r = op_reboot(args, data, err, sizeof(err));
-    } else if (strcmp(op, "install") == 0 && !okou_is_launcher()) {
-        snprintf(err, sizeof(err), "Enter launcher mode before OTA");
+    } else if (strcmp(op, "install") == 0 && !okou_is_bootloader()) {
+        snprintf(err, sizeof(err), "Enter bootloader mode before OTA");
     } else {
         snprintf(err, sizeof(err), "unknown op: %s", op);
     }
@@ -802,7 +802,7 @@ int okou_poll(uint32_t timeout_ms)
 }
 
 /* Rollback visibility. The bootloader's "last invalid partition" survives only until the next
- * esp_ota_set_boot_partition() rewrites otadata (the launcher auto-starting the app does exactly
+ * esp_ota_set_boot_partition() rewrites otadata (the bootloader auto-starting the app does exactly
  * that, usually before it has reached the hub). So record it in NVS on the first boot that sees
  * it, and report it as a `rollback` event from whichever role reaches the hub first. */
 static void record_rollback(void)
@@ -822,10 +822,10 @@ static void record_rollback(void)
     const esp_partition_t *run = esp_ota_get_running_partition();
     cJSON *o = cJSON_CreateObject();
     cJSON_AddStringToObject(o, "partition", inv->label);
-    cJSON_AddStringToObject(o, "kind", strcmp(inv->label, "app") == 0 ? "app" : "launcher");
+    cJSON_AddStringToObject(o, "kind", strcmp(inv->label, "app") == 0 ? "app" : "bootloader");
     cJSON_AddStringToObject(o, "returned_to", run ? run->label : "?");
     cJSON_AddStringToObject(o, "reset_reason", okou_reset_reason_str());
-    cJSON_AddStringToObject(o, "detected_by", okou_is_launcher() ? "launcher" : "app");
+    cJSON_AddStringToObject(o, "detected_by", okou_is_bootloader() ? "bootloader" : "app");
     cJSON_AddStringToObject(o, "boot_id", s_boot_id);
     char *js = cJSON_PrintUnformatted(o);
     cJSON_Delete(o);
@@ -853,7 +853,7 @@ static void report_rollback(void)
 
 esp_err_t okou_enter_setup(void)
 {
-    const esp_partition_t *lp = okou_launcher_partition();
+    const esp_partition_t *lp = okou_bootloader_partition();
     if (!lp) {
         return ESP_ERR_NOT_FOUND;
     }
@@ -894,7 +894,7 @@ static void on_first_ack(void)
 {
     ESP_LOGI(TAG, "hello acknowledged by hub");
     report_rollback();
-    if (!okou_is_launcher() && !g_okou_cfg.app_validates) {
+    if (!okou_is_bootloader() && !g_okou_cfg.app_validates) {
         const esp_partition_t *run = esp_ota_get_running_partition();
         esp_ota_img_states_t st;
         if (esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY) {
@@ -1131,11 +1131,11 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     s_rolled_back = esp_ota_get_last_invalid_partition() != NULL;
     record_rollback();
 
-    if (!okou_is_launcher() && !g_okou_cfg.app_validates && CONFIG_OKOU_MAX_FAIL_BOOTS > 0) {
+    if (!okou_is_bootloader() && !g_okou_cfg.app_validates && CONFIG_OKOU_MAX_FAIL_BOOTS > 0) {
         uint8_t fb = okou_nvs_get_u8(OKOU_KEY_FAIL_BOOTS, 0);
         if (fb >= CONFIG_OKOU_MAX_FAIL_BOOTS) {
-            const esp_partition_t *lp = okou_launcher_partition();
-            ESP_LOGE(TAG, "fail_boots=%u without hub ack: booting launcher (%s)", fb, lp ? lp->label : "none");
+            const esp_partition_t *lp = okou_bootloader_partition();
+            ESP_LOGE(TAG, "fail_boots=%u without hub ack: booting bootloader (%s)", fb, lp ? lp->label : "none");
             if (lp && esp_ota_set_boot_partition(lp) == ESP_OK) {
                 vTaskDelay(pdMS_TO_TICKS(100));
                 esp_restart();
@@ -1159,7 +1159,7 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
 #endif
     const esp_app_desc_t *d = esp_app_get_description();
     ESP_LOGI(TAG, "agent start: %s %s role=%s boot_id=%s", d->project_name, d->version,
-             okou_is_launcher() ? "launcher" : "app", s_boot_id);
+             okou_is_bootloader() ? "bootloader" : "app", s_boot_id);
     if (xTaskCreate(agent_task, "okou_agent", CONFIG_OKOU_TASK_STACK, NULL, CONFIG_OKOU_TASK_PRIO, NULL) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }

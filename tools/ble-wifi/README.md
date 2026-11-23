@@ -1,12 +1,12 @@
 # ESP Hub Wi-Fi setup on macOS
 
-Use the launcher and MicroPython images from the latest USB kit for your board. Register with `devices.create` and flash the kit following its INSTALL.txt. On the local USB port at 115200 baud send one newline-terminated record with the returned values:
+Use the bootloader and MicroPython images from the latest USB kit for your board. Register with `devices.create` and flash the kit following its INSTALL.txt. On the local USB port at 115200 baud send one newline-terminated record with the returned values:
 
 ```text
 OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret>"}
 ```
 
-Set `hub` to the plain ESPHub hostname. Wait for `OKL-PROVISION-OK`. The device can now receive its first Wi-Fi over Bluetooth. For an existing registration with older firmware, install both updated images and use `devices.reissue` to get new USB credentials. Reissuing disconnects the old registration token. Complete the USB write before moving the device.
+Set `hub` to the plain EspHub hostname. Wait for `OKL-PROVISION-OK`. The device can now receive its first Wi-Fi over Bluetooth. When moving a device to protocol 2, install the current USB setup kit and use `devices.reissue` to get new USB credentials. Reissuing disconnects the old registration token. Complete the USB write before moving the device.
 
 On a Mac with Python 3.13+ (OpenSSL with PSK support), install Bleak in a virtual environment and grant Bluetooth access to the terminal. Run with a locally authorized Okou CLI:
 

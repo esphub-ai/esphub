@@ -14,7 +14,7 @@ async function artifact(board, asset, tag) {
       ? asset
       : ["setup", "setup-manifest"].includes(asset)
         ? "setup"
-        : "launcher";
+        : "bootloader";
   const chip = boards[board].chip;
   if (!Object.hasOwn(assetNames(board, chip, kind, ""), asset))
     fail(404, "Unknown download");
@@ -33,7 +33,7 @@ async function artifact(board, asset, tag) {
   return { tag, version, url: `${releases}/${tag}/${filename}` };
 }
 
-export async function launcherManifest(board) {
+export async function bootloaderManifest(board) {
   const { tag, version, url } = await artifact(board, "manifest");
   const r = await fetch(url);
   if (!r.ok) fail(503, "Official EspHub Bootloader manifest unavailable");
@@ -42,8 +42,8 @@ export async function launcherManifest(board) {
     m.board !== board ||
     m.chip !== boards[board].chip ||
     m.version !== version ||
-    (m.bootloader !== undefined &&
-      (m.bootloader !== boards[board].bootloader || m.flash_mb !== boards[board].flash_mb)) ||
+    m.bootloader !== boards[board].bootloader ||
+    m.flash_mb !== boards[board].flash_mb ||
     !/^[a-f0-9]{64}$/.test(m.ota?.sha256) ||
     !Number.isSafeInteger(m.ota.size) ||
     m.ota.size <= 0
@@ -52,11 +52,7 @@ export async function launcherManifest(board) {
   return { ...m, tag };
 }
 
-export async function releaseResponse(board, kind, tag, deviceDownload) {
+export async function releaseResponse(board, kind, tag) {
   const { url } = await artifact(board, kind, tag);
-  if (!deviceDownload || kind !== "ota") return Response.redirect(url, 302);
-  // Older launchers require a direct 200 response for their pinned upgrade.
-  const r = await fetch(url, { redirect: "follow" });
-  if (r.status !== 200) fail(503, "Official EspHub Bootloader image unavailable");
-  return new Response(r.body, r);
+  return Response.redirect(url, 302);
 }

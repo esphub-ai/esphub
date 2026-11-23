@@ -6,9 +6,9 @@
 
 #define OKOU_BOARD_KEY "board"
 #define OKOU_BOARD_CAPACITY 32
-#define OKOU_BL_IMAGE_PREFIX "ESPHUB2/launcher/"
-#define OKOU_OTA_CAPABILITY "single-launcher-v1"
+#define OKOU_BL_IMAGE_PREFIX "ESPHUB2/bootloader/"
+#define OKOU_OTA_CAPABILITY "bootloader-ota-v2"
 
 esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen);
 void install_resume_pending(void);
-bool install_launcher_pending(void);
+bool install_bootloader_pending(void);

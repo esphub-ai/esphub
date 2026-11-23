@@ -249,7 +249,7 @@ void okl_usb_bus_active(bool active)
 bool okl_runtime_start(void)
 {
     ESP_ERROR_CHECK(okou_nvs_init());
-    bool maintenance = install_launcher_pending();
+    bool maintenance = install_bootloader_pending();
     okou_op_register("install", install_op);
     if (!maintenance) {
         okou_op_register("py.interrupt", op_py_interrupt);

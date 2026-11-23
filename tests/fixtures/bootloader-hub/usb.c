@@ -3,7 +3,7 @@
 #include <string.h>
 #include "okou_agent_ext.h"
 #include "okou_ble.h"
-#include "launcher.h"
+#include "bootloader.h"
 
 static unsigned writes;
 static char stored_hub[OKOU_HUB_HOST_MAX + 1];

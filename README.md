@@ -1,6 +1,6 @@
 # EspHub
 
-EspHub provisions ESP32 devices over USB and manages them through the web and MCP. This repository owns the production services and launcher firmware.
+EspHub provisions ESP32 devices over USB and manages them through the web and MCP. This repository owns the production services and bootloader firmware.
 
 | Host | Component |
 | --- | --- |
@@ -13,7 +13,7 @@ See the [firmware glossary and partition mapping](docs/firmware-terminology.md) 
 
 ## Devices and releases
 
-All supported models use ESP32-S3. Paper Color, PaperDIY, StackChan and StopWatch have 16 MB flash. Cardputer-Adv has 8 MB flash and its own partition layout. Its MicroPython runtime includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for the TCA8418 keyboard. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the shared EspHub Bootloader, MicroPython runtime, partition table, board identity, example main.py, flash arguments and a SHA-256 manifest. This kit replaces the partition table and app. The separate StopWatch Bootloader-only kit preserves its legacy partition layout.
+All supported models use ESP32-S3. Paper Color, PaperDIY, StackChan and StopWatch have 16 MB flash. Cardputer-Adv has 8 MB flash and its own partition layout. Its MicroPython runtime includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for the TCA8418 keyboard. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the shared EspHub Bootloader, MicroPython runtime, partition table, board identity, example main.py, flash arguments and a SHA-256 manifest. This kit erases flash and replaces the partition table and app. Back up device data before installing it.
 
 To build the shared EspHub Bootloader locally, use ESP-IDF 5.4.1 from `firmware/bootloader`. Use `esp32s3-8mb` for Cardputer-Adv and `esp32s3-16mb` for the other boards:
 
@@ -45,30 +45,30 @@ The virtual board supports read-only serial output and private 24-hour source st
 
 ## OTA
 
-On an existing board with the single-slot layout, install the latest board MicroPython runtime before upgrading to the shared EspHub Bootloader. That runtime saves the board identity in NVS when it writes the new launcher. OTA preserves the existing partition table and credentials. For a first install, the board-specific USB setup kit writes the board identity directly.
+Protocol 2 is required for OTA. Back up any device using the previous firmware protocol, flash the current board USB setup kit, and provision it again before using OTA. For a Native Program, rebuild with the current EspHub SDK and use its supported native OTA or USB installation path.
 
 1. For a local firmware binary, use `ota.prepare_upload` and PUT the file as described below. If you already have an HTTPS download URL, use it directly. For generated Python, call `programs.publish` with the device ID and UTF-8 source (up to 32 KiB). It returns a private HTTPS URL valid for 24 hours. An existing HTTPS URL also works.
-2. Call `launcher.enter` with the device ID. Wait for `devices.get` to report an online launcher. For the official launcher, use `ota.install` with `kind: "launcher"` and omit the URL.
-3. Call `ota.install` with `device_id`, `kind` and `url`. Use a matching official or custom-built OTA binary for `launcher` or `micropython`, or a plain UTF-8 main.py file for `python`. Boot the matching OTA-capable runtime once to initialize its data volume before installing a program.
+2. Call `bootloader.enter` with the device ID. Wait for `devices.get` to report an online bootloader. For the official bootloader, use `ota.install` with `kind: "bootloader"` and omit the URL.
+3. Call `ota.install` with `device_id`, `kind` and `url`. Use a matching official or custom-built OTA binary for `bootloader` or `micropython`, or a plain UTF-8 main.py file for `python`. Boot the matching OTA-capable runtime once to initialize its data volume before installing a program.
 4. Read the install result with `commands.get`. The boot performing the write reports `install.done` with the total bytes written or `install.failed` with the error. To inspect the event, match the transfer ID in that boot's `uart.read` stream (Runtime for Bootloader updates, Bootloader for Runtime and Python Program updates). After reboot, verify the new firmware identity or the program's startup output. An uncaught exception in boot.py or main.py produces a `program.failed` event and a traceback in the application log.
 
-The launcher validates the HTTPS certificate and hostname and streams in 4 KiB blocks. It checks the board and image type before writing firmware. New USB layouts reserve one 1.25 MiB partition named `bl` for the EspHub Bootloader and a partition named `app` for the application image. For Bootloader OTA, the EspHub Bootloader saves the URL and transfer ID and boots the matching MicroPython runtime in maintenance mode. Its native agent downloads into the same Bootloader partition and boots the validated image. A running compatible runtime can also accept `ota.install` directly for `kind: "launcher"`, including to retry an interrupted write. An interruption can leave the EspHub Bootloader unusable until the runtime retries the OTA or the device is recovered by USB.
+The bootloader validates the HTTPS certificate and hostname and streams in 4 KiB blocks. It checks the board and image type before writing firmware. New USB layouts reserve one 1.25 MiB partition named `bl` for the EspHub Bootloader and a partition named `app` for the application image. For Bootloader OTA, the EspHub Bootloader saves the URL and transfer ID and boots the matching MicroPython runtime in maintenance mode. Its native agent downloads into the same Bootloader partition and boots the validated image. A running compatible runtime can also accept `ota.install` directly for `kind: "bootloader"`, including to retry an interrupted write. An interruption can leave the EspHub Bootloader unusable until the runtime retries the OTA or the device is recovered by USB.
 
-On a device with the older A/B layout, update the runtime first, then the EspHub Bootloader. Subsequent updates overwrite the last booted EspHub Bootloader in place. OTA does not rewrite the partition table or move user files. To reclaim the reserved Flash on an existing device, back up its files and reinstall the new first-time USB kit. For a 4 MiB board with a compact runtime, `firmware/partitions/4mb.csv` allocates 1.25 MiB for the EspHub Bootloader, 2.0625 MiB for the runtime, and 512 KiB for user files. Current board-specific runtime releases exceed that runtime budget. The MicroPython Runtime image identifies the board. The shared EspHub Bootloader image identifies its chip and Flash variant. Both use the single-slot capability marker emitted by this SDK.
+OTA preserves the partition table and user files. For a 4 MiB board with a compact runtime, `firmware/partitions/4mb.csv` allocates 1.25 MiB for the EspHub Bootloader, 2.0625 MiB for the runtime, and 512 KiB for user files. Current board-specific runtime releases exceed that runtime budget. The MicroPython Runtime image identifies the board. The shared EspHub Bootloader image identifies its chip and Flash variant. Both use the single-slot capability marker emitted by this SDK.
 
 Runtime updates write the application slot, so a failed runtime download may require a retry in Bootloader mode. Python streams directly into main.py. Starting the write replaces the old source. Wait for output from the next application boot to verify execution. The hub's private artifact endpoint requires the device token. External downloads follow HTTPS redirects without that token.
 
 ### Build your own update
 
-Call `devices.get` to get `sources.launcher`, `sources.micropython` and `sources.python` for the registered board, including when it is offline. These are starting points in the official repository. The Python link opens the board's starter program. Keep your own modified source in your repository.
+Call `devices.get` to get `sources.bootloader`, `sources.micropython` and `sources.python` for the registered board, including when it is offline. These are starting points in the official repository. The Python link opens the board's starter program. Keep your own modified source in your repository.
 
 | OTA kind | What to edit | What to send |
 | --- | --- | --- |
-| `launcher` | Shared launcher in `firmware/bootloader/`, board flash layout under `firmware/boards/<id>/layout/`, and the hub protocol in `firmware/components/okou_agent/` | The board's `*-ota.bin` release asset |
+| `bootloader` | Shared bootloader in `firmware/bootloader/`, board flash layout under `firmware/boards/<id>/layout/`, and the hub protocol in `firmware/components/okou_agent/` | The board's `*-ota.bin` release asset |
 | `micropython` | Runtime integration in `firmware/pyrt/`, the board's `micropython/` directory and the linked UIFlow MicroPython upstream. To build a modified upstream, set the repository and commit in `firmware/pyrt/upstream.json`. | The board's `esphub-<board>-micropython-<version>.bin` release asset |
 | `python` | Start from the linked `hello.py` or write your own UTF-8 `main.py`. | The script itself, ready to run without compilation |
 
-To build a binary with GitHub Actions, optionally fork this repository, enable GitHub Actions in the fork, and commit your changes. Run **Actions → Board firmware → Run workflow** on your fork's `main` branch and enter the board directory name (for example, `paper-color`). The workflow builds missing or changed components, checks their board and image profiles, and publishes them to your fork's Releases. A main-branch push that touches firmware also starts this workflow. The build needs permission to write repository contents. Preserve the target chip, existing partition layout and `ESPHUB1/<kind>/<board>` image descriptor. Retain the hub connection and launcher-entry protocol if you want to manage the new firmware remotely.
+To build a binary with GitHub Actions, optionally fork this repository, enable GitHub Actions in the fork, and commit your changes. Run **Actions → Board firmware → Run workflow** on your fork's `main` branch and enter the board directory name (for example, `paper-color`). The workflow builds missing or changed components, checks their board and image profiles, and publishes them to your fork's Releases. A main-branch push that touches firmware also starts this workflow. The build needs permission to write repository contents. Preserve the target chip, partition layout and protocol 2 image descriptor generated by the SDK. Retain the hub connection and bootloader-entry protocol if you want to manage the new firmware remotely.
 
 ### Upload a local file
 
@@ -84,7 +84,7 @@ A local build, a downloaded release or a file supplied by the user can all be in
    ```
 
    HTTP 201 confirms the bytes are in private R2 storage. The write credential is valid for 15 minutes and can create one object. The device's download URL is valid for 24 hours. Use `programs.publish` for Python source up to 32 KiB. Firmware uploads accept up to 4 MiB. The binary must also fit the board's target partition.
-3. Call `launcher.enter` and wait for Bootloader mode. Pass the upload response's `url` (or an existing direct download URL), `kind` and `device_id` to `ota.install`. Follow the transfer receipt and next boot to verify installation.
+3. Call `bootloader.enter` and wait for Bootloader mode. Pass the upload response's `url` (or an existing direct download URL), `kind` and `device_id` to `ota.install`. Follow the transfer receipt and next boot to verify installation.
 
 ## Console and authentication
 
@@ -106,8 +106,8 @@ Each `firmware/boards/<id>/board.json` declares the board's chip, flash capacity
 
 The firmware workflow builds each selected variant once from `firmware/bootloader/variants/<target>-<size>mb/`. On main it publishes the bootloader binaries under an input-fingerprinted `bl-*` tag. Later runs reuse the published binaries when preparing a board with the same variant and build inputs. The shared builds use internal RAM.
 
-The board workflow combines the shared binaries with each board's partition table, and publishes board-facing assets under `<component>-<board>-v<version>`. StopWatch also gets a fresh-layout USB archive using the same EspHub Bootloader binary. USB setup includes the board's MicroPython image and verification example. Its manifest pins both component tags. Historical board download URLs continue to resolve.
+The board workflow combines the shared binaries with each board's partition table, and publishes board-facing assets under `firmware-<component>-<board>-v<version>`. USB setup includes the board's MicroPython image and verification example. Its manifest pins both component tags.
 
 ## Origin
 
-The board bring-up and launcher SDK are adapted from the MIT-licensed e7h4n/esp-launcher validation project; see firmware/LICENSE. The product reference is https://esphub-device-console.okou.app/. The homepage board image comes from Espressif's ESP32-S3-DevKitC-1 guide. The Instrument Sans font license is included with the web assets.
+The board bring-up and bootloader SDK are adapted from the MIT-licensed e7h4n/esp-bootloader validation project; see firmware/LICENSE. The product reference is https://esphub-device-console.okou.app/. The homepage board image comes from Espressif's ESP32-S3-DevKitC-1 guide. The Instrument Sans font license is included with the web assets.

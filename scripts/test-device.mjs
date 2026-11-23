@@ -179,7 +179,7 @@ async function testVirtualDevice(read) {
     ["wifi.scan", vid],
     ["wifi.ble_credential", vid],
     ["devices.reissue", vid],
-    ["launcher.enter", vid],
+    ["bootloader.enter", vid],
     ["ota.install", { ...vid, kind: "python", url: staged.url }],
     ["uart.write", { ...logArgs, text: "help", request_id: randomUUID() }],
   ]) {
@@ -328,7 +328,7 @@ try {
     "https://api.esphub.ai/releases/paper-color/setup-manifest",
   );
   assert.deepEqual(Object.keys(d.sources).sort(), [
-    "launcher",
+    "bootloader",
     "micropython",
     "python",
   ]);
@@ -353,7 +353,7 @@ try {
 
   const local = (url) => base + "/backend" + new URL(url).pathname;
   const localFiles = {};
-  for (const kind of ["launcher", "micropython"]) {
+  for (const kind of ["bootloader", "micropython"]) {
     const file = Buffer.alloc(200000, 0xe9);
     const grant = await op("ota.prepare_upload", {
       ...id,
@@ -388,7 +388,7 @@ try {
   }
   const pending = await op("ota.prepare_upload", {
     ...id,
-    kind: "launcher",
+    kind: "bootloader",
     size: 100,
   });
 
@@ -409,10 +409,10 @@ try {
   mcu = simulatedDevice(base, d.token);
   const boot = await mcu.hello({
     board: d.board,
-    role: "launcher",
+    role: "bootloader",
     chip: "esp32s3",
     mac: "00:11:22:33:44:55",
-    image_profile: "ESPHUB1/launcher/" + d.board,
+    image_profile: "ESPHUB2/bootloader/esp32s3-16mb",
     fw: { version: "1.2.3" },
     log_flush: true,
   });
@@ -540,16 +540,16 @@ try {
     ).text(),
     source,
   );
-  assert.equal((await op("launcher.enter", id)).mode, "launcher");
+  assert.equal((await op("bootloader.enter", id)).mode, "bootloader");
   for (const url of [staged.url, pending.url]) {
     await assert.rejects(
-      op("ota.install", { ...id, kind: "launcher", url }),
+      op("ota.install", { ...id, kind: "bootloader", url }),
       /Upload not ready/,
     );
   }
   for (const [kind, url] of [
     ["python", staged.url],
-    ["launcher", localFiles.launcher],
+    ["bootloader", localFiles.bootloader],
     ["micropython", localFiles.micropython],
   ]) {
     const key = randomUUID(),
@@ -557,7 +557,7 @@ try {
     const [cmd] = await mcu.pull();
     assert.equal(cmd.id, queued.command_id);
     assert.deepEqual(cmd.args, { url, board: d.board, kind, transfer_id: key });
-    const ok = kind !== "launcher";
+    const ok = kind !== "bootloader";
     await mcu.send({
       t: "event",
       name: ok ? "install.done" : "install.failed",
@@ -572,12 +572,12 @@ try {
     board: d.board,
     role: "app",
     mac: "00:11:22:33:44:55",
-    image_profile: "ESPHUB1/micropython/" + d.board,
+    image_profile: "ESPHUB2/micropython/" + d.board,
     fw: { name: "micropython", version: "test" },
   });
   assert.equal((await result(reboot.command_id)).state, "succeeded");
   const inventory = (await op("devices.get", id)).software;
-  assert.equal(inventory.launcher_version, "1.2.3");
+  assert.equal(inventory.bootloader_version, "1.2.3");
   assert.equal(inventory.application.kind, "micropython");
   assert.equal(
     (
@@ -585,7 +585,7 @@ try {
         boot_id: boot,
         t: "hello",
         board: d.board,
-        role: "launcher",
+        role: "bootloader",
       })
     ).status,
     409,
@@ -600,7 +600,7 @@ try {
   );
   await assert.rejects(
     op("ota.install", { ...id, kind: "python", url: staged.url }),
-    /launcher/,
+    /bootloader/i,
   );
   const snapshot = (pid, token) =>
     fetch(base + "/backend/api/device/program/" + pid, {
@@ -615,23 +615,23 @@ try {
   assert.equal((await snapshot(app, watch.token)).status, 409);
   assert.equal((await snapshot(app, d.token)).status, 200);
   assert.equal((await op("programs.get", id)).source, source);
-  // A request dispatched in the launcher is completed by a different boot.
-  const installLauncher = { ...id, kind: "launcher", url: localFiles.launcher };
-  await assert.rejects(op("ota.install", installLauncher), /launcher/);
-  const info = { board: d.board, chip: "esp32s3", single_launcher_ota: true };
-  await mcu.hello({ ...info, role: "launcher", image_profile: "ESPHUB1/launcher/" + d.board });
-  const handoff = await op("ota.install", installLauncher);
+  // A request dispatched in the bootloader is completed by a different boot.
+  const installBootloader = { ...id, kind: "bootloader", url: localFiles.bootloader };
+  await assert.rejects(op("ota.install", installBootloader), /bootloader/i);
+  const info = { board: d.board, chip: "esp32s3", bootloader_ota: true, bootloader_profile: "esp32s3-16mb" };
+  await mcu.hello({ ...info, role: "bootloader", image_profile: "ESPHUB2/bootloader/esp32s3-16mb" });
+  const handoff = await op("ota.install", installBootloader);
   const [firstAttempt] = await mcu.pull();
   assert.equal(firstAttempt.id, handoff.command_id);
-  await mcu.hello({ ...info, role: "app", image_profile: "ESPHUB1/micropython/" + d.board });
+  await mcu.hello({ ...info, role: "app", image_profile: "ESPHUB2/micropython/" + d.board });
   await mcu.send({ t: "event", name: "install.failed",
     data: { transfer_id: firstAttempt.args.transfer_id, error: "HTTPS read failed" } });
   assert.equal((await result(firstAttempt.id)).state, "failed");
-  const retry = await op("ota.install", installLauncher);
+  const retry = await op("ota.install", installBootloader);
   const [nextAttempt] = await mcu.pull();
   assert.equal(nextAttempt.id, retry.command_id);
   await mcu.send({ t: "event", name: "install.done",
-    data: { transfer_id: nextAttempt.args.transfer_id, kind: "launcher" } });
+    data: { transfer_id: nextAttempt.args.transfer_id, kind: "bootloader" } });
   assert.equal((await result(nextAttempt.id)).state, "succeeded");
   await op("devices.reissue", id);
   assert.equal(

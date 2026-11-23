@@ -410,7 +410,7 @@ static int cmd_version(int argc, char **argv, okou_out_t *out)
     okou_hex(d->app_elf_sha256, 32, sha);
     const esp_partition_t *run = esp_ota_get_running_partition();
     okou_outf(out, "%s %s (idf %s)\nrole %s, partition %s (%s)\nelf sha256 %s\nbuilt %s %s\n", d->project_name,
-              d->version, d->idf_ver, okou_is_launcher() ? "launcher" : "app",
+              d->version, d->idf_ver, okou_is_bootloader() ? "bootloader" : "app",
               run ? run->label : "?", run ? okou_ota_state_str(run) : "?", sha, d->date, d->time);
     return 0;
 }

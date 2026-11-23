@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Turn a UIFlow2 MicroPython checkout (m5stack/uiflow-micropython) into the esp-launcher
+"""Turn a UIFlow2 MicroPython checkout (m5stack/uiflow-micropython) into the esp-bootloader
 Python runtime for one board. Every edit asserts its anchor, so an upstream change fails the
 build instead of silently producing a different firmware.
 
-  apply_overlay.py <uiflow checkout> <esp-launcher firmware dir> <board> <version>
+  apply_overlay.py <uiflow checkout> <esp-bootloader firmware dir> <board> <version>
 """
 import json
 import re
@@ -33,15 +33,15 @@ shutil.copytree(ov / "cmodules" / "okou", m5 / "cmodules" / "okou", dirs_exist_o
 shutil.copytree(ov / "okl", m5 / "okl", dirs_exist_ok=True)
 shutil.copy(ov / "partitions_okl_build.csv", m5 / "partitions_okl_build.csv")
 (m5 / "cmodules" / "cmodules.cmake").open("a").write(
-    "\n# esp-launcher Python runtime\ninclude(${CMAKE_CURRENT_LIST_DIR}/okou/micropython.cmake)\n")
+    "\n# esp-bootloader Python runtime\ninclude(${CMAKE_CURRENT_LIST_DIR}/okou/micropython.cmake)\n")
 print("edited cmodules/cmodules.cmake")
 edit("CMakeListsDefault.cmake", "    esp_driver_ppa\n)", "    esp_driver_ppa\n    okou_agent\n)")
 
 # 2. Start the agent (Wi-Fi, hub) from C before the MicroPython task exists.
 edit("main.c", "void MICROPY_ESP_IDF_ENTRY(void) {",
-     "bool okl_runtime_start(void); /* esp-launcher: cmodules/okou/modokou.c */\n\nvoid MICROPY_ESP_IDF_ENTRY(void) {")
+     "bool okl_runtime_start(void); /* esp-bootloader: cmodules/okou/modokou.c */\n\nvoid MICROPY_ESP_IDF_ENTRY(void) {")
 edit("main.c", "    MICROPY_BOARD_STARTUP();\n",
-     "    MICROPY_BOARD_STARTUP();\n    if (okl_runtime_start()) return; /* native OTA agent only during a launcher handoff */\n")
+     "    MICROPY_BOARD_STARTUP();\n    if (okl_runtime_start()) return; /* native OTA agent only during a bootloader handoff */\n")
 
 # pyexec prints the exception and traceback through dupterm. Report its outcome
 # to the Hub immediately even if the periodic log batch is still pending.

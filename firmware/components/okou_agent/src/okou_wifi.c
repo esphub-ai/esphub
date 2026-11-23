@@ -1,7 +1,6 @@
-/* Wi-Fi manager for SDK-managed networking (launcher and apps with manage_network=true).
+/* Wi-Fi manager for SDK-managed networking (bootloader and apps with manage_network=true).
  *
  *  - Remembers up to OKOU_WIFI_MAX networks in NVS okl/wifis (JSON, most recently used first).
- *    okl/ssid + okl/pass keep mirroring the first entry so older launchers still get online.
  *  - Connect loop (own task): scan, try saved networks that are visible (strongest first), then
  *    the rest including hidden ones (direct connect by SSID), back off when nothing works, and
  *    wait for a disconnect once online.
@@ -66,15 +65,7 @@ static esp_err_t save_locked(void)
     if (!js) return ESP_ERR_NO_MEM;
     esp_err_t saved = okou_nvs_set_str(OKOU_KEY_WIFIS, js);
     free(js);
-    if (saved != ESP_OK) return saved;
-    if (s_count > 0) { /* legacy mirror for launchers before multi-network support */
-        okou_nvs_set_str("ssid", s_nets[0].ssid);
-        okou_nvs_set_str("pass", s_nets[0].pass);
-    } else {
-        okou_nvs_erase("ssid");
-        okou_nvs_erase("pass");
-    }
-    return ESP_OK;
+    return saved;
 }
 
 static void load(void)
@@ -100,23 +91,6 @@ static void load(void)
             n->hidden = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "h"));
         }
         cJSON_Delete(arr);
-    } else {
-        /* migrate the single legacy network, or what the Wi-Fi driver already stored */
-        net_t n = {0};
-        if (okou_nvs_get_str("ssid", n.ssid, sizeof(n.ssid)) == ESP_OK && n.ssid[0]) {
-            okou_nvs_get_str("pass", n.pass, sizeof(n.pass));
-        } else {
-            wifi_config_t wc = {0};
-            if (esp_wifi_get_config(WIFI_IF_STA, &wc) == ESP_OK && wc.sta.ssid[0]) {
-                strlcpy(n.ssid, (char *)wc.sta.ssid, sizeof(n.ssid));
-                strlcpy(n.pass, (char *)wc.sta.password, sizeof(n.pass));
-            }
-        }
-        if (n.ssid[0]) {
-            s_nets[s_count++] = n;
-            save_locked();
-            ESP_LOGI(OKOU_TAG, "wifi: migrated saved network %s", n.ssid);
-        }
     }
     unlock();
 }
@@ -441,7 +415,7 @@ static void wifi_task(void *arg)
         memcpy(nets, s_nets, sizeof(net_t) * count);
         unlock();
         if (count == 0) {
-            ESP_LOGW(OKOU_TAG, "no Wi-Fi credentials (provision over USB from the launcher)");
+            ESP_LOGW(OKOU_TAG, "no Wi-Fi credentials (provision over USB from the bootloader)");
             xEventGroupWaitBits(s_ev, EV_RECONF, pdTRUE, pdFALSE, portMAX_DELAY);
             continue;
         }
