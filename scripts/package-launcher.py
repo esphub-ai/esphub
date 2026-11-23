@@ -11,7 +11,7 @@ from elftools.elf.elffile import ELFFile
 variant, version = sys.argv[1:]
 flash = variant.rsplit("-", 1)[1]
 build = Path("build")
-out = Path("../../shared-bl")
+out = Path(__file__).resolve().parents[1] / "shared-bl"
 out.mkdir(exist_ok=True)
 parts = json.loads((build / "flasher_args.json").read_text())
 config = Path("sdkconfig").read_text()

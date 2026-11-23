@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       board:
-        description: Optional board directory. Only unpublished changes are built.
+        description: Optional public board ID. Only unpublished changes are built.
         type: string
         required: false
 permissions: {contents: read}

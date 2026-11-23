@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { publishedFirmware } from "../shared/firmware-releases.js";
 
 const bootloaderInputs = [
-  "firmware/bootloader/**",
+  "firmware/bootloader/common/**",
   "firmware/components/**",
   "firmware/sdkconfig.common",
   "firmware/ble.defaults",
@@ -61,26 +61,32 @@ export function profiles(ref, cwd = process.cwd()) {
   const variants = new Map();
   for (const path of files.keys()) {
     const match =
-      /^firmware\/boards\/([a-z0-9]+(?:-[a-z0-9]+)*)\/ci\.json$/.exec(path);
+      /^firmware\/board\/([a-z0-9-]+)\/([a-z0-9-]+)\/ci\.json$/.exec(path);
     if (!match) continue;
-    const board = match[1],
-      dir = `firmware/boards/${board}`;
-    const { chip, flash_mb, bootloader } = json(dir + "/board.json"),
-      jobs = json(path),
+    const dir = posix.dirname(path);
+    const {
+      chip,
+      flash_mb,
+      bootloader,
+      id: board = match[2],
+    } = json(dir + "/board.json");
+    if (
+      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(board) ||
+      Object.hasOwn(boards, board)
+    )
+      throw Error("Invalid or duplicate board ID: " + board);
+    const jobs = json(path),
       tasks = {};
     if (bootloader) {
-      const config = `firmware/bootloader/variants/${bootloader}/sdkconfig.defaults`;
+      const config = `firmware/bootloader/${bootloader}/sdkconfig.defaults`;
       if (bootloader !== `${chip}-${flash_mb}mb` || !files.has(config))
         throw Error("Invalid bootloader for " + board);
       if (!variants.has(bootloader)) {
         const sources = matching([
           ...bootloaderInputs,
+          `firmware/bootloader/${bootloader}/**`,
           `firmware/partitions/${flash_mb}mb.csv`,
-        ]).filter(
-          ([file]) =>
-            !file.startsWith("firmware/bootloader/variants/") ||
-            file === config,
-        );
+        ]);
         variants.set(bootloader, digest([bootloader, sources]));
       }
       const layouts = matching([`${dir}/layout/*.csv`]);
@@ -120,7 +126,7 @@ export function profiles(ref, cwd = process.cwd()) {
         ...sharedInputs[kind],
         `${dir}/${kind}/**`,
         ...(job.inputs ?? []),
-        ...(kind === "setup" ? [`${dir}/hello.py`] : []),
+        ...(kind === "setup" ? [`${dir}/main.py`] : []),
       ];
       const sources = matching(patterns);
       tasks[kind] = {
@@ -146,6 +152,7 @@ export function profiles(ref, cwd = process.cwd()) {
       ]);
     }
     boards[board] = {
+      boardDir: dir,
       chip,
       tasks,
       bootloader,
@@ -166,7 +173,7 @@ export function boardPlans(
   const matrix = [];
   for (const [
     board,
-    { chip, tasks, bootloader, blFingerprint },
+    { chip, tasks, bootloader, blFingerprint, boardDir },
   ] of Object.entries(after)) {
     if (selected && selected !== board) continue;
     const published = releases[board] ?? {},
@@ -197,6 +204,7 @@ export function boardPlans(
       components.find((t) => t.kind === kind) ?? published[kind];
     matrix.push({
       board,
+      boardDir,
       chip,
       jobs,
       bootloader,

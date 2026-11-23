@@ -18,6 +18,16 @@ test("each board links to the actual source, build recipes and provisioning exam
   }
   for (const board of Object.keys(boards)) {
     const { sources, custom_build_guide_url } = updateSources(board);
+    assert.equal(
+      localPath(sources.launcher.variant_directory_url, "tree"),
+      "firmware/bootloader/" + boards[board].bootloader,
+    );
+    assert.ok(
+      statSync(
+        localPath(sources.launcher.variant_directory_url, "tree") +
+          "/CMakeLists.txt",
+      ).isFile(),
+    );
     for (const [kind, layer] of Object.entries(sources)) {
       assert.ok(statSync(localPath(layer.directory_url, "tree")).isDirectory());
       if (kind === "python") {
@@ -27,7 +37,7 @@ test("each board links to the actual source, build recipes and provisioning exam
         );
         continue;
       }
-      const expected = `firmware/boards/${board}/${kind === "launcher" ? "layout" : kind}`;
+      const expected = `${boards[board].directory}/${kind === "launcher" ? "layout" : kind}`;
       const buildAction =
         kind === "launcher"
           ? "scripts/build-bootloader.sh"
