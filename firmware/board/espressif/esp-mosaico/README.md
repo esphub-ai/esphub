@@ -10,3 +10,6 @@ port needs USB OTG CDC firmware support for runtime console and provisioning.
 [main.py](main.py) is a console example for a future MicroPython runtime. The pinned
 UIFlow upstream has no ESP32-S31 runtime target. Only bootloader artifacts are configured
 for this board.
+
+The board stays out of the public setup catalog until its Runtime and USB setup kit
+are available.

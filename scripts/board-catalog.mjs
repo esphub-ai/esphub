@@ -14,6 +14,7 @@ for (const vendor of await readdir(root, { withFileTypes: true })) {
       chip,
       flash_mb,
       bootloader,
+      preview = false,
       id = modelDir.name,
     } = JSON.parse(await file("board.json"));
     if (
@@ -27,6 +28,7 @@ for (const vendor of await readdir(root, { withFileTypes: true })) {
       throw Error("Invalid metadata for " + id);
     if (!Number.isInteger(flash_mb) || flash_mb < 8)
       throw Error("EspHub requires at least 8 MiB Flash: " + id);
+    if (preview) continue;
     boards[id] = {
       name,
       model,
