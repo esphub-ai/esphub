@@ -23,18 +23,6 @@ menu "okou agent (esp-bootloader SDK)"
             Espressif QEMU does not reset peripherals on SW_CPU_RESET; the next boot then
             crashes in esp_timer_init. Only for QEMU builds.
 
-    config OKOU_LOG_BUF_SIZE
-        int "Log retain ring buffer size (bytes, rounded down to a power of two)"
-        range 2048 131072
-        default 16384
-
-    config OKOU_LOG_LINE_MAX
-        int "Max captured log line length (bytes; longer lines are truncated)"
-        range 64 480
-        default 192
-        help
-            The formatting buffer lives on the logging task's stack.
-
     config OKOU_TX_FRAME_MAX
         int "Max outgoing frame size (bytes, protocol limit 16384)"
         range 2048 16384

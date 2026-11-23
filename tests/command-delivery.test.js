@@ -22,14 +22,14 @@ test(
       const c = { sql: db, env: {} },
         id = device.id,
         key = crypto.randomUUID();
-      const args = { data: "hello\n" };
-      const first = await enqueue(c, id, "term.write", args, boot, key);
+      const args = { name: "wifi", argv: ["list"] };
+      const first = await enqueue(c, id, "cmd", args, boot, key);
       assert.equal(
-        (await enqueue(c, id, "term.write", args, boot, key)).command_id,
+        (await enqueue(c, id, "cmd", args, boot, key)).command_id,
         first.command_id,
       );
       await assert.rejects(
-        enqueue(c, id, "term.write", { data: "changed" }, boot, key),
+        enqueue(c, id, "cmd", { name: "wifi", argv: ["scan"] }, boot, key),
         (e) => e.status === 409,
       );
       const second = await enqueue(c, id, "status", {}, boot);

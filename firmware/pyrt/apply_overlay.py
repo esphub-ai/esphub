@@ -55,8 +55,7 @@ edit("main.c", "void MICROPY_ESP_IDF_ENTRY(void) {",
 edit("main.c", "    MICROPY_BOARD_STARTUP();\n",
      "    MICROPY_BOARD_STARTUP();\n    okl_runtime_start();\n")
 
-# pyexec prints the exception and traceback through dupterm. Report its outcome
-# to the Hub immediately even if the periodic log batch is still pending.
+# pyexec prints the traceback on the local console. Report the failure event to the hub.
 edit("main.c", '#include "py/runtime.h"', '#include "py/runtime.h"\n#include "okou_agent.h"')
 for script, indent in (("boot.py", "    "), ("main.py", "        ")):
     call = f'int ret = pyexec_file_if_exists("{script}");'

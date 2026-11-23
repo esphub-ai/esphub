@@ -36,7 +36,6 @@
 #define US_PER_MS 1000LL
 #define BACKOFF_RESET_US (60 * 1000000LL)
 #define CONNECT_TIMEOUT_US (30 * 1000000LL)
-#define MQTT_LOG_INTERVAL_US (10 * 60 * 1000000LL)
 #define FLUSH_INTERVAL_US (200 * 1000LL)
 #define BACKOFF_MAX_MS 60000
 #define METRIC_RING 32
@@ -106,9 +105,6 @@ void okou_resume_mqtt(void)
 #endif
 static volatile bool s_mqtt_up, s_hello_acked, s_mqtt_broken, s_reload;
 static int64_t s_conn_start_us, s_up_since_us, s_last_flush_us, s_next_connect_us;
-static int64_t s_next_log_batch_us = MQTT_LOG_INTERVAL_US;
-static uint32_t s_log_batch_through;
-static cJSON *s_log_request_id;
 static uint32_t s_backoff_ms = 1000;
 static volatile int64_t s_reboot_at_us;
 static char s_boot_id[33];
@@ -333,7 +329,6 @@ static void hello_fill(cJSON *o)
     okou_hex(d->app_elf_sha256, 32, sha);
     okou_mac_str(mac);
     const esp_partition_t *run = esp_ota_get_running_partition();
-    cJSON_AddBoolToObject(o, "log_flush", true);
 #if CONFIG_OKOU_BLE_WIFI
     unsigned generation = okou_ble_generation();
     if (generation) cJSON_AddNumberToObject(o, "ble_generation", generation);
@@ -413,9 +408,8 @@ static bool send_text(const char *s, size_t len)
     const char *name = cJSON_GetStringValue(cJSON_GetObjectItem(frame, "name"));
     bool final = name && (!strcmp(name, "install.done") || !strcmp(name, "install.failed"));
     bool result = t && !strcmp(t, "res");
-    bool confirm = result || final || (t && (!strcmp(t, "hello") || !strcmp(t, "log")));
-    int64_t seq = -1;
-    bool sent = okou_iot_publish(frame, confirm, &seq);
+    bool confirm = result || final || (t && !strcmp(t, "hello"));
+    bool sent = okou_iot_publish(frame, confirm);
     if (result && id && !strcmp(id, s_inflight_id)) {
         if (sent) {
             free(s_last_receipt);
@@ -425,8 +419,6 @@ static bool send_text(const char *s, size_t len)
             s_last_receipt = strndup(s, len);
         }
     }
-    if (sent && seq >= 0)
-        okou_log_ack(seq);
     cJSON_Delete(frame);
     if (!sent)
         s_mqtt_broken = true;
@@ -575,45 +567,6 @@ static void send_res(const cJSON *id, bool ok, cJSON *data, const char *err)
     }
 }
 
-// Drain a finite snapshot one frame per agent iteration. A recall may extend
-// an existing batch; urgent events, commands and scheduled reboots still run.
-static void service_mqtt_log_batch(int64_t now)
-{
-    if (s_mqtt_broken)
-        return;
-    if (!s_log_request_id && !s_log_batch_through && now < s_next_log_batch_us) return;
-
-    okou_log_stats_t stats = okou_log_stats();
-    if (!s_log_batch_through && !s_log_request_id) {
-        s_log_batch_through = stats.last_written;
-        s_next_log_batch_us = now + MQTT_LOG_INTERVAL_US;
-    }
-    if (stats.last_acked < s_log_batch_through) {
-        size_t n = okou_log_build_frame(s_txbuf, CONFIG_OKOU_TX_FRAME_MAX, s_log_batch_through);
-        if (!n || !send_text(s_txbuf, n)) {
-            s_mqtt_broken = true;
-            return;
-        }
-        stats = okou_log_stats();
-        if (stats.last_acked != stats.last_sent) {
-            // Reconnect and replay from the acknowledged cursor.
-            s_mqtt_broken = true;
-            return;
-        }
-        if (stats.last_acked < s_log_batch_through) return;
-    }
-
-    s_log_batch_through = 0;
-    if (s_log_request_id) {
-        cJSON *data = cJSON_CreateObject();
-        bool ok = data && cJSON_AddNumberToObject(data, "last_acked_seq", stats.last_acked) &&
-                  cJSON_AddNumberToObject(data, "dropped_lines", stats.dropped);
-        send_res(s_log_request_id, ok, data, "Cannot allocate log receipt");
-        cJSON_Delete(s_log_request_id);
-        s_log_request_id = NULL;
-    }
-}
-
 static char *build_res_string(const cJSON *id, bool ok, cJSON *data, const char *err)
 {
     cJSON *o = cJSON_CreateObject();
@@ -715,7 +668,7 @@ static void handle_req(const cJSON *root)
     const cJSON *jop = cJSON_GetObjectItemCaseSensitive(root, "op");
     const cJSON *args = cJSON_GetObjectItemCaseSensitive(root, "args");
     const char *op = cJSON_IsString(jop) ? jop->valuestring : "";
-    if (s_hooks.on_request && strcmp(op, "logs.flush") != 0) {
+    if (s_hooks.on_request) {
         s_hooks.on_request(op);
     }
     cJSON *data = cJSON_CreateObject();
@@ -751,17 +704,7 @@ static void handle_req(const cJSON *root)
             return;
         }
     }
-    if (strcmp(op, "logs.flush") == 0) {
-        s_log_request_id = cJSON_Duplicate(id, false);
-        if (s_log_request_id) {
-            s_log_batch_through = okou_log_stats().last_written;
-            s_next_log_batch_us = now_us() + MQTT_LOG_INTERVAL_US;
-            cJSON_Delete(data);
-            return; // Respond after the captured sequence has been acknowledged.
-        }
-        r = ESP_ERR_NO_MEM;
-        snprintf(err, sizeof(err), "Cannot allocate log receipt");
-    } else if (strcmp(op, "status") == 0) {
+    if (strcmp(op, "status") == 0) {
         hello_fill(data);
         okou_net_info(data);
         cJSON_AddItemToObject(data, "partitions", okou_partitions_json());
@@ -970,8 +913,7 @@ static bool report_install_result(void)
             cJSON_AddStringToObject(cJSON_GetObjectItem(frame, "data"), "error", "Boot selection failed or rolled back");
         }
         cJSON_DeleteItemFromObject(frame, "target");
-        int64_t unused;
-        ok = okou_iot_publish(frame, true, &unused) && okou_nvs_erase(OKOU_KEY_PENDING) == ESP_OK;
+        ok = okou_iot_publish(frame, true) && okou_nvs_erase(OKOU_KEY_PENDING) == ESP_OK;
         if (!ok) s_mqtt_broken = true;
     }
     cJSON_Delete(frame);
@@ -1006,8 +948,6 @@ static void do_reboot(void)
     ESP_LOGW(TAG, "rebooting");
     if (s_mqtt_up && !s_mqtt_broken) {
         drain_txq();
-        s_log_batch_through = okou_log_stats().last_written;
-        service_mqtt_log_batch(now_us());
     }
     esp_restart();
 }
@@ -1051,11 +991,10 @@ static void service_ble_offer(void)
     const char *secret = cJSON_GetStringValue(cJSON_GetObjectItem(s_ble_offer, "secret"));
     if (cJSON_IsNumber(gen) && gen->valueint >= (int)okou_ble_generation()) {
         cJSON *confirm = cJSON_CreateObject();
-        int64_t unused;
         if (!secret || okou_ble_install(gen->valueint, secret, false) != ESP_OK ||
             !cJSON_AddStringToObject(confirm, "t", "ble.confirm") ||
             !cJSON_AddNumberToObject(confirm, "ble_generation", okou_ble_generation()) ||
-            !okou_iot_publish(confirm, true, &unused))
+            !okou_iot_publish(confirm, true))
             s_mqtt_broken = true; // Retry the outstanding generation on the next hello.
         cJSON_Delete(confirm);
     }
@@ -1097,7 +1036,6 @@ static void agent_task(void *arg)
                 okou_iot_subscribed();
                 s_up_since_us = now;
                 s_mqtt_up = true;
-                okou_log_rewind();
                 if (send_hello()) {
                     s_hello_acked = true;
                     if (report_install_result()) on_first_ack();
@@ -1131,7 +1069,6 @@ static void agent_task(void *arg)
                 service_ble_offer();
 #endif
             }
-            service_mqtt_log_batch(now);
             if (now - s_last_flush_us >= FLUSH_INTERVAL_US) {
                 s_last_flush_us = now;
                 flush_metrics();
@@ -1156,8 +1093,6 @@ static void agent_task(void *arg)
             portENTER_CRITICAL(&s_mmux);
             bool metrics = s_mcount != 0;
             portEXIT_CRITICAL(&s_mmux);
-            if (s_log_batch_through && !s_mqtt_broken)
-                deadline = now;
             if (metrics && s_last_flush_us + FLUSH_INTERVAL_US < deadline)
                 deadline = s_last_flush_us + FLUSH_INTERVAL_US;
         }
@@ -1208,11 +1143,7 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     esp_err_t pm_err = esp_pm_configure(&pm);
     if (pm_err != ESP_OK) ESP_LOGW(TAG, "Power management unavailable: %s", esp_err_to_name(pm_err));
 #endif
-    esp_err_t e = okou_log_init();
-    if (e != ESP_OK) {
-        return e;
-    }
-    e = okou_nvs_init();
+    esp_err_t e = okou_nvs_init();
     if (e != ESP_OK) {
         ESP_LOGE(TAG, "nvs init: %s", esp_err_to_name(e));
         return e;

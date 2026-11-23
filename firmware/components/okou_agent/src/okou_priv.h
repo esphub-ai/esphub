@@ -9,18 +9,6 @@
 
 #define OKOU_TAG "okou"
 
-/* ---- log ring (okou_log.c) ---- */
-esp_err_t okou_log_init(void);
-/* Builds one {"t":"log",...} frame from unsent lines; returns length, 0 when nothing to send. */
-size_t okou_log_build_frame(char *buf, size_t cap, uint32_t through);
-void okou_log_ack(int64_t seq);
-void okou_log_rewind(void); /* on reconnect: resend everything not yet acked */
-typedef struct {
-    uint32_t last_written, last_sent, last_acked, dropped;
-    size_t used, capacity;
-} okou_log_stats_t;
-okou_log_stats_t okou_log_stats(void);
-
 /* ---- registry (okou_registry.c) ---- */
 typedef enum { OKOU_P_INT, OKOU_P_FLOAT, OKOU_P_BOOL } okou_ptype_t;
 void okou_registry_builtin_cmds(void);
@@ -55,7 +43,6 @@ cJSON *okou_partitions_json(void);
 
 /* ---- agent (okou_agent.c) ---- */
 void okou_agent_notify(void);
-bool okou_log_pending(void);
 cJSON *okou_hello_fields(void); /* hello object without "t" */
 extern okou_config_t g_okou_cfg;
 

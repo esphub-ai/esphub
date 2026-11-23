@@ -30,8 +30,6 @@ const readTools = new Set([
   "devices.get",
   "wifi.list",
   "firmware.get",
-  "uart.sessions",
-  "uart.read",
 ]);
 export function installMcpMetadata(app) {
   const resource = protectedResourceMetadataHandler(options);

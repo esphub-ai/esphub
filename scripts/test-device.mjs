@@ -77,14 +77,12 @@ async function testVirtualDevice(read) {
   assert.equal(listedVirtual.process_id, firmware.process_id);
   assert.equal(listedVirtual.info.fw.name, "EspHub virtual firmware");
   assert.deepEqual(listedVirtual.info.fw, firmware.fw);
-  assert.equal(listedVirtual.serial_input, false);
   assert.deepEqual(
     (
       await sql`SELECT token_hash,ble_secret,cert_id FROM esphub.devices WHERE id=${virtual.id}`
     )[0],
     { token_hash: null, ble_secret: null, cert_id: null },
   );
-  assert.equal((await op("uart.sessions", vid, read)).length, 1);
   const rebootArgs = { ...vid, request_id: randomUUID() };
   const [restart, retry] = await Promise.all([
     op("devices.reboot", rebootArgs),
@@ -98,33 +96,6 @@ async function testVirtualDevice(read) {
   const reconnected = await issue("devices:read");
   const current = await op("devices.get", vid, reconnected);
   assert.equal(current.process_id, later.process_id);
-  const history = await op("uart.sessions", vid, reconnected);
-  assert.deepEqual(
-    history.map((s) => s.process_id),
-    [later.process_id, restart.process_id, firmware.process_id],
-  );
-  const logArgs = { ...vid, process_id: restart.process_id };
-  const output = await op("uart.read", logArgs, read);
-  assert.match(output.records[0].text, /Virtual ESP32 restarted/);
-  assert.deepEqual(
-    output.records.map((r) => r.seq),
-    [1, 2],
-  );
-  assert.deepEqual(
-    (await op("uart.read", { ...logArgs, after: 1 }, read)).records,
-    output.records.slice(1),
-  );
-  assert.deepEqual(await op("uart.read", { ...logArgs, after: 2 }, read), {
-    records: [],
-    cursor: 2,
-    last: 2,
-  });
-  assert.match(
-    (await op("uart.read", { ...vid, process_id: firmware.process_id }, read))
-      .records[0].text,
-    /created/,
-  );
-
   const secondAccount = await issue("devices:read devices:write", {
     sub: otherSubject,
   });
@@ -135,16 +106,9 @@ async function testVirtualDevice(read) {
     "devices.get",
     "devices.reboot",
     "devices.delete",
-    "uart.sessions",
-    "uart.read",
     "programs.publish",
   ]) {
-    const args =
-      name === "uart.read"
-        ? logArgs
-        : name === "programs.publish"
-          ? { ...vid, source: "pass" }
-          : vid;
+    const args = name === "programs.publish" ? { ...vid, source: "pass" } : vid;
     const result = await call(
       "tools/call",
       { name, arguments: args },
@@ -153,18 +117,6 @@ async function testVirtualDevice(read) {
     assert.equal(result.isError, true, name);
     assert.match(result.content[0].text, /Device not found/, name);
   }
-  const wrongBoot = await call(
-    "tools/call",
-    {
-      name: "uart.read",
-      arguments: {
-        device_id: secondBoard.id,
-        process_id: restart.process_id,
-      },
-    },
-    secondAccount,
-  );
-  assert.match(wrongBoot.content[0].text, /Unknown boot session/);
   const staged = await op("programs.publish", {
     ...vid,
     source: 'print("staged")',
@@ -181,7 +133,6 @@ async function testVirtualDevice(read) {
     ["devices.reissue", vid],
     ["bootloader.enter", vid],
     ["ota.install", { ...vid, kind: "python", url: staged.url }],
-    ["uart.write", { ...logArgs, text: "help", request_id: randomUUID() }],
   ]) {
     const result = await call("tools/call", { name, arguments: args });
     assert.equal(result.isError, true, name);
@@ -241,7 +192,7 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 24);
+  assert.equal(listed.length, 20);
   assert.ok(!listed.some((t) => t.name === "programs.install"));
   const readOnly = new Set([
     "commands.get",
@@ -250,11 +201,8 @@ try {
     "wifi.list",
     "firmware.get",
     "programs.get",
-    "uart.sessions",
-    "uart.read",
   ]);
   const additiveTools = new Set([
-    "logs.flush",
     "wifi.ble_credential",
     "devices.create",
     "devices.create_virtual",
@@ -265,7 +213,6 @@ try {
     "wifi.scan",
     "wifi.add",
     "ota.install",
-    "uart.write",
   ]);
   for (const { name, annotations } of listed) {
     // Active Wi-Fi discovery observes nearby networks but still requires write scope.
@@ -305,9 +252,6 @@ try {
       })
     ).serverInfo.name,
     "esphub",
-  );
-  assert.ok(
-    (await call("tools/list", {})).tools.some((t) => t.name === "uart.write"),
   );
   await testVirtualDevice(read);
   const d = await op("devices.create", {
@@ -415,9 +359,8 @@ try {
     dual_bootloader_ota: true,
     image_profile: "ESPHUB2/bootloader/esp32s3-16mb",
     fw: { version: "1.2.3" },
-    log_flush: true, ble_generation: 1,
+    ble_generation: 1,
   });
-  const session = { ...id, process_id: boot };
   assert.equal((await op("devices.get", id)).online, true);
   for (const route of [
     "iot/pull",
@@ -457,6 +400,7 @@ try {
     ).status,
     409,
   );
+  assert.equal((await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, { t: "log", lines: [] })).status, 400);
   const sync = async generation =>
     (await mcu.send({t:"ble.confirm", ble_generation:generation})).rotate;
   const offer = mcu.lastHello.rotate;
@@ -512,27 +456,8 @@ try {
   const stored =
     await sql`SELECT args,result FROM esphub.device_commands WHERE id=${save.id}`;
   assert.ok(!JSON.stringify(stored).includes(wifi.password));
-  const flush = await op("logs.flush", {
-    ...session,
-    request_id: randomUUID(),
-  });
-  assert.equal((await mcu.nextCommand()).id, flush.command_id);
-  const log = { t: "log", seq: 1, lines: [[10, "I", "boot log"]] };
-  assert.equal((await mcu.send(log)).seq, 1);
-  assert.equal((await mcu.send(log)).seq, 1);
-  await mcu.send({
-    t: "res",
-    ok: true,
-    id: flush.command_id,
-    data: { last_acked_seq: 1, dropped_lines: 0 },
-  });
-  assert.equal((await result(flush.command_id)).result.last_acked_seq, 1);
   await mcu.send({ t: "event", name: "draw.done", data: { rotation: 1 } });
   await mcu.send({ t: "metric", items: [["draw_ms", 10, 750]] });
-  assert.deepEqual(
-    (await op("uart.read", session)).records.map((r) => r.text),
-    ["boot log", 'draw.done {"rotation":1}', 'metric [["draw_ms",10,750]]'],
-  );
 
   const source = 'print("café")';
   const staged = await op("programs.publish", { ...id, source });
@@ -607,14 +532,6 @@ try {
     409,
   );
   await assert.rejects(
-    op("uart.write", {
-      ...session,
-      text: "wrong boot",
-      request_id: randomUUID(),
-    }),
-    /conflict/,
-  );
-  await assert.rejects(
     op("ota.install", { ...id, kind: "python", url: staged.url }),
     /bootloader/i,
   );
@@ -648,7 +565,7 @@ try {
     (
       await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
         boot_id: app,
-        t: "log",
+        t: "metric", items: [],
       })
     ).status,
     409,
@@ -656,7 +573,7 @@ try {
   await op("devices.delete", { device_id: watch.id });
   await op("devices.delete", id);
   console.log(
-    "PASS Clerk, virtual devices, broker enrollment, command dispatch, duplicate receipts, cloud Wi-Fi, BLE rotation, MQTT logs and events, OTA, private file transfer and revocation",
+    "PASS Clerk, virtual devices, broker enrollment, command dispatch, duplicate receipts, cloud Wi-Fi, BLE rotation, MQTT events, OTA, private file transfer and revocation",
   );
 } finally {
   mcu?.close();

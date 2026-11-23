@@ -2,7 +2,7 @@
  * okou_agent - device side of the esp-bootloader protocol.
  *
  * Link this component into an app, register commands/params, call okou_agent_start().
- * Nothing in this API blocks on the network: logs, metrics and events are queued into
+ * Nothing in this API blocks on the network: metrics and events are queued into
  * bounded RAM buffers and sent by a low-priority agent task; when buffers are full, data
  * is dropped and counted instead of blocking the caller.
  *
@@ -10,7 +10,7 @@
  */
 #pragma once
 
-#define OKOU_SDK_VERSION "3.0.0"
+#define OKOU_SDK_VERSION "4.0.0"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -48,7 +48,7 @@ typedef struct {
 
 #define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .app_validates = false, .micropython_version = NULL }
 
-/* One-call init: NVS, log tee, network (optional), agent task. cfg may be NULL (defaults).
+/* One-call init: NVS, network (optional), agent task. cfg may be NULL (defaults).
  * For role=app it also implements the fail_boots safety net (may reboot into the bootloader). */
 esp_err_t okou_agent_start(const okou_config_t *cfg);
 

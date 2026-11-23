@@ -18,10 +18,6 @@ static cJSON *active_identity, *active_certificate;
 static unsigned events;
 static char topic[64], uplink[64], boot[33];
 static uint32_t next_mid;
-typedef struct {
-    uint32_t mid;
-    int64_t seq;
-} ack_t;
 static QueueHandle_t acks, controls;
 static char *incoming;
 static size_t received, expected;
@@ -185,9 +181,7 @@ static void mqtt_event(void *ctx, esp_event_base_t base, int32_t event, void *ar
         const cJSON *mid = cJSON_GetObjectItemCaseSensitive(m, "mid");
         if (pid && !strcmp(pid, boot) && cJSON_IsNumber(mid) && mid->valuedouble >= 1 &&
             mid->valuedouble <= UINT32_MAX) {
-            const cJSON *cursor = cJSON_GetObjectItemCaseSensitive(m, "seq");
-            ack_t ack = {.mid = (uint32_t)mid->valuedouble,
-                         .seq = cJSON_IsNumber(cursor) ? (int64_t)cursor->valuedouble : -1};
+            uint32_t ack = (uint32_t)mid->valuedouble;
             xQueueSend(acks, &ack, 0);
         }
         if (pid && !strcmp(pid, boot) && (cJSON_GetObjectItemCaseSensitive(m, "command") ||
@@ -225,7 +219,7 @@ void okou_iot_stop(void)
     active_certificate = NULL;
     okou_iot_events();
 }
-bool okou_iot_publish(cJSON *frame, bool confirm, int64_t *seq)
+bool okou_iot_publish(cJSON *frame, bool confirm)
 {
     if (!mqtt || !acks || !frame)
         return false;
@@ -254,11 +248,10 @@ bool okou_iot_publish(cJSON *frame, bool confirm, int64_t *seq)
         TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(6000);
         for (;;) {
             int32_t remaining = (int32_t)(deadline - xTaskGetTickCount());
-            ack_t ack;
+            uint32_t ack;
             if (remaining <= 0 || !xQueueReceive(acks, &ack, (TickType_t)remaining))
                 break;
-            if (ack.mid == mid) {
-                *seq = ack.seq;
+            if (ack == mid) {
                 done = true;
                 break;
             }
@@ -280,7 +273,7 @@ bool okou_iot_start(const char *boot_id, const char *hub, const char *token)
     const char *csr = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(id, "csr"));
     bool started = false;
     if (!acks)
-        acks = xQueueCreate(8, sizeof(ack_t));
+        acks = xQueueCreate(8, sizeof(uint32_t));
     if (!controls)
         controls = xQueueCreate(4, sizeof(cJSON *));
     if (!acks || !controls)

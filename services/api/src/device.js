@@ -111,14 +111,6 @@ export class Device extends DurableObject {
       this.db.exec("DELETE FROM current_device");
       return Response.json({ revoked: true });
     }
-    if (path === "/sessions")
-      return Response.json(
-        this.db
-          .exec(
-            "SELECT pid AS process_id,started AS started_at FROM boots ORDER BY started DESC",
-          )
-          .toArray(),
-      );
     const args = await req.json();
     if (path === "/enqueue")
       return this.ctx.blockConcurrencyWhile(async () => {
@@ -151,20 +143,6 @@ export class Device extends DurableObject {
     }
     if (path === "/prepare-upload") return this.uploads.prepare(args);
     if (path === "/publish") return this.uploads.publish(args);
-    if (path === "/read") {
-      if (
-        !this.db
-          .exec("SELECT pid FROM boots WHERE pid=?", args.process_id)
-          .toArray().length
-      )
-        return Response.json(
-          { error: "Unknown boot session" },
-          { status: 404 },
-        );
-      return Response.json(
-        await this.stream(args.process_id, "tx").read(args.after),
-      );
-    }
     return new Response(null, { status: 404 });
   }
   async uplink({ device, principal, frame: m }) {
@@ -212,8 +190,6 @@ export class Device extends DurableObject {
           new Date().toISOString(),
           JSON.stringify(m),
         );
-        const tx = this.stream(pid, "tx");
-        await tx.init();
         await dispatch(db, this.env, device, pid, true);
         const rotate = await syncBle(
           db,
@@ -221,7 +197,7 @@ export class Device extends DurableObject {
           d.token_hash,
           m.ble_generation,
         );
-        return Response.json({ seq: (await tx.head()).source, rotate });
+        return Response.json({ rotate });
       }
       if (d.boot_id !== pid || this.current()?.pid !== pid)
         return Response.json({ error: "Hello required" }, { status: 409 });
@@ -250,7 +226,7 @@ export class Device extends DurableObject {
         }
         return Response.json({});
       }
-      if (!["event", "metric", "log"].includes(m.t))
+      if (!["event", "metric"].includes(m.t))
         return Response.json({ error: "Unknown frame" }, { status: 400 });
       if (
         m.t === "event" &&
@@ -270,25 +246,6 @@ export class Device extends DurableObject {
   }
   async recordFrame(pid, m) {
     if (
-      m.t === "log" &&
-      Array.isArray(m.lines) &&
-      Number.isSafeInteger(m.seq)
-    ) {
-      const tx = this.stream(pid, "tx"),
-        head = await tx.head();
-      const rows = m.lines
-        .map((v, i) => ({
-          source_seq: m.seq + i,
-          at: new Date().toISOString(),
-          uptime_ms: v[0],
-          level: v[1],
-          text: String(v[2]),
-        }))
-        .filter((v) => v.source_seq > head.source);
-      if (rows.length)
-        await tx.append(rows, { source: rows.at(-1).source_seq });
-      return { t: "ack", seq: rows.at(-1)?.source_seq ?? head.source };
-    } else if (
       (m.t === "event" && typeof m.name === "string") ||
       (m.t === "metric" && Array.isArray(m.items))
     ) {
