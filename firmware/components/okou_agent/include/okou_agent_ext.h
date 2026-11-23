@@ -24,6 +24,7 @@ bool okou_wifi_rssi(int *rssi);
 /* NVS namespace and keys shared between bootloader and SDK (docs/protocol.md). */
 #define OKOU_NVS_NS          "okl"
 #define OKOU_KEY_PENDING     "pending"    /* str: install args JSON + "attempts" */
+#define OKOU_KEY_LSLOT "lslot" /* Last validated A/B bootloader slot. */
 #define OKOU_KEY_STAY        "stay"       /* u8: never auto-start the app */
 #define OKOU_KEY_FAIL_BOOTS  "fail_boots" /* u8: app boots without a hub ack */
 #define OKOU_KEY_HOLD        "hold"       /* u8: one-shot "stay in bootloader on next boot" (extension) */

@@ -412,6 +412,7 @@ try {
     role: "bootloader",
     chip: "esp32s3",
     mac: "00:11:22:33:44:55",
+    dual_bootloader_ota: true,
     image_profile: "ESPHUB2/bootloader/esp32s3-16mb",
     fw: { version: "1.2.3" },
     log_flush: true,
@@ -618,7 +619,7 @@ try {
   // A request dispatched in the bootloader is completed by a different boot.
   const installBootloader = { ...id, kind: "bootloader", url: localFiles.bootloader };
   await assert.rejects(op("ota.install", installBootloader), /bootloader/i);
-  const info = { board: d.board, chip: "esp32s3", bootloader_ota: true, bootloader_profile: "esp32s3-16mb" };
+  const info = { board: d.board, chip: "esp32s3", dual_bootloader_ota: true, bootloader_profile: "esp32s3-16mb" };
   await mcu.hello({ ...info, role: "bootloader", image_profile: "ESPHUB2/bootloader/esp32s3-16mb" });
   const handoff = await op("ota.install", installBootloader);
   const [firstAttempt] = await mcu.pull();
@@ -627,6 +628,8 @@ try {
   await mcu.send({ t: "event", name: "install.failed",
     data: { transfer_id: firstAttempt.args.transfer_id, error: "HTTPS read failed" } });
   assert.equal((await result(firstAttempt.id)).state, "failed");
+  await assert.rejects(op("ota.install", installBootloader), /bootloader/i);
+  await mcu.hello({ ...info, role: "bootloader", image_profile: "ESPHUB2/bootloader/esp32s3-16mb" });
   const retry = await op("ota.install", installBootloader);
   const [nextAttempt] = await mcu.pull();
   assert.equal(nextAttempt.id, retry.command_id);

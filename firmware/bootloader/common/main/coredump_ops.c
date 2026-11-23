@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "sdkconfig.h"
 #include "esp_core_dump.h"
 #include "okou_agent_ext.h"
 #include "bootloader.h"
@@ -22,6 +23,7 @@ static esp_err_t op_coredump(const cJSON *args, cJSON *data, char *err, size_t e
         cJSON_AddStringToObject(sum, "task", s->exc_task);
         snprintf(hex, sizeof(hex), "0x%08lx", (unsigned long)s->exc_pc);
         cJSON_AddStringToObject(sum, "pc", hex);
+#if CONFIG_IDF_TARGET_ARCH_XTENSA
         cJSON *bt = cJSON_AddArrayToObject(sum, "backtrace");
         for (uint32_t i = 0; i < s->exc_bt_info.depth && i < 16; i++) {
             snprintf(hex, sizeof(hex), "0x%08lx", (unsigned long)s->exc_bt_info.bt[i]);
@@ -31,6 +33,12 @@ static esp_err_t op_coredump(const cJSON *args, cJSON *data, char *err, size_t e
         cJSON_AddNumberToObject(sum, "exc_cause", s->ex_info.exc_cause);
         snprintf(hex, sizeof(hex), "0x%08lx", (unsigned long)s->ex_info.exc_vaddr);
         cJSON_AddStringToObject(sum, "exc_vaddr", hex);
+#elif CONFIG_IDF_TARGET_ARCH_RISCV
+        /* ESP-IDF exposes a stack dump on RISC-V. Unwind the backtrace on the host. */
+        cJSON_AddNumberToObject(sum, "mcause", s->ex_info.mcause);
+        snprintf(hex, sizeof(hex), "0x%08lx", (unsigned long)s->ex_info.mtval);
+        cJSON_AddStringToObject(sum, "mtval", hex);
+#endif
         char sha[sizeof(s->app_elf_sha256) + 1];
         memcpy(sha, s->app_elf_sha256, sizeof(s->app_elf_sha256));
         sha[sizeof(s->app_elf_sha256)] = '\0';

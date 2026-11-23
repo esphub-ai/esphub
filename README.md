@@ -15,7 +15,7 @@ See the [firmware glossary and partition mapping](docs/firmware-terminology.md) 
 
 All supported models use ESP32-S3. Paper Color, PaperDIY, StackChan and StopWatch have 16 MB flash. Cardputer-Adv has 8 MB flash and its own partition layout. Its MicroPython runtime includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for the TCA8418 keyboard. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the shared EspHub Bootloader, MicroPython runtime, partition table, board identity, example main.py, flash arguments and a SHA-256 manifest. This kit erases flash and replaces the partition table and app. Back up device data before installing it.
 
-To build the shared EspHub Bootloader locally, use ESP-IDF 5.4.1 from the selected `firmware/bootloader/<target>-<size>mb/` directory. Use `esp32s3-8mb` for Cardputer-Adv and `esp32s3-16mb` for the other boards:
+To build the shared bootloader locally, use ESP-IDF 5.4.1 from the selected `firmware/bootloader/<target>-<size>mb/` directory. Use ESP-IDF 5.5.4 for `esp32c5-16mb` and `esp32c61-16mb`. Use `esp32s3-8mb` for Cardputer-Adv and `esp32s3-16mb` for the other boards:
 
 ```sh
 cd firmware/bootloader/esp32s3-16mb
@@ -46,16 +46,14 @@ The virtual board supports read-only serial output and private 24-hour source st
 
 ## OTA
 
-For a Native Program, rebuild with the current EspHub SDK and use its supported native OTA or USB installation path.
+Supported devices have at least 8 MiB of Flash and two EspHub Bootloader slots. For devices with a single bootloader slot, back up files and registration details, then install the board-specific A/B setup kit over USB and provision it again. Changing the layout moves the application and may overwrite user data. OTA leaves the partition table untouched.
 
 1. For a local firmware binary, use `ota.prepare_upload` and PUT the file as described below. If you already have an HTTPS download URL, use it directly. For generated Python, call `programs.publish` with the device ID and UTF-8 source (up to 32 KiB). It returns a private HTTPS URL valid for 24 hours. An existing HTTPS URL also works.
 2. Call `bootloader.enter` with the device ID. Wait for `devices.get` to report an online bootloader. For the official bootloader, use `ota.install` with `kind: "bootloader"` and omit the URL.
 3. Call `ota.install` with `device_id`, `kind` and `url`. Use a matching official or custom-built OTA binary for `bootloader` or `micropython`, or a plain UTF-8 main.py file for `python`. Boot the matching OTA-capable runtime once to initialize its data volume before installing a program.
-4. Read the install result with `commands.get`. The boot performing the write reports `install.done` with the total bytes written or `install.failed` with the error. To inspect the event, match the transfer ID in that boot's `uart.read` stream (Runtime for Bootloader updates, Bootloader for Runtime and Python Program updates). After reboot, verify the new firmware identity or the program's startup output. An uncaught exception in boot.py or main.py produces a `program.failed` event and a traceback in the application log.
+4. Read the install result with `commands.get`. The boot performing the write reports `install.done` with the total bytes written or `install.failed` with the error. To inspect the event, match the transfer ID in that boot's `uart.read` stream (the EspHub Bootloader for all three update kinds). After reboot, verify the new firmware identity or the program's startup output. An uncaught exception in boot.py or main.py produces a `program.failed` event and a traceback in the application log.
 
-The bootloader validates the HTTPS certificate and hostname and streams in 4 KiB blocks. It checks the board and image type before writing firmware. New USB layouts reserve one 1.25 MiB partition named `bl` for the EspHub Bootloader and a partition named `app` for the application image. For Bootloader OTA, the EspHub Bootloader saves the URL and transfer ID and boots the matching MicroPython runtime in maintenance mode. Its native agent downloads into the same Bootloader partition and boots the validated image. A running compatible runtime can also accept `ota.install` directly for `kind: "bootloader"`, including to retry an interrupted write. An interruption can leave the EspHub Bootloader unusable until the runtime retries the OTA or the device is recovered by USB.
-
-OTA preserves the partition table and user files. For a 4 MiB board with a compact runtime, `firmware/partitions/4mb.csv` allocates 1.25 MiB for the EspHub Bootloader, 2.0625 MiB for the runtime, and 512 KiB for user files. Current board-specific runtime releases exceed that runtime budget. The MicroPython Runtime image identifies the board. The shared EspHub Bootloader image identifies its chip and Flash variant. Both use the single-slot capability marker emitted by this SDK.
+The bootloader validates the HTTPS certificate and hostname and streams in 4 KiB blocks. It checks the board and image type before writing firmware. For Bootloader updates it writes the inactive slot and switches boot selection after validating the completed image. An interrupted download leaves the running slot intact. The new bootloader confirms itself after SDK startup and USB provisioning initialization; ESP-IDF rollback can recover a failed first boot. The application slot is independent and a native application does not need an OTA writer.
 
 Runtime updates write the application slot, so a failed runtime download may require a retry in Bootloader mode. Python streams directly into main.py. Starting the write replaces the old source. Wait for output from the next application boot to verify execution. The hub's private artifact endpoint requires the device token. External downloads follow HTTPS redirects without that token.
 
@@ -111,4 +109,4 @@ The board workflow combines the shared binaries with each board's partition tabl
 
 ## Origin
 
-The board bring-up and bootloader SDK are adapted from the MIT-licensed e7h4n/esp-launcher validation project; see firmware/LICENSE. The product reference is https://esphub-device-console.okou.app/. The homepage board image comes from Espressif's ESP32-S3-DevKitC-1 guide. The Instrument Sans font license is included with the web assets.
+The board bring-up and bootloader SDK are adapted from the MIT-licensed e7h4n/esp-bootloader validation project; see firmware/LICENSE. The product reference is https://esphub-device-console.okou.app/. The homepage board image comes from Espressif's ESP32-S3-DevKitC-1 guide. The Instrument Sans font license is included with the web assets.

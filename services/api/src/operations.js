@@ -125,7 +125,7 @@ const defs = [
   [
     "ota.install",
     { ...destructive, openWorldHint: true },
-    "Update a registered device. For the latest official EspHub Bootloader, use kind bootloader and omit url. Use bootloader.enter for Runtime or Python Program updates. For a Python Program, use kind python and a UTF-8 main.py URL. A compatible MicroPython Runtime can also start a Bootloader update directly. For a Native Program, read the SDK version and board-specific guidance from devices.get. Native Program binaries require a separate OTA path. Confirm completion from the install event and the next boot.",
+    "Update a registered device. For the latest official EspHub Bootloader, use kind bootloader and omit url. Use bootloader.enter before any OTA installation. For a Python Program, use kind python and a UTF-8 main.py URL. For a Native Program, read the SDK version and board-specific guidance from devices.get. Native Program binaries require a separate OTA path. Confirm completion from the install event and the next boot.",
     {
       ...id,
       kind: otaKind,
@@ -410,17 +410,13 @@ export async function operate(c, owner, name, a) {
       ? { mode: "bootloader", process_id: d.boot_id }
       : queue("reboot", { target: "bootloader" }, d.boot_id);
   if (name === "ota.install") {
-    const runtimeWriter =
-      a.kind === "bootloader" &&
-      info?.role === "app" &&
-      info.bootloader_ota === true &&
-      info.bootloader_profile === boards[d.board]?.bootloader &&
-      info.image_profile === "ESPHUB2/micropython/" + d.board;
     const variant = boards[d.board]?.bootloader;
     const bootloader = info?.role === "bootloader" &&
       info.image_profile === "ESPHUB2/bootloader/" + variant;
-    if (info?.board !== d.board || (!bootloader && !runtimeWriter))
+    if (info?.board !== d.board || !bootloader)
       fail(409, "Enter compatible EspHub Bootloader mode first using bootloader.enter");
+    if (a.kind === "bootloader" && info.dual_bootloader_ota !== true)
+      fail(409, "Back up the device and install the A/B USB setup kit first");
     if (!a.url) {
       const manifest = await bootloaderManifest(d.board);
       if (info.chip !== manifest.chip) fail(409, "Release target mismatch");

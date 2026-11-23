@@ -25,6 +25,8 @@ for (const vendor of await readdir(root, { withFileTypes: true })) {
       throw Error("Invalid board path or duplicate ID: " + directory.pathname);
     if (![name, model, chip].every((v) => typeof v === "string" && v.length))
       throw Error("Invalid metadata for " + id);
+    if (!Number.isInteger(flash_mb) || flash_mb < 8)
+      throw Error("EspHub requires at least 8 MiB Flash: " + id);
     boards[id] = {
       name,
       model,

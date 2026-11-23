@@ -40,9 +40,9 @@ def package(table, suffix):
         with table.open() as f:
             parts = {row[0]: row for row in csv.reader(f, skipinitialspace=True)
                      if len(row) >= 5 and not row[0].startswith("#")}
-        bl, app, nvs, ota_data = (parts[key] for key in ("bl", "app", "nvs", "otadata"))
-        assert bl[1:3] == ["app", "ota_0"] and app[1:3] == ["app", "ota_1"]
-        assert len(image) <= int(bl[4], 0)
+        bl, standby, app, nvs, ota_data = (parts[key] for key in ("launcher_a", "launcher_b", "app", "nvs", "otadata"))
+        assert bl[1:3] == ["app", "ota_0"] and standby[1:3] == ["app", "ota_1"] and app[1:3] == ["app", "ota_2"]
+        assert len(image) <= min(int(bl[4], 0), int(standby[4], 0))
         assert nvs[1:3] == ["data", "nvs"] and ota_data[1:3] == ["data", "ota"]
         nvs_csv = tmp / "board.csv"
         nvs_csv.write_text(f"key,type,encoding,value\nokl,namespace,,\nboard,data,string,{board}\n")

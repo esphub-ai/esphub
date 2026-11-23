@@ -302,7 +302,10 @@ static void hello_fill(cJSON *o)
     cJSON_AddBoolToObject(o, "log_flush", true);
 #ifdef OKOU_IMAGE_PROFILE
     cJSON_AddStringToObject(o, "image_profile", image_profile);
-    cJSON_AddBoolToObject(o, "bootloader_ota", true);
+#if CONFIG_OKL_URL_OTA
+    cJSON_AddBoolToObject(o, "dual_bootloader_ota",
+                         !strcmp(run->label, "launcher_a") || !strcmp(run->label, "launcher_b"));
+#endif
     if (CONFIG_OKOU_BL_PROFILE[0]) cJSON_AddStringToObject(o, "bootloader_profile", CONFIG_OKOU_BL_PROFILE);
 #endif
 #if CONFIG_OKL_URL_OTA
