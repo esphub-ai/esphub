@@ -36,7 +36,7 @@ async function artifact(board, asset, tag) {
 export async function launcherManifest(board) {
   const { tag, version, url } = await artifact(board, "manifest");
   const r = await fetch(url);
-  if (!r.ok) fail(503, "GitHub launcher manifest unavailable");
+  if (!r.ok) fail(503, "Official EspHub Bootloader manifest unavailable");
   const m = await r.json();
   if (
     m.board !== board ||
@@ -48,7 +48,7 @@ export async function launcherManifest(board) {
     !Number.isSafeInteger(m.ota.size) ||
     m.ota.size <= 0
   )
-    fail(503, "Invalid launcher manifest");
+    fail(503, "Invalid EspHub Bootloader manifest");
   return { ...m, tag };
 }
 
@@ -57,6 +57,6 @@ export async function releaseResponse(board, kind, tag, deviceDownload) {
   if (!deviceDownload || kind !== "ota") return Response.redirect(url, 302);
   // Older launchers require a direct 200 response for their pinned upgrade.
   const r = await fetch(url, { redirect: "follow" });
-  if (r.status !== 200) fail(503, "GitHub launcher image unavailable");
+  if (r.status !== 200) fail(503, "Official EspHub Bootloader image unavailable");
   return new Response(r.body, r);
 }

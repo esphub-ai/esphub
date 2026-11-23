@@ -4,7 +4,7 @@ import { connected } from "./iot.js";
 import { artifactBase } from "./uploads.js";
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import { maxUploadBytes } from "./uploads.js";
-import { updateSources } from "./update-sources.js";
+import { runtimeDownloadUrl, updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
 import { launcherManifest } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
@@ -43,7 +43,7 @@ const defs = [
   [
     "devices.get",
     readOnly,
-    "Show device kind, identity and connection status. Physical boards include GitHub source directories for all three OTA layers, even while offline.",
+    "Show device kind, identity and connection status. Physical boards include EspHub Bootloader, Runtime, and Program update guidance, official downloads, and SDK information, even while offline.",
     id,
   ],
   [
@@ -103,13 +103,13 @@ const defs = [
   [
     "launcher.enter",
     destructive,
-    "Reports launcher mode if the physical device is already in the launcher. Otherwise, requests a reboot into the launcher for over-the-air updates.",
+    "Enter EspHub Bootloader mode for OTA updates. The protocol reports this mode as launcher. If already in Bootloader mode, returns the current boot session.",
     id,
   ],
   [
     "firmware.get",
     readOnly,
-    "Read firmware metadata for a physical or virtual board. Physical boards include official GitHub sources.",
+    "Read firmware metadata for a physical or virtual board. Physical boards also include EspHub Bootloader, Runtime, and Program update guidance and SDK information.",
     id,
   ],
   [
@@ -125,7 +125,7 @@ const defs = [
   [
     "ota.install",
     { ...destructive, openWorldHint: true },
-    "Installs an HTTPS artifact on the registered board from launcher mode. The kind selects a launcher, MicroPython runtime, or UTF-8 main.py. Omitting the URL for a launcher selects the official board release. The command result records the transfer outcome.",
+    "Update a registered device. For the latest official EspHub Bootloader, use kind launcher and omit url. Before migrating an older MicroPython device to the shared Bootloader, first install its official board Runtime with kind micropython and the HTTPS URL from devices.get. Use launcher.enter for Runtime or Python Program updates. For a Python Program, use kind python and a UTF-8 main.py URL. A compatible MicroPython Runtime can also start a Bootloader update directly. For a Native Program, read the SDK version and board-specific guidance from devices.get. Native Program binaries require a separate OTA path. Confirm completion from the install event and the next boot.",
     {
       ...id,
       kind: otaKind,
@@ -421,12 +421,15 @@ export async function operate(c, owner, name, a) {
       (variant && info.image_profile === "ESPHUB2/launcher/" + variant)
     );
     if (info?.board !== d.board || (!launcher && !runtimeWriter))
-      fail(409, "Start a compatible launcher first");
+      fail(409, "Enter compatible EspHub Bootloader mode first using launcher.enter");
     if (!a.url) {
       const manifest = await launcherManifest(d.board);
       if (info.chip !== manifest.chip) fail(409, "Release target mismatch");
       if (manifest.bootloader && runtimeWriter && info.bootloader_profile !== manifest.bootloader)
-        fail(409, "Install the latest board MicroPython runtime before updating to the shared launcher");
+        fail(
+          409,
+          `Install the latest MicroPython Runtime from ${runtimeDownloadUrl(d.board)} before updating to the shared EspHub Bootloader`,
+        );
       return queue(
         "install",
         {
@@ -476,6 +479,6 @@ export async function operate(c, owner, name, a) {
     args = { target: "self" };
   }
   if (name === "devices.reset") op = "provision.reset";
-  if (name === "firmware.get") op = "status";
+  if (name === "firmware.get") return withSources(await queue("status", {}));
   return queue(op, args);
 }

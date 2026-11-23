@@ -13,15 +13,15 @@ See the [firmware glossary and partition mapping](docs/firmware-terminology.md) 
 
 ## Devices and releases
 
-All supported models use ESP32-S3. Paper Color, PaperDIY, StackChan and StopWatch have 16 MB flash. Cardputer-Adv has 8 MB flash and its own partition layout. Its MicroPython runtime includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for the TCA8418 keyboard. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the shared launcher, MicroPython runtime, partition table, board identity, example main.py, flash arguments and a SHA-256 manifest. This kit replaces the partition table and app. The separate StopWatch launcher-only kit preserves its legacy partition layout.
+All supported models use ESP32-S3. Paper Color, PaperDIY, StackChan and StopWatch have 16 MB flash. Cardputer-Adv has 8 MB flash and its own partition layout. Its MicroPython runtime includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for the TCA8418 keyboard. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the shared EspHub Bootloader, MicroPython runtime, partition table, board identity, example main.py, flash arguments and a SHA-256 manifest. This kit replaces the partition table and app. The separate StopWatch Bootloader-only kit preserves its legacy partition layout.
 
-To build the shared launcher locally, use ESP-IDF 5.4.1 from `firmware/bootloader`. Use `esp32s3-8mb` for Cardputer-Adv and `esp32s3-16mb` for the other boards:
+To build the shared EspHub Bootloader locally, use ESP-IDF 5.4.1 from `firmware/bootloader`. Use `esp32s3-8mb` for Cardputer-Adv and `esp32s3-16mb` for the other boards:
 
 ```sh
 idf.py -B build/esp32s3-16mb -DSDKCONFIG="$PWD/build/esp32s3-16mb/sdkconfig" -DESPHUB_BL=esp32s3-16mb -DIDF_TARGET=esp32s3 build
 ```
 
-Connect the board over USB and call `devices.create`. Download and flash the matching setup kit. Send the returned token and BLE bootstrap key to the launcher at 115200 baud:
+Connect the board over USB and call `devices.create`. Download and flash the matching setup kit. Send the returned token and BLE bootstrap key to the EspHub Bootloader at 115200 baud:
 
 ```text
 OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret>"}
@@ -45,18 +45,18 @@ The virtual board supports read-only serial output and private 24-hour source st
 
 ## OTA
 
-On an existing board with the single-slot layout, install the latest board MicroPython runtime before upgrading to the shared launcher. That runtime saves the board identity in NVS when it writes the new launcher. OTA preserves the existing partition table and credentials. For a first install, the board-specific USB setup kit writes the board identity directly.
+On an existing board with the single-slot layout, install the latest board MicroPython runtime before upgrading to the shared EspHub Bootloader. That runtime saves the board identity in NVS when it writes the new launcher. OTA preserves the existing partition table and credentials. For a first install, the board-specific USB setup kit writes the board identity directly.
 
 1. For a local firmware binary, use `ota.prepare_upload` and PUT the file as described below. If you already have an HTTPS download URL, use it directly. For generated Python, call `programs.publish` with the device ID and UTF-8 source (up to 32 KiB). It returns a private HTTPS URL valid for 24 hours. An existing HTTPS URL also works.
 2. Call `launcher.enter` with the device ID. Wait for `devices.get` to report an online launcher. For the official launcher, use `ota.install` with `kind: "launcher"` and omit the URL.
 3. Call `ota.install` with `device_id`, `kind` and `url`. Use a matching official or custom-built OTA binary for `launcher` or `micropython`, or a plain UTF-8 main.py file for `python`. Boot the matching OTA-capable runtime once to initialize its data volume before installing a program.
 4. Read the install result with `commands.get`. The boot performing the write reports `install.done` with the total bytes written or `install.failed` with the error. To inspect the event, match the transfer ID in that boot's `uart.read` stream (Runtime for Bootloader updates, Bootloader for Runtime and Python Program updates). After reboot, verify the new firmware identity or the program's startup output. An uncaught exception in boot.py or main.py produces a `program.failed` event and a traceback in the application log.
 
-The launcher validates the HTTPS certificate and hostname and streams in 4 KiB blocks. It checks the board and image type before writing firmware. New USB layouts reserve one 1.25 MiB partition named `bl` for the EspHub Bootloader and a partition named `app` for the application image. For launcher OTA, the launcher saves the URL and transfer ID and boots the matching MicroPython runtime in maintenance mode. Its native agent downloads into the same launcher partition and boots the validated image. A running compatible runtime can also accept `ota.install` directly for `kind: "launcher"`, including to retry an interrupted write. An interruption can leave the launcher unusable until the runtime retries the OTA or the device is recovered by USB.
+The launcher validates the HTTPS certificate and hostname and streams in 4 KiB blocks. It checks the board and image type before writing firmware. New USB layouts reserve one 1.25 MiB partition named `bl` for the EspHub Bootloader and a partition named `app` for the application image. For Bootloader OTA, the EspHub Bootloader saves the URL and transfer ID and boots the matching MicroPython runtime in maintenance mode. Its native agent downloads into the same Bootloader partition and boots the validated image. A running compatible runtime can also accept `ota.install` directly for `kind: "launcher"`, including to retry an interrupted write. An interruption can leave the EspHub Bootloader unusable until the runtime retries the OTA or the device is recovered by USB.
 
-On a device with the older A/B layout, update the runtime first, then the launcher. Subsequent updates overwrite the last booted launcher in place. OTA does not rewrite the partition table or move user files. To reclaim the reserved Flash on an existing device, back up its files and reinstall the new first-time USB kit. For a 4 MiB board with a compact runtime, `firmware/partitions/4mb.csv` allocates 1.25 MiB for the launcher, 2.0625 MiB for the runtime, and 512 KiB for user files. Current board-specific runtime releases exceed that runtime budget. Both OTA firmware images must carry the board profile and the single-slot capability marker emitted by this SDK.
+On a device with the older A/B layout, update the runtime first, then the EspHub Bootloader. Subsequent updates overwrite the last booted EspHub Bootloader in place. OTA does not rewrite the partition table or move user files. To reclaim the reserved Flash on an existing device, back up its files and reinstall the new first-time USB kit. For a 4 MiB board with a compact runtime, `firmware/partitions/4mb.csv` allocates 1.25 MiB for the EspHub Bootloader, 2.0625 MiB for the runtime, and 512 KiB for user files. Current board-specific runtime releases exceed that runtime budget. The MicroPython Runtime image identifies the board. The shared EspHub Bootloader image identifies its chip and Flash variant. Both use the single-slot capability marker emitted by this SDK.
 
-Runtime updates write the application slot, so a failed runtime download may require a retry in launcher mode. Python streams directly into main.py. Starting the write replaces the old source. Wait for output from the next application boot to verify execution. The hub's private artifact endpoint requires the device token. External downloads follow HTTPS redirects without that token.
+Runtime updates write the application slot, so a failed runtime download may require a retry in Bootloader mode. Python streams directly into main.py. Starting the write replaces the old source. Wait for output from the next application boot to verify execution. The hub's private artifact endpoint requires the device token. External downloads follow HTTPS redirects without that token.
 
 ### Build your own update
 
@@ -84,13 +84,13 @@ A local build, a downloaded release or a file supplied by the user can all be in
    ```
 
    HTTP 201 confirms the bytes are in private R2 storage. The write credential is valid for 15 minutes and can create one object. The device's download URL is valid for 24 hours. Use `programs.publish` for Python source up to 32 KiB. Firmware uploads accept up to 4 MiB. The binary must also fit the board's target partition.
-3. Call `launcher.enter` and wait for launcher mode. Pass the upload response's `url` (or an existing direct download URL), `kind` and `device_id` to `ota.install`. Follow the transfer receipt and next boot to verify installation.
+3. Call `launcher.enter` and wait for Bootloader mode. Pass the upload response's `url` (or an existing direct download URL), `kind` and `device_id` to `ota.install`. Follow the transfer receipt and next boot to verify installation.
 
 ## Console and authentication
 
 Browser sign-in and sign-up use the Clerk production Account Portal at accounts.esphub.ai. Clerk manages sessions across the esphub.ai root domain. The API checks the token signature against clerk.esphub.ai, issuer, expiry and an exact allowed browser origin before mapping a Clerk user ID to a Neon account. The website forwards same-origin requests through its API Worker binding. Connect a remote MCP client from the Devices page and sign in through Clerk. For an existing connection, remove its static Authorization header or bearer-token environment setting before signing in. MCP accepts audience-bound OAuth access tokens for https://api.esphub.ai/mcp. Clients request both devices:read and devices:write by default. Read access covers device and firmware information, saved Wi-Fi networks, boot sessions and serial output. Active Wi-Fi scans, device or network changes, firmware installation and serial input also require devices:write. Existing read-only grants must obtain user consent before a write. Clerk handles consent, token issuance and renewal. A device token cannot access operator tools.
 
-In the ESP Hub production Clerk instance, register https://api.esphub.ai/mcp under Agents → MCP servers and allow public clients to connect with CIMD. In OAuth applications → Settings, enable Publish CIMD support and leave Publish DCR support off. Use a client version that supports Client ID Metadata Documents (CIMD). Under OAuth applications, create and advertise `devices:read` and `devices:write`. Select both `devices:read` and `devices:write` in the default and allowed scopes for dynamic clients. Clerk uses `offline_access` for token refresh. Use the instance's secret key for the API Worker.
+In the EspHub production Clerk instance, register https://api.esphub.ai/mcp under Agents → MCP servers and allow public clients to connect with CIMD. In OAuth applications → Settings, enable Publish CIMD support and leave Publish DCR support off. Use a client version that supports Client ID Metadata Documents (CIMD). Under OAuth applications, create and advertise `devices:read` and `devices:write`. Select both `devices:read` and `devices:write` in the default and allowed scopes for dynamic clients. Clerk uses `offline_access` for token refresh. Use the instance's secret key for the API Worker.
 
 Neon stores registrations, device-token hashes, boot metadata and the command queue. Each device’s Durable Object serializes incoming MQTT reports and records serial output in R2. Serial input uses the same per-boot command queue as other remote operations. [Device protocol and rollout](docs/iot.md).
 
@@ -98,7 +98,7 @@ Neon stores registrations, device-token hashes, boot metadata and the command qu
 
 Install dependencies with npm ci. npm run build bundles browser code and generates the tool catalog for the signed-in explorer. npm test runs unit tests, and TEST_DATABASE_URL enables the PostgreSQL ownership test. npm run migrate takes MIGRATION_DATABASE_URL and serializes checksum-verified, additive migrations under an advisory lock.
 
-Pushes to main run verification on an ephemeral PostgreSQL instance, migrate production Neon, deploy the Hono API then the website, and check public domains and authentication boundaries. Required repository secrets are CLERK_SECRET_KEY (ESP Hub production instance), MIGRATION_DATABASE_URL, RUNTIME_DB_PASSWORD (64 lowercase hex characters), and CLOUDFLARE_API_TOKEN. CLOUDFLARE_ACCOUNT_ID is a repository variable. CI ensures the esphub-production R2 bucket exists. The migration role creates a restricted runtime role; the API Worker receives the runtime database URL and the Clerk credential. Configure the production environment to suit the organization's deployment policy.
+Pushes to main run verification on an ephemeral PostgreSQL instance, migrate production Neon, deploy the Hono API then the website, and check public domains and authentication boundaries. Required repository secrets are CLERK_SECRET_KEY (EspHub production instance), MIGRATION_DATABASE_URL, RUNTIME_DB_PASSWORD (64 lowercase hex characters), and CLOUDFLARE_API_TOKEN. CLOUDFLARE_ACCOUNT_ID is a repository variable. CI ensures the esphub-production R2 bucket exists. The migration role creates a restricted runtime role; the API Worker receives the runtime database URL and the Clerk credential. Configure the production environment to suit the organization's deployment policy.
 
 ### Board firmware CI
 
@@ -106,7 +106,7 @@ Each `firmware/boards/<id>/board.json` declares the board's chip, flash capacity
 
 The firmware workflow builds each selected variant once from `firmware/bootloader/variants/<target>-<size>mb/`. On main it publishes the bootloader binaries under an input-fingerprinted `bl-*` tag. Later runs reuse the published binaries when preparing a board with the same variant and build inputs. The shared builds use internal RAM.
 
-The board workflow combines the shared binaries with each board's partition table, and publishes board-facing assets under `<component>-<board>-v<version>`. StopWatch also gets a fresh-layout USB archive using the same launcher binary. USB setup includes the board's MicroPython image and verification example. Its manifest pins both component tags. Historical board download URLs continue to resolve.
+The board workflow combines the shared binaries with each board's partition table, and publishes board-facing assets under `<component>-<board>-v<version>`. StopWatch also gets a fresh-layout USB archive using the same EspHub Bootloader binary. USB setup includes the board's MicroPython image and verification example. Its manifest pins both component tags. Historical board download URLs continue to resolve.
 
 ## Origin
 

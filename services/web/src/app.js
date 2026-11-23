@@ -153,12 +153,12 @@ function softwareFields(device) {
   if (device.kind === "virtual") return [["Simulated firmware", device.info.fw.version]];
   const software = device.software;
   const app = software?.application;
-  const fields = [["Launcher", (software?.launcher_version || "Not reported") + (software?.launcher_last_seen ? " (last seen)" : "")]];
+  const fields = [["Bootloader", (software?.launcher_version || "Not reported") + (software?.launcher_last_seen ? " (last seen)" : "")]];
   if (!app) return fields;
   if (app.kind === "micropython") {
     fields.push(["MicroPython", app.micropython_version || "Not reported"], ["Runtime build", app.version]);
   } else {
-    fields.push(["Application", [app.name, app.version].filter(Boolean).join(" ")], ["ESPHub SDK", app.sdk_version || "Not reported"], ["ESP-IDF", app.esp_idf_version]);
+    fields.push(["Application", [app.name, app.version].filter(Boolean).join(" ")], ["EspHub SDK", app.sdk_version || "Not reported"], ["ESP-IDF", app.esp_idf_version]);
   }
   return fields;
 }
@@ -187,7 +187,7 @@ const devicePrompt = `Connect to ${mcpEndpoint} with CIMD OAuth and the devices:
 
 For a new board, identify it over USB. Ask me if the model is unclear, then call devices.create and follow its setup instructions.
 
-For a program update, confirm the target and what I want it to do. Use an existing HTTPS download URL, upload a local firmware binary with ota.prepare_upload, or stage main.py with programs.publish. Call launcher.enter, wait for launcher mode, then use ota.install with the matching kind and download URL. Check the next boot’s output before reporting success.`;
+For a program update, confirm the target and what I want it to do. Use an existing HTTPS download URL, upload a local firmware binary with ota.prepare_upload, or stage main.py with programs.publish. Call launcher.enter, wait for Bootloader mode, then use ota.install with the matching kind and download URL. Check the next boot’s output before reporting success.`;
 function devicePromptPanel() {
   return `<section class="mcp-setup" aria-labelledby="mcp-title"><h2 id="mcp-title">Use EspHub with your assistant</h2>
     <div class="mcp-grid"><div class="panel"><blockquote id="mcp-prompt">${esc(devicePrompt)}</blockquote>${button("copy-prompt", "Copy prompt")}</div></div></section>`;
@@ -402,7 +402,7 @@ async function refresh() {
       button("info", "Inspect device") +
       (virtual
         ? ""
-        : button("enter", "Enter launcher mode") +
+        : button("enter", "Enter Bootloader mode") +
           button("install", "Install from URL") +
           (device.info?.role === "launcher" && !device.info?.image_profile
             ? button("launcher", "Upgrade legacy launcher")
@@ -535,9 +535,9 @@ async function action(k) {
     return;
   }
   if (k === "enter") {
-    dialog("Enter launcher mode", "<p>The running application pauses while the launcher handles updates.</p>", "Enter launcher mode", async () => {
+    dialog("Enter Bootloader mode", "<p>The running application pauses while the EspHub Bootloader handles updates.</p>", "Enter Bootloader mode", async () => {
       const result = await op("launcher.enter", id);
-      notify(result.mode === "launcher" ? "Launcher ready" : "Restarting into launcher mode");
+      notify(result.mode === "launcher" ? "Bootloader ready" : "Restarting into Bootloader mode");
       await refresh();
     });
     return;
@@ -551,7 +551,7 @@ async function action(k) {
         await op("ota.install", { ...id, kind: "launcher" });
         tab = "Serial";
         await refresh();
-        notify("Launcher image installed");
+        notify("Bootloader image installed");
       },
     );
     return;
@@ -559,7 +559,7 @@ async function action(k) {
   if (k === "install") {
     dialog(
       "Install from URL",
-      '<label>Update target<select class="field" name="kind"><option value="python">Python program (main.py)</option><option value="micropython">MicroPython runtime</option><option value="launcher">Launcher</option></select></label>' +
+      '<label>Update target<select class="field" name="kind"><option value="python">Python Program (main.py)</option><option value="micropython">MicroPython Runtime</option><option value="launcher">Bootloader</option></select></label>' +
         field("url", "HTTPS artifact URL", "url", "required"),
       "Install",
       async (a) => {
@@ -699,7 +699,7 @@ async function start() {
     );
     docs(
       "USB provisioning",
-      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install EspHub with MicroPython. Use the matching board kit from GitHub Releases and follow INSTALL.txt. Write the registration token and BLE bootstrap key over USB. Start the Mac BLE provisioning tool. When it says Beacon ready, restart the board and choose a Wi-Fi network or enter a hidden SSID.</p></div><div class="panel"><h3>3. Verify</h3><p>Check devices.get for the online MicroPython application. Stage the hello program with programs.publish. Enter launcher mode, install its URL with ota.install, then check the new boot for the hello message.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","ble_secret":"&lt;ble_secret&gt;"}</pre><p class="doccopy"><a href="https://github.com/okou-ai/esphub/tree/main/tools/ble-wifi">Mac BLE provisioning tool and instructions</a></p><h2>Board packages</h2><div class="flex">' +
+      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install EspHub with MicroPython. Use the matching board kit from GitHub Releases and follow INSTALL.txt. Write the registration token and BLE bootstrap key over USB. Start the Mac BLE provisioning tool. When it says Beacon ready, restart the board and choose a Wi-Fi network or enter a hidden SSID.</p></div><div class="panel"><h3>3. Verify</h3><p>Check devices.get for the online MicroPython application. Stage the hello program with programs.publish. Enter Bootloader mode, install its URL with ota.install, then check the new boot for the hello message.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","ble_secret":"&lt;ble_secret&gt;"}</pre><p class="doccopy"><a href="https://github.com/okou-ai/esphub/tree/main/tools/ble-wifi">Mac BLE provisioning tool and instructions</a></p><h2>Board packages</h2><div class="flex">' +
         profiles
           .map(([board, name]) => {
             const base = "https://api.esphub.ai/releases/" + board + "/";
@@ -710,10 +710,10 @@ async function start() {
               link(base + "setup", "First-time USB kit", true) +
               link(base + "setup-manifest", "Setup SHA-256 manifest") +
               '</div><details><summary>Firmware downloads</summary><div class="flex">' +
-              link(base + "usb", "Launcher-only USB kit") +
-              link(base + "ota", "Launcher OTA image") +
+              link(base + "usb", "Bootloader-only USB kit") +
+              link(base + "ota", "Bootloader OTA image") +
               link(base + "micropython", "MicroPython OTA image") +
-              link(base + "manifest", "Launcher manifest") +
+              link(base + "manifest", "Bootloader manifest") +
               "</div></details></div>"
             );
           })

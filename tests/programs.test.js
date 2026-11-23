@@ -17,7 +17,24 @@ test("each board links to the actual source, build recipes and provisioning exam
     return url.slice(prefix.length);
   }
   for (const board of Object.keys(boards)) {
-    const { sources, custom_build_guide_url } = updateSources(board);
+    const { sources, custom_build_guide_url, firmware_update } =
+      updateSources(board);
+    assert.equal(
+      firmware_update.bootloader.download_url,
+      `https://api.esphub.ai/releases/${board}/ota`,
+    );
+    assert.equal(
+      firmware_update.runtime.download_url,
+      `https://api.esphub.ai/releases/${board}/micropython`,
+    );
+    assert.ok(
+      readFileSync(
+        "firmware/components/okou_agent/include/okou_agent.h",
+        "utf8",
+      ).includes(
+        `#define OKOU_SDK_VERSION "${firmware_update.program.sdk_version}"`,
+      ),
+    );
     for (const [kind, layer] of Object.entries(sources)) {
       assert.ok(statSync(localPath(layer.directory_url, "tree")).isDirectory());
       if (kind === "python") {

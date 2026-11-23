@@ -53,7 +53,7 @@ export async function serveMcp(c) {
   const authInfo = c.get("mcpAuth");
   const handler = createMcpHandler(
     () => {
-      const server = new McpServer({ name: "esphub", version: "1.0.0" });
+      const server = new McpServer({ name: "esphub", title: "EspHub", version: "1.0.0" });
       for (const { name, description, inputSchema, annotations } of tools) {
         server.registerTool(
           name,

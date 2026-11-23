@@ -2,7 +2,7 @@ name: Production
 on:
   push:
     branches: [main]
-    paths: ['services/**', 'migrations/**', 'shared/**', 'tests/**', 'package*.json', 'scripts/*.mjs', '!scripts/firmware-plan.mjs', 'firmware/boards/*/board.json', 'firmware/boards/*/hello.py', 'firmware/pyrt/upstream.json', '.github/workflows/production.yml']
+    paths: ['services/**', 'migrations/**', 'shared/**', 'tests/**', 'package*.json', 'scripts/*.mjs', '!scripts/firmware-plan.mjs', 'firmware/boards/*/board.json', 'firmware/boards/*/hello.py', 'firmware/pyrt/upstream.json', 'firmware/components/okou_agent/include/okou_agent.h', '.github/workflows/production.yml']
   pull_request:
   workflow_dispatch:
 permissions: {contents: read}
