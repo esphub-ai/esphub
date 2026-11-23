@@ -2,6 +2,8 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { randomUUID, createHash } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
+import { once } from "node:events";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 const exec = promisify(execFile);
@@ -15,8 +17,12 @@ export function simulatedDevice(site, token) {
     sub,
     boot,
     mid = 0;
-  const acks = new Map();
+  const acks = new Map(),
+    inbox = [],
+    httpsRequests = [];
+  let lastHello, lastInfo;
   async function post(path, value) {
+    httpsRequests.push(path);
     const r = await fetch(site + "/backend/api/device/" + path, {
       method: "POST",
       headers: {
@@ -58,6 +64,49 @@ export function simulatedDevice(site, token) {
       acks.delete(id);
     }
   }
+  async function disconnect() {
+    if (!sub) return;
+    const stopped = once(sub, "exit");
+    sub.kill();
+    await stopped;
+    sub = undefined;
+    inbox.length = 0;
+  }
+  async function subscribe() {
+    if (!sub) {
+      sub = spawn("stdbuf", [
+        "-oL",
+        "mosquitto_sub",
+        ...args,
+        "-i",
+        "esphub-" + device,
+        "-q",
+        "1",
+        "-t",
+        "devices/" + device + "/wake",
+        "-d",
+      ]);
+      const lines = createInterface({ input: sub.stdout });
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(Error("MQTT subscribe timeout")),
+          5000,
+        );
+        lines.on("line", (line) => {
+          if (line.includes("SUBACK")) {
+            clearTimeout(timer);
+            resolve();
+          }
+          if (!line.startsWith("{")) return;
+          const m = JSON.parse(line);
+          if (m.boot_id !== boot) return;
+          if (m.command) inbox.push(m.command);
+          else acks.get(m.mid)?.(m);
+        });
+        sub.on("error", reject);
+      });
+    }
+  }
   return {
     get id() {
       return device;
@@ -66,49 +115,37 @@ export function simulatedDevice(site, token) {
       return boot;
     },
     principal: createHash("sha256").update(csr).digest("hex"),
-    post,
+    httpsRequests,
+    get lastHello() {
+      return lastHello;
+    },
+    get queued() {
+      return inbox.length;
+    },
+    disconnect,
+    subscribe,
+    async reconnect() {
+      await disconnect();
+      await subscribe();
+      lastHello = await send({ t: "hello", ...lastInfo });
+    },
     send,
     close() {
       sub?.kill();
     },
     async hello(info) {
       boot = randomUUID().replaceAll("-", "");
-      const grant = await post("iot/enroll", { csr, boot_id: boot });
-      device = grant.device_id;
-      if (!sub) {
-        sub = spawn("stdbuf", [
-          "-oL",
-          "mosquitto_sub",
-          ...args,
-          "-q",
-          "1",
-          "-t",
-          "devices/" + device + "/wake",
-          "-d",
-        ]);
-        const lines = createInterface({ input: sub.stdout });
-        await new Promise((resolve, reject) => {
-          const timer = setTimeout(
-            () => reject(Error("MQTT subscribe timeout")),
-            5000,
-          );
-          lines.on("line", (line) => {
-            if (line.includes("SUBACK")) {
-              clearTimeout(timer);
-              resolve();
-            }
-            if (!line.startsWith("{")) return;
-            const m = JSON.parse(line);
-            if (m.boot_id === boot) acks.get(m.mid)?.(m);
-          });
-          sub.on("error", reject);
-        });
-      }
-      await send({ t: "hello", ...info });
+      inbox.length = 0;
+      if (!device) device = (await post("iot/enroll", { csr })).device_id;
+      await subscribe();
+      lastInfo = info;
+      lastHello = await send({ t: "hello", ...info });
       return boot;
     },
-    async pull() {
-      return (await post("iot/pull", { boot_id: boot })).commands;
+    async nextCommand() {
+      for (let i = 0; !inbox.length && i < 250; ++i) await delay(20);
+      assert.ok(inbox.length, "Expected a command on the MQTT subscription");
+      return inbox.shift();
     },
   };
 }

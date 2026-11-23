@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import postgres from "postgres";
-import { enroll, publishWake } from "../services/api/src/iot.js";
+import { enroll, publishDownlink } from "../services/api/src/iot.js";
 import { retryDue } from "../services/api/src/commands.js";
 
 test(
@@ -20,15 +20,26 @@ test(
     const csr =
       "-----BEGIN CERTIFICATE REQUEST-----\nfixture\n-----END CERTIFICATE REQUEST-----";
     const calls = [];
-    let deny = true;
+    let deny = true,
+      status = "ACTIVE",
+      issued = 0;
     t.mock.method(globalThis, "fetch", async (req) => {
       const url = new URL(req.url);
       calls.push([req.method, url.pathname, url.search]);
       assert.ok(req.headers.get("Authorization")?.includes("/us-west-2/"));
       if (url.pathname === "/certificates")
         return Response.json({
-          certificateId: "1".repeat(64),
+          certificateId: String(++issued).repeat(64),
           certificatePem: "fixture-pem",
+        });
+      if (req.method === "GET" && url.pathname.startsWith("/certificates/"))
+        return Response.json({
+          certificateDescription: {
+            status,
+            validity: {
+              notAfter: status === "expired" ? 1 : Date.now() / 1000 + 3600,
+            },
+          },
         });
       if (url.pathname.startsWith("/target-policies/") && deny)
         return new Response(null, { status: 403 });
@@ -49,7 +60,14 @@ test(
       );
       assert.equal(calls.length, count);
       assert.equal(calls.filter((c) => c[1] === "/certificates").length, 1);
-      await publishWake(env, id);
+      await enroll(env, db, id, hash, csr, true);
+      assert.equal(issued, 1);
+      status = "INACTIVE";
+      await assert.rejects(enroll(env, db, id, hash, csr, true), /disabled/);
+      status = "expired";
+      await enroll(env, db, id, hash, csr, true);
+      assert.equal(issued, 2);
+      await publishDownlink(env, id, { boot_id: "boot", mid: 42 });
       assert.deepEqual(calls.at(-1), [
         "POST",
         "/topics/" + encodeURIComponent("devices/" + id + "/wake"),

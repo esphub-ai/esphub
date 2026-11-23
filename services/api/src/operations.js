@@ -1,6 +1,6 @@
 import { softwareInventory } from "./software.js";
 import { newBleSecret, issueBle } from "./ble.js";
-import { connected } from "./iot.js";
+import { connectedSince } from "./iot.js";
 import { artifactBase } from "./uploads.js";
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import { maxUploadBytes } from "./uploads.js";
@@ -154,7 +154,7 @@ const defs = [
   [
     "programs.get",
     readOnly,
-    "Read the last reported main.py for the current or last-seen MicroPython boot, including offline devices.",
+    "Read the transfer ID, SHA-256 and byte count of the last confirmed cloud main.py installation, including offline devices.",
     id,
   ],
   ["uart.sessions", readOnly, "List boot sessions.", id],
@@ -294,12 +294,12 @@ async function summary(c, d) {
       info: d.boot_info,
       serial_input: false,
     };
-  const [online, broker] = await Promise.all([
-    d.cert_ready && d.boot_id === d.enrolled_boot && connected(c.env, d.id),
+  const [session, broker] = await Promise.all([
+    d.cert_ready && d.boot_id && connectedSince(c.env, d.id),
     internal(c, d.id, "summary"),
   ]);
   return {
-    online,
+    online: !!session && session === Number(d.mqtt_connected_since),
     software:
       broker.process_id === d.boot_id
         ? broker.software
@@ -328,7 +328,7 @@ export async function operate(c, owner, name, a) {
     };
   }
   const ds =
-    await db`SELECT d.id,d.name,d.board,d.kind,d.created_at,d.cert_ready,d.enrolled_boot,d.boot_info,
+    await db`SELECT d.id,d.name,d.board,d.kind,d.created_at,d.cert_ready,d.mqtt_connected_since,d.boot_info,
       CASE WHEN d.kind='virtual' THEN (
         SELECT process_id FROM esphub.virtual_boots WHERE device_id=d.id ORDER BY sequence DESC LIMIT 1
       ) ELSE d.boot_id END AS boot_id
@@ -377,7 +377,13 @@ export async function operate(c, owner, name, a) {
   }
   if (d.kind === "virtual") return operateVirtual(db, d, name, a);
   if (name === "wifi.ble_credential") return issueBle(db, owner, d.id);
-  if (name === "programs.get") return internal(c, d.id, "program");
+  if (name === "programs.get") {
+    const [installed] = await db`SELECT request_id AS transfer_id,result->>'sha256' AS sha256,
+      (result->>'bytes')::integer AS bytes FROM esphub.device_commands
+      WHERE device_id=${d.id} AND operation='install' AND state='succeeded' AND result->>'kind'='python'
+      ORDER BY seq DESC LIMIT 1`;
+    return installed ? { status: "installed", ...installed } : { status: "unreported" };
+  }
   if (name === "commands.get") {
     const [row] =
       await db`SELECT id AS command_id,state,result,dispatched_boot AS process_id FROM esphub.device_commands WHERE device_id=${d.id} AND id=${a.command_id}`;
@@ -387,7 +393,7 @@ export async function operate(c, owner, name, a) {
   if (name === "devices.reissue") {
     const secret = token("okl_dev_");
     const bleSecret = newBleSecret();
-    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,enrolled_boot=NULL,boot_id=NULL,boot_info=NULL,ble_generation=1,
+    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,mqtt_connected_since=NULL,boot_id=NULL,boot_info=NULL,ble_generation=1,
       ble_secret=${bleSecret}, ble_pending=NULL, ble_pending_issued=false, ble_issued=false WHERE owner=${owner} AND id=${d.id}`;
     await internal(c, d.id, "revoke", { device: d.id });
     return { token: secret, ble_secret: bleSecret };

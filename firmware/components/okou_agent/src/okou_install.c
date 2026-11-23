@@ -20,6 +20,7 @@
 #include "okou_agent_ext.h"
 #include "sdkconfig.h"
 #include "esp_littlefs.h"
+#include "mbedtls/sha256.h"
 
 #define CHUNK 4096
 #define PROGRAM_LIMIT (32 * 1024)
@@ -70,7 +71,8 @@ static bool parse_args(const cJSON *a, inst_t *in, char *err, size_t n)
     }
     strlcpy(in->kind, kind, sizeof(in->kind));
     strlcpy(in->url, url, sizeof(in->url));
-    if (id) strlcpy(in->id, id, sizeof(in->id));
+    if (!id || strlen(id) != 36) { snprintf(err, n, "Invalid transfer ID"); return false; }
+    strlcpy(in->id, id, sizeof(in->id));
     return true;
 }
 
@@ -82,13 +84,34 @@ static cJSON *receipt(const inst_t *in)
     return d;
 }
 
+// Replace the download job atomically. Either the job or its final receipt
+// survives power loss. The agent erases the receipt only after the relay ACK.
+static bool save_result(const char *name, cJSON *data, const char *target)
+{
+    cJSON *frame = cJSON_CreateObject();
+    char *encoded = NULL;
+    if (data && cJSON_AddItemToObject(frame, "data", data)) {
+        data = NULL;
+        if (cJSON_AddStringToObject(frame, "t", "event") &&
+            cJSON_AddStringToObject(frame, "name", name) &&
+            (!target || cJSON_AddStringToObject(frame, "target", target)))
+            encoded = cJSON_PrintUnformatted(frame);
+    }
+    bool saved = encoded && okou_nvs_set_str(OKOU_KEY_PENDING, encoded) == ESP_OK;
+    if (saved) okou_install_result_ready();
+    else ESP_LOGE(TAG, "Cannot persist terminal install result");
+    free(encoded);
+    cJSON_Delete(data);
+    cJSON_Delete(frame);
+    return saved;
+}
+
 static void emit_failed(const inst_t *in, const char *msg)
 {
     ESP_LOGE(TAG, "%s OTA: %s", in->kind, msg);
     cJSON *d = receipt(in);
     cJSON_AddStringToObject(d, "error", msg);
-    okou_event_json("install.failed", d);
-    okou_nvs_erase(OKOU_KEY_PENDING);
+    save_result("install.failed", d, NULL);
     okou_set_install_state("failed");
 }
 
@@ -199,6 +222,11 @@ static bool run_install(inst_t *in)
     int64_t length = 0;
     uint32_t written = 0;
     const char *fail = NULL;
+    mbedtls_sha256_context sha;
+    uint8_t hash[32];
+    char digest[65];
+    mbedtls_sha256_init(&sha);
+    if (script && mbedtls_sha256_starts(&sha, 0)) { fail = "Cannot hash main.py"; goto out; }
     if (!c || !buf || (!script && !header)) { fail = "Out of memory"; goto out; }
     if (!target || target->address == esp_ota_get_running_partition()->address) { fail = "Incompatible partition layout"; goto out; }
     if (script && !compatible_runtime(target, board)) {
@@ -225,7 +253,7 @@ static bool run_install(inst_t *in)
         if (!n) break;
         if ((uint32_t)n > limit - written) { fail = "Download exceeds target size"; goto out; }
         if (script) {
-            if (memchr(buf, 0, n) || write(fd, buf, n) != n) {
+            if (mbedtls_sha256_update(&sha, buf, n) || memchr(buf, 0, n) || write(fd, buf, n) != n) {
                 fail = "Invalid Python source or main.py write failed"; goto out;
             }
         } else {
@@ -255,17 +283,29 @@ static bool run_install(inst_t *in)
         int closed = close(fd);
         fd = -1;
         if (closed) { fail = "Cannot finish main.py"; goto out; }
+        if (mbedtls_sha256_finish(&sha, hash)) { fail = "Cannot hash main.py"; goto out; }
+        for (size_t i = 0; i < sizeof(hash); ++i) snprintf(digest + 2*i, 3, "%02x", hash[i]);
         partial_program = false;
     } else {
         if (!ota_open || esp_ota_write_with_offset(ota, header, CHUNK, 0) != ESP_OK) { fail = "Invalid image header"; goto out; }
         ota_open = false;
         if (esp_ota_end(ota) != ESP_OK) { fail = "ESP image validation failed"; goto out; }
     }
+    cJSON *result = receipt(in);
+    if (!result || !cJSON_AddNumberToObject(result, "bytes", written) ||
+        (script && !cJSON_AddStringToObject(result, "sha256", digest))) {
+        cJSON_Delete(result);
+        fail = "Cannot build install receipt"; goto out;
+    }
+    if (!save_result("install.done", result, target->label)) {
+        fail = "Cannot persist install receipt"; goto out;
+    }
     if (esp_ota_set_boot_partition(target) != ESP_OK) {
         fail = "Cannot select boot partition"; goto out;
     }
 
 out:
+    mbedtls_sha256_free(&sha);
     if (ota_open) esp_ota_abort(ota);
     if (fd >= 0) close(fd);
     if (partial_program) unlink(PROGRAM);
@@ -274,10 +314,6 @@ out:
     free(buf);
     free(header);
     if (fail) { emit_failed(in, fail); return false; }
-    cJSON *d = receipt(in);
-    cJSON_AddNumberToObject(d, "bytes", written);
-    okou_event_json("install.done", d);
-    okou_nvs_erase(OKOU_KEY_PENDING);
     okou_set_install_state("done");
     if (strcmp(in->kind, "bootloader")) okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);
     okou_schedule_reboot(1500);
@@ -286,7 +322,9 @@ out:
 static void install_task(void *arg)
 {
     inst_t *in = arg;
+    okou_pause_mqtt();
     bool rebooting = run_install(in);
+    okou_resume_mqtt();
     free(in);
     if (!rebooting) s_running = false;
     vTaskDelete(NULL);
@@ -356,10 +394,15 @@ void install_resume_pending(void)
     inst_t *in = malloc(sizeof(*in));
     char err[160] = "";
     if (!j || !in) {
-        okou_nvs_erase(OKOU_KEY_PENDING);
+        ESP_LOGE(TAG, "Cannot load pending install");
         cJSON_Delete(j);
         free(in);
         return;
+    }
+    if (cJSON_GetObjectItem(j, "t")) {
+        free(in);
+        cJSON_Delete(j);
+        return; // Terminal record is owned by the MQTT agent.
     }
     const cJSON *att = cJSON_GetObjectItemCaseSensitive(j, "attempts");
     const char *source = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(j, "source_slot"));
@@ -368,14 +411,8 @@ void install_resume_pending(void)
     if (!parse_args(j, in, err, sizeof(err))) {
         emit_failed(in, err);
     } else if (!strcmp(in->kind, "bootloader") && (!source || strcmp(source, running))) {
-        /* Power loss after boot selection: never write back over the previous slot. */
-        if (source && ((!strcmp(source, "launcher_a") && !strcmp(running, "launcher_b")) ||
-                       (!strcmp(source, "launcher_b") && !strcmp(running, "launcher_a")))) {
-            okou_event_json("install.done", receipt(in));
-            okou_nvs_erase(OKOU_KEY_PENDING);
-        } else {
-            emit_failed(in, "Stale bootloader transfer");
-        }
+        // A completed write has already replaced this job with a verified receipt.
+        emit_failed(in, "Bootloader slot changed before the write completed");
     } else if (attempts >= MAX_ATTEMPTS) {
         emit_failed(in, "giving up after 3 attempts");
     } else {

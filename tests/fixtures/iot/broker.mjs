@@ -11,7 +11,16 @@ export async function startBroker(site, port) {
   const secret = randomBytes(32).toString("hex"),
     principals = new Map();
   const args = ["-h", "127.0.0.1", "-p", String(port)];
-  const broker = spawn("mosquitto", ["-p", String(port)], { stdio: "ignore" });
+  const broker = spawn("mosquitto", ["-v", "-p", String(port)], {
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  const connections = new Map();
+  createInterface({ input: broker.stderr }).on("line", (line) => {
+    const joined = line.match(/New client connected .* as esphub-([a-f0-9-]+)/);
+    const left = line.match(/Client esphub-([a-f0-9-]+) disconnected/);
+    if (joined) connections.set(joined[1], Date.now());
+    if (left) connections.delete(left[1]);
+  });
   let relay;
   const http = createServer(async (req, res) => {
     try {
@@ -49,7 +58,10 @@ export async function startBroker(site, port) {
         ]);
       } else if (path.startsWith("/connections/esphub-")) {
         result = {
-          connected: principals.has(path.slice("/connections/esphub-".length)),
+          connectedSince: connections.get(
+            path.slice("/connections/esphub-".length),
+          ),
+          connected: connections.has(path.slice("/connections/esphub-".length)),
         };
       }
       res.setHeader("content-type", "application/json");

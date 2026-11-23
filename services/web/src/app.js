@@ -409,19 +409,14 @@ async function refresh() {
       '</div><pre id="out" hidden></pre></div>';
     const app = device.software?.application;
     if (app?.kind === "micropython") {
-      area.insertAdjacentHTML("beforeend", '<section class="panel"><h3>main.py</h3><pre id="program">Reading boot snapshot…</pre></section>');
+      area.insertAdjacentHTML("beforeend", '<section class="panel"><h3>Last confirmed main.py install</h3><pre id="program">Loading…</pre></section>');
       const output = $("#program");
       try {
-        const snapshot = await op("programs.get", {device_id:device.id});
+        const program = await op("programs.get", {device_id:device.id});
         if (currentView !== view) return;
-        const messages = {
-          available: snapshot.source === "" ? "Empty file (0 bytes)" : snapshot.source,
-          missing: "No main.py on this boot.",
-          too_large: "main.py exceeds the 32 KiB snapshot limit.",
-          unreadable: "The runtime could not read main.py.",
-          unreported: app.micropython_version ? "This boot has not reported its source yet." : "This runtime has not reported source. Update MicroPython to enable boot snapshots.",
-        };
-        output.textContent = snapshot.process_id && snapshot.process_id !== app.process_id ? "The device changed boots. Reopen Firmware to refresh." : messages[snapshot.status] || "Source unavailable.";
+        output.textContent = program.status === "installed"
+          ? [program.transfer_id, program.sha256 && "SHA-256 " + program.sha256].filter(Boolean).join("\n")
+          : "No confirmed cloud install.";
       } catch (error) {
         output.textContent = error.message;
       }
@@ -685,7 +680,7 @@ async function start() {
   if (path[0] === "streams") {
     docs(
       "UART streams",
-      '<p class="lead">Each boot has its own process ID and serial output.</p><h2>Device input</h2><p class="doccopy">Use uart.write with the current process ID. The board pulls the command and reports the result over MQTT. Reuse the request ID when retrying a write.</p><h2>Device output</h2><p class="doccopy">Use uart.read after the last delivered record. The same cursor reads stored logs and events from an archived boot. Use logs.flush on the current boot to fetch buffered output immediately.</p>',
+      '<p class="lead">Each boot has its own process ID and serial output.</p><h2>Device input</h2><p class="doccopy">Use uart.write with the current process ID. The board receives the command and reports the result over MQTT. Reuse the request ID when retrying a write.</p><h2>Device output</h2><p class="doccopy">Use uart.read after the last delivered record. The same cursor reads stored logs and events from an archived boot. Use logs.flush on the current boot to fetch buffered output immediately.</p>',
     );
     return;
   }

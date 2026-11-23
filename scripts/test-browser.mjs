@@ -209,8 +209,8 @@ try {
     if (busy) return;
     busy = true;
     try {
-      const [cmd] = await mcu.pull();
-      if (!cmd) return;
+      if (!mcu.queued) return;
+      const cmd = await mcu.nextCommand();
       let data = {};
       if (cmd.op === "term.write") {
         await mcu.send({
@@ -255,33 +255,22 @@ try {
     ["python", "micropython", "bootloader"],
   );
   assert.equal(await page.locator('[name="sha256"]').count(), 0);
-  await page.getByRole("button", { name: "Close", exact: true }).click();
-  const pythonBoot = await mcu.hello({
-    role: "app",
-    board: "paper-color",
-    bootloader_version: "1.1.17",
-    micropython_version: "1.27.0",
-    fw: { name: "micropython", version: "1.1.18" },
+  await page.locator('[name="url"]').fill("https://example.org/main.py");
+  await page.getByRole("button", { name: "Install", exact: true }).click();
+  const install = await mcu.nextCommand();
+  const sha256 = "ab".repeat(32);
+  await mcu.send({t:"event", name:"install.done", data:{
+    kind:"python", transfer_id:install.args.transfer_id, sha256, bytes:10
+  }});
+  await page.getByText("Install completed. Verify the next boot in Serial.").waitFor();
+  await mcu.hello({
+    role: "app", board:"paper-color", bootloader_version:"1.1.17",
+    micropython_version:"1.27.0", fw:{name:"micropython", version:"1.1.18"}
   });
-  const source = "# 咖啡 café <script>window.bad = true</script>\nprint(42)\n";
-  assert.equal(
-    (
-      await fetch(origin + "/backend/api/device/program/" + pythonBoot, {
-        method: "PUT",
-        headers: {
-          Authorization: "Bearer " + token,
-          "X-Program-Status": "available",
-        },
-        body: source,
-      })
-    ).status,
-    200,
-  );
   await page.getByRole("button", { name: "Firmware", exact: true }).click();
   await page.getByText("1.27.0", { exact: true }).waitFor();
-  await page.locator("#program").filter({ hasText: "print(42)" }).waitFor();
-  assert.equal(await page.locator("#program").textContent(), source);
-  assert.equal(await page.locator("#program script").count(), 0);
+  await page.locator("#program").filter({hasText:sha256}).waitFor();
+  assert.match(await page.locator("#program").textContent(), new RegExp(install.args.transfer_id));
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .getByRole("button", { name: "Delete device", exact: true })
