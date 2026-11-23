@@ -1,6 +1,6 @@
 /*
  * esp-bootloader: headless bootloader. Boot/rollback rules from docs/protocol.md:
- *  - auto-starts the app CONFIG_OKL_AUTOSTART_MS after boot if the app partition holds an
+ *  - auto-starts the app when the app partition holds an
  *    image, unless okl/pending exists, okl/stay is set, or a hub request arrived;
  *  - resumes okl/pending after the hub acked hello;
  *
@@ -11,6 +11,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_system.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "okou_agent.h"
@@ -104,9 +105,8 @@ void app_main(void)
         ESP_LOGI(TAG, "held in bootloader; use USB setup or reboot target=app");
     }
 
-    int64_t t0 = esp_timer_get_time();
-    int64_t autostart_at = t0 + (app_failed ? (int64_t)CONFIG_OKL_FAILSAFE_WAIT_S * 1000000
-                                            : (int64_t)CONFIG_OKL_AUTOSTART_MS * 1000);
+    const int64_t recovery_delay_us = app_failed ? (int64_t)CONFIG_OKL_FAILSAFE_WAIT_S * 1000000 : 0;
+    int64_t autostart_at = esp_timer_get_time() + recovery_delay_us;
     /* An unprovisioned device must stay in the bootloader: the app cannot provision over USB, so
      * leaving would close the setup window. The app starts after the first hub ack instead. */
     char *p_hub = okou_nvs_get_str_alloc("hub");
@@ -121,15 +121,9 @@ void app_main(void)
     if (app && !provisioned) {
         ESP_LOGI(TAG, "not provisioned: staying in the bootloader (USB provisioning open)");
     }
-    if (autostart) {
-        ESP_LOGI(TAG, "auto-starting app in %d ms unless a hub request arrives",
-                 (int)((autostart_at - t0) / 1000));
-    }
-
     bool acked_once = false;
 
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(100));
         int64_t now = esp_timer_get_time();
         if (s_acked_evt) {
             s_acked_evt = false;
@@ -140,7 +134,7 @@ void app_main(void)
                 free(still_pending);
                 if (resume && !autostart) {
                     autostart = true;
-                    autostart_at = now + (int64_t)(app_failed ? CONFIG_OKL_FAILSAFE_WAIT_S * 1000 : CONFIG_OKL_AUTOSTART_MS) * 1000;
+                    autostart_at = now + recovery_delay_us;
                     ESP_LOGI(TAG, "auto-starting app in %d ms unless a hub request arrives",
                              (int)((autostart_at - now) / 1000));
                 }
@@ -149,18 +143,20 @@ void app_main(void)
         if (autostart && (s_req_seen || s_stay)) {
             autostart = false;
         }
+        bool ready = autostart && now >= autostart_at;
 #if CONFIG_OKOU_BLE_WIFI
-        if (okou_ble_host_owned()) continue;
+        ready = ready && !okou_ble_host_owned();
 #endif
-        if (autostart && now >= autostart_at) {
+        if (ready) {
             autostart = false;
             esp_err_t e = esp_ota_set_boot_partition(app);
             if (e == ESP_OK) {
                 ESP_LOGI(TAG, "starting app");
-                okou_schedule_reboot(100);
+                esp_restart();
             } else {
                 ESP_LOGE(TAG, "app image not bootable: %s", esp_err_to_name(e));
             }
         }
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }

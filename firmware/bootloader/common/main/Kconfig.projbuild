@@ -8,10 +8,6 @@ menu "esp-bootloader"
         bool
         default y
 
-    config OKL_AUTOSTART_MS
-        int "Auto-start the app this long after boot (ms)"
-        default 3000
-
     config OKL_FAILSAFE_WAIT_S
         int "Auto-start delay after an app rollback (s)"
         default 30
