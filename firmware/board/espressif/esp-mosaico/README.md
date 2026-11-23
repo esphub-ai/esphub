@@ -7,9 +7,10 @@ Its 16 MiB PSRAM and 128 MiB SPI NAND are separate from the boot flash.
 The bootloader uses USB OTG CDC for provisioning through the onboard USB-C port.
 Early ESP-IDF boot messages use UART0.
 
-[main.py](main.py) is a console example for a future MicroPython runtime. The pinned
-UIFlow upstream has no ESP32-S31 runtime target. Only bootloader artifacts are configured
-for this board.
+The preview MicroPython Runtime uses a pinned [upstream ESP32-S31 port](https://github.com/micropython/micropython/pull/19726)
+and ESP-IDF 6.1.1. It runs from the `app` partition and reads [main.py](main.py)
+from the LittleFS `data` partition. The example prints the board name to the console.
+The preview build publishes a separate Runtime image. It has no full first-time kit.
 
 ## Bootloader-only registration
 
