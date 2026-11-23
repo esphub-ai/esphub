@@ -759,9 +759,11 @@ esp_err_t okou_enter_setup(void)
     if (!lp) {
         return ESP_ERR_NOT_FOUND;
     }
-    okou_nvs_set_u8(OKOU_KEY_SETUP, 1);
-    esp_err_t e = esp_ota_set_boot_partition(lp);
+    esp_err_t e = okou_nvs_set_u8(OKOU_KEY_SETUP, 1);
+    if (e != ESP_OK) return e;
+    e = esp_ota_set_boot_partition(lp);
     if (e != ESP_OK) {
+        okou_nvs_erase(OKOU_KEY_SETUP);
         return e;
     }
     ESP_LOGW(TAG, "entering setup: rebooting into %s for provisioning", lp->label);
@@ -1079,7 +1081,9 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
         ESP_LOGE(TAG, "network start: %s", esp_err_to_name(e));
     }
 #if CONFIG_OKOU_BLE_WIFI
-    okou_ble_start();
+    /* Keep credential storage/rotation available in apps without starting NimBLE. */
+    okou_ble_init(okou_is_bootloader() && g_okou_cfg.manage_network && e == ESP_OK &&
+                  (g_okou_cfg.ble_setup || okou_wifi_count() == 0));
 #endif
     const esp_app_desc_t *d = esp_app_get_description();
     ESP_LOGI(TAG, "agent start: %s %s role=%s boot_id=%s", d->project_name, d->version,
