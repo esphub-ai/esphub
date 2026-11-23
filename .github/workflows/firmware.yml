@@ -53,3 +53,18 @@ jobs:
     uses: ./.github/workflows/build-board.yml
     with:
       profile: ${{ toJSON(matrix.profile) }}
+  sync-catalog:
+    needs: [plan, board]
+    if: ${{ !cancelled() && github.repository == 'okou-ai/esphub' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.plan.outputs.boards != '[]' && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 24, cache: npm}
+      - run: npm ci
+      - name: Sync published releases to the firmware catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+        run: node scripts/sync-board-releases.mjs

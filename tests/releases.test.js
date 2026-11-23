@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { releaseResponse } from "../services/api/src/releases.js";
+import {
+  bootloaderManifest,
+  releaseResponse,
+} from "../services/api/src/releases.js";
 import {
   assetNames,
   publishedFirmware,
@@ -120,5 +123,36 @@ test("only current board-scoped downloads resolve to immutable GitHub artifacts"
   await assert.rejects(
     releaseResponse("stopwatch", "setup", "setup-stopwatch-v1.1.72"),
     /Unknown setup/,
+  );
+});
+
+test("default downloads and OTA metadata use the board's published database record", async (t) => {
+  const manifest = {
+    chip: "esp32s3",
+    version: "1.1.133",
+    ota: { sha256: "a".repeat(64), size: 1152416 },
+  };
+  const tag = "firmware-bootloader-stopwatch-v1.1.133";
+  const sql = async (_query, board, kind) => {
+    assert.equal(board, "stopwatch");
+    return kind === "bootloader"
+      ? [{ version: manifest.version, manifest }]
+      : [];
+  };
+  t.mock.method(globalThis, "fetch", () =>
+    assert.fail("unexpected network request"),
+  );
+  assert.deepEqual(await bootloaderManifest(sql, "stopwatch"), {
+    ...manifest,
+    tag,
+  });
+  const ota = await releaseResponse("stopwatch", "ota", undefined, sql);
+  assert.equal(
+    ota.headers.get("Location"),
+    `https://github.com/okou-ai/esphub/releases/download/${tag}/esphub-stopwatch-esp32s3-1.1.133-ota.bin`,
+  );
+  await assert.rejects(
+    releaseResponse("stopwatch", "setup", undefined, sql),
+    (e) => e.status === 404,
   );
 });

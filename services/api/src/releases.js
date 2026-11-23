@@ -1,13 +1,24 @@
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import {
   assetNames,
-  publishedFirmware,
+  releaseTag,
   releaseVersion,
 } from "../../../shared/firmware-releases.js";
 import { fail } from "./auth.js";
 
-const releases = "https://github.com/okou-ai/esphub/releases/download";
-async function artifact(board, asset, tag) {
+async function latestRelease(sql, board, kind) {
+  const [row] = await sql`SELECT version, manifest FROM esphub.firmware_releases
+    WHERE board = ${board} AND kind = ${kind}`;
+  if (!row) fail(404, "Unknown " + kind + " release");
+  return row;
+}
+
+export async function bootloaderManifest(sql, board) {
+  const { version, manifest } = await latestRelease(sql, board, "bootloader");
+  return { ...manifest, tag: releaseTag("bootloader", board, version) };
+}
+
+export async function releaseResponse(board, asset, tag, sql) {
   if (!Object.hasOwn(boards, board)) fail(404, "Unknown board");
   const kind =
     asset === "micropython"
@@ -19,40 +30,14 @@ async function artifact(board, asset, tag) {
   if (!Object.hasOwn(assetNames(board, chip, kind, ""), asset))
     fail(404, "Unknown download");
   if (tag === undefined) {
-    let published;
-    try {
-      published = await publishedFirmware({ [board]: boards[board] });
-    } catch {
-      fail(503, "GitHub release index unavailable");
-    }
-    tag = published[board][kind]?.tag;
+    const { version } = await latestRelease(sql, board, kind);
+    tag = releaseTag(kind, board, version);
   }
-  const version = tag && releaseVersion(tag, kind, board);
+  const version = releaseVersion(tag, kind, board);
   if (!version) fail(404, "Unknown " + kind + " release");
   const filename = assetNames(board, chip, kind, version)[asset];
-  return { tag, version, url: `${releases}/${tag}/${filename}` };
-}
-
-export async function bootloaderManifest(board) {
-  const { tag, version, url } = await artifact(board, "manifest");
-  const r = await fetch(url);
-  if (!r.ok) fail(503, "Official EspHub Bootloader manifest unavailable");
-  const m = await r.json();
-  if (
-    m.board !== board ||
-    m.chip !== boards[board].chip ||
-    m.version !== version ||
-    m.bootloader !== boards[board].bootloader ||
-    m.flash_mb !== boards[board].flash_mb ||
-    !/^[a-f0-9]{64}$/.test(m.ota?.sha256) ||
-    !Number.isSafeInteger(m.ota.size) ||
-    m.ota.size <= 0
-  )
-    fail(503, "Invalid EspHub Bootloader manifest");
-  return { ...m, tag };
-}
-
-export async function releaseResponse(board, kind, tag) {
-  const { url } = await artifact(board, kind, tag);
-  return Response.redirect(url, 302);
+  return Response.redirect(
+    `https://github.com/okou-ai/esphub/releases/download/${tag}/${filename}`,
+    302,
+  );
 }

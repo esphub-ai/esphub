@@ -391,7 +391,7 @@ export async function operate(c, owner, name, a) {
     if (a.kind === "bootloader" && info.dual_bootloader_ota !== true)
       fail(409, "Back up the device and install the A/B USB setup kit first");
     if (!a.url) {
-      const manifest = await bootloaderManifest(d.board);
+      const manifest = await bootloaderManifest(db, d.board);
       if (info.chip !== manifest.chip) fail(409, "Release target mismatch");
       return queue(
         "install",
