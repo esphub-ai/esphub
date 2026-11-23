@@ -19,7 +19,7 @@ assert build["variant"] == metadata["bootloader"]
 assert re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", board) and len(board) < 32
 image = (shared / "esp-launcher.bin").read_bytes()
 assert sha256(image).hexdigest() == build["ota_sha256"]
-assert image[288:].startswith(f"ESPHUB2/launcher/{metadata['bootloader']}\0single-launcher-v1\0".encode())
+assert image[288:].startswith(f"ESPHUB2/launcher/{metadata['bootloader']}\0dual-launcher-v1\0".encode())
 chip = metadata["chip"]
 prefix = f"esphub-{board}-{chip}-{version}"
 out = Path("dist")
@@ -40,9 +40,9 @@ def package(table, suffix):
         with table.open() as f:
             parts = {row[0]: row for row in csv.reader(f, skipinitialspace=True)
                      if len(row) >= 5 and not row[0].startswith("#")}
-        bl, app, nvs, ota_data = (parts[key] for key in ("bl", "app", "nvs", "otadata"))
-        assert bl[1:3] == ["app", "ota_0"] and app[1:3] == ["app", "ota_1"]
-        assert len(image) <= int(bl[4], 0)
+        bl, standby, app, nvs, ota_data = (parts[key] for key in ("launcher_a", "launcher_b", "app", "nvs", "otadata"))
+        assert bl[1:3] == ["app", "ota_0"] and standby[1:3] == ["app", "ota_1"] and app[1:3] == ["app", "ota_2"]
+        assert len(image) <= min(int(bl[4], 0), int(standby[4], 0))
         assert nvs[1:3] == ["data", "nvs"] and ota_data[1:3] == ["data", "ota"]
         nvs_csv = tmp / "board.csv"
         nvs_csv.write_text(f"key,type,encoding,value\nokl,namespace,,\nboard,data,string,{board}\n")
@@ -67,7 +67,7 @@ def package(table, suffix):
                        "".join(f"{offset} {name}\n" for offset, name in offsets.items()))
             z.writestr("INSTALL.txt", f"""For {board} only. Use the setup kit for a first installation.
 This archive preserves NVS and resets boot selection to the launcher.
-Use OTA to migrate an installed board to the shared bootloader and save its board identity.
+Only use this package on devices with a matching partition table and board identity in NVS. For layout changes, back up and use the fresh USB setup kit.
 """)
     return {"file": usb, "sha256": sha256((out / usb).read_bytes()).hexdigest()}, offsets
 

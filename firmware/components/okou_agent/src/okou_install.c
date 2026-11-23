@@ -19,9 +19,7 @@
 #include "okou_agent.h"
 #include "okou_agent_ext.h"
 #include "sdkconfig.h"
-#if CONFIG_OKL_URL_OTA
 #include "esp_littlefs.h"
-#endif
 
 #define CHUNK 4096
 #define PROGRAM_LIMIT (32 * 1024)
@@ -30,12 +28,7 @@
 #define PROFILE_OFFSET (sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) + sizeof(esp_app_desc_t))
 static bool device_board(char board[OKOU_BOARD_CAPACITY])
 {
-#if CONFIG_OKL_URL_OTA
     return okou_nvs_get_str(OKOU_BOARD_KEY, board, OKOU_BOARD_CAPACITY) == ESP_OK && board[0];
-#else
-    strlcpy(board, CONFIG_OKOU_BOARD_PROFILE, OKOU_BOARD_CAPACITY);
-    return board[0] != 0;
-#endif
 }
 
 static const char *TAG = "install";
@@ -138,11 +131,11 @@ static const char *open_download(esp_http_client_handle_t c, bool private_progra
     return "Too many redirects";
 }
 
-static bool matches_profile(const uint8_t *profile, const char *expected, bool need_writer)
+static bool matches_profile(const uint8_t *profile, const char *expected, bool require_ab)
 {
     size_t len = strlen(expected) + 1;
     return !memcmp(profile, expected, len) &&
-           (!need_writer || !memcmp(profile + len, OKOU_OTA_CAPABILITY, sizeof(OKOU_OTA_CAPABILITY)));
+           (!require_ab || !memcmp(profile + len, OKOU_OTA_CAPABILITY, sizeof(OKOU_OTA_CAPABILITY)));
 }
 
 static bool valid_header(const uint8_t *header, const char *kind, const char *board)
@@ -151,16 +144,14 @@ static bool valid_header(const uint8_t *header, const char *kind, const char *bo
     if (ih->magic != ESP_IMAGE_HEADER_MAGIC || ih->chip_id != CONFIG_IDF_FIRMWARE_CHIP_ID) return false;
     const uint8_t *profile = header + PROFILE_OFFSET;
     bool launcher = !strcmp(kind, "launcher");
-    if (launcher && CONFIG_OKOU_BL_PROFILE[0] &&
-        matches_profile(profile, OKOU_BL_IMAGE_PREFIX CONFIG_OKOU_BL_PROFILE, true)) return true;
+    if (launcher)
+        return matches_profile(profile, OKOU_BL_IMAGE_PREFIX CONFIG_OKOU_BL_PROFILE, true);
     char expected[sizeof("ESPHUB1/micropython/") + OKOU_BOARD_CAPACITY];
-    const char *prefix = launcher ? "ESPHUB1/launcher/" : "ESPHUB1/micropython/";
-    snprintf(expected, sizeof(expected), "%s%s", prefix, board);
-    return matches_profile(profile, expected, true);
+    snprintf(expected, sizeof(expected), "ESPHUB1/micropython/%s", board);
+    return matches_profile(profile, expected, false);
 }
 
-#if CONFIG_OKL_URL_OTA
-static bool compatible_runtime(const esp_partition_t *app, const char *board, bool need_writer)
+static bool compatible_runtime(const esp_partition_t *app, const char *board)
 {
     char expected[sizeof("ESPHUB1/micropython/") + OKOU_BOARD_CAPACITY];
     uint8_t profile[sizeof(expected) + sizeof(OKOU_OTA_CAPABILITY)];
@@ -168,9 +159,8 @@ static bool compatible_runtime(const esp_partition_t *app, const char *board, bo
     esp_app_desc_t desc;
     return app && esp_ota_get_partition_description(app, &desc) == ESP_OK &&
            esp_partition_read(app, PROFILE_OFFSET, profile, sizeof(profile)) == ESP_OK &&
-           matches_profile(profile, expected, need_writer);
+           matches_profile(profile, expected, false);
 }
-#endif
 
 /* Write the firmware header last so a partial image cannot boot. */
 static bool run_install(inst_t *in)
@@ -181,31 +171,17 @@ static bool run_install(inst_t *in)
         return false;
     }
     bool launcher = !strcmp(in->kind, "launcher");
-#if CONFIG_OKL_URL_OTA
-    if (launcher) {
-        const esp_partition_t *app = runtime_partition();
-        if (!compatible_runtime(app, board, true)) {
-            emit_failed(in, "Install the matching single-slot OTA runtime first");
-            return false;
-        }
-        /* A prior user-program boot failure must not redirect maintenance back here. */
-        if (okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0) != ESP_OK || esp_ota_set_boot_partition(app) != ESP_OK) {
-            emit_failed(in, "Cannot boot runtime to update launcher");
-            return false;
-        }
-        /* Keep the transfer in NVS. The runtime writes our partition after reboot. */
-        okou_schedule_reboot(1500);
-        return true;
-    }
     bool script = !strcmp(in->kind, "python");
-#else
-    if (!launcher) {
-        emit_failed(in, "Enter launcher mode to update the runtime or program");
-        return false;
+    const esp_partition_t *run = esp_ota_get_running_partition();
+    const esp_partition_t *target = runtime_partition();
+    if (launcher) {
+        if (!strcmp(run->label, "launcher_a"))
+            target = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, "launcher_b");
+        else if (!strcmp(run->label, "launcher_b"))
+            target = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, "launcher_a");
+        else
+            target = NULL;
     }
-    const bool script = false;
-#endif
-    const esp_partition_t *target = launcher ? okou_launcher_partition() : runtime_partition();
     bool private_program = is_private_program(in->url), safe_redirect = false;
     esp_http_client_config_t config = {
         .url = in->url, .crt_bundle_attach = esp_crt_bundle_attach, .timeout_ms = 20000,
@@ -215,9 +191,7 @@ static bool run_install(inst_t *in)
     esp_http_client_handle_t c = esp_http_client_init(&config);
     esp_ota_handle_t ota = 0;
     bool ota_open = false;
-#if CONFIG_OKL_URL_OTA
     bool mounted = false;
-#endif
     bool partial_program = false;
     uint8_t *buf = malloc(CHUNK), *header = script ? NULL : malloc(CHUNK);
     int fd = -1;
@@ -226,17 +200,14 @@ static bool run_install(inst_t *in)
     const char *fail = NULL;
     if (!c || !buf || (!script && !header)) { fail = "Out of memory"; goto out; }
     if (!target || target->address == esp_ota_get_running_partition()->address) { fail = "Incompatible partition layout"; goto out; }
-#if CONFIG_OKL_URL_OTA
-    if (script && !compatible_runtime(target, board, false)) {
+    if (script && !compatible_runtime(target, board)) {
         fail = "Install the matching URL OTA MicroPython runtime first"; goto out;
     }
-#endif
     uint32_t limit = script ? PROGRAM_LIMIT : target->size;
     okou_set_install_state("downloading");
     fail = open_download(c, private_program, &safe_redirect, &length);
     if (fail) goto out;
     if (length > limit) { fail = "Download exceeds target size"; goto out; }
-#if CONFIG_OKL_URL_OTA
     if (script) {
         const esp_vfs_littlefs_conf_t fs = {.base_path = "/flash", .partition_label = "data"};
         if (esp_vfs_littlefs_register(&fs) != ESP_OK) {
@@ -251,7 +222,6 @@ static bool run_install(inst_t *in)
         if (fd < 0) { fail = "Cannot open main.py"; goto out; }
         partial_program = true;
     }
-#endif
     for (;;) {
         int n = esp_http_client_read(c, (char *)buf, CHUNK);
         if (n < 0) { fail = "HTTPS read failed"; goto out; }
@@ -268,10 +238,6 @@ static bool run_install(inst_t *in)
                 memcpy(header + written, buf, off);
                 if (written + off == CHUNK) {
                     if (!valid_header(header, in->kind, board)) { fail = "Firmware type, board, chip or flash profile mismatch"; goto out; }
-                    if (launcher && matches_profile(header + PROFILE_OFFSET, OKOU_BL_IMAGE_PREFIX CONFIG_OKOU_BL_PROFILE, true) &&
-                        okou_nvs_set_str(OKOU_BOARD_KEY, board) != ESP_OK) {
-                        fail = "Cannot save board identity before launcher update"; goto out;
-                    }
                     if (esp_ota_begin(target, length > 0 ? (size_t)length : OTA_SIZE_UNKNOWN, &ota) != ESP_OK) {
                         fail = "Cannot open target partition"; goto out;
                     }
@@ -306,9 +272,7 @@ out:
     if (ota_open) esp_ota_abort(ota);
     if (fd >= 0) close(fd);
     if (partial_program) unlink(PROGRAM);
-#if CONFIG_OKL_URL_OTA
     if (mounted) esp_vfs_littlefs_unregister("data");
-#endif
     if (c) esp_http_client_cleanup(c);
     free(buf);
     free(header);
@@ -356,18 +320,11 @@ esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen)
         free(in);
         return ESP_ERR_INVALID_ARG;
     }
-#if CONFIG_OKOU_MICROPYTHON_RUNTIME
-    if (strcmp(in->kind, "launcher")) {
-        free(in);
-        snprintf(err, errlen, "Enter launcher mode to update the runtime or program");
-        return ESP_ERR_INVALID_ARG;
-    }
-#endif
     /* Persist so a power loss mid-download resumes after reconnecting. */
     cJSON *p = cJSON_Duplicate(args, true);
     char *s = NULL;
     if (p && cJSON_AddNumberToObject(p, "attempts", 1) &&
-        (strcmp(in->kind, "launcher") || cJSON_AddTrueToObject(p, "in_place")))
+        (strcmp(in->kind, "launcher") || cJSON_AddStringToObject(p, "source_slot", esp_ota_get_running_partition()->label)))
         s = cJSON_PrintUnformatted(p);
     cJSON_Delete(p);
     esp_err_t saved = s ? okou_nvs_set_str(OKOU_KEY_PENDING, s) : ESP_ERR_NO_MEM;
@@ -388,22 +345,6 @@ esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen)
     return ESP_OK;
 }
 
-static bool runtime_transfer(const cJSON *args)
-{
-    const char *kind = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(args, "kind"));
-    return kind && !strcmp(kind, "launcher") && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(args, "in_place"));
-}
-
-bool install_launcher_pending(void)
-{
-    char *p = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
-    cJSON *args = p ? cJSON_Parse(p) : NULL;
-    bool pending = runtime_transfer(args);
-    free(p);
-    cJSON_Delete(args);
-    return pending;
-}
-
 void install_resume_pending(void)
 {
     if (s_running) {
@@ -415,12 +356,6 @@ void install_resume_pending(void)
     }
     cJSON *j = cJSON_Parse(p);
     free(p);
-#if CONFIG_OKOU_MICROPYTHON_RUNTIME
-    if (!runtime_transfer(j)) {
-        cJSON_Delete(j);
-        return;
-    }
-#endif
     inst_t *in = malloc(sizeof(*in));
     char err[160] = "";
     if (!j || !in) {
@@ -430,9 +365,20 @@ void install_resume_pending(void)
         return;
     }
     const cJSON *att = cJSON_GetObjectItemCaseSensitive(j, "attempts");
+    const char *source = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(j, "source_slot"));
+    const char *running = esp_ota_get_running_partition()->label;
     int attempts = cJSON_IsNumber(att) ? att->valueint : 0;
     if (!parse_args(j, in, err, sizeof(err))) {
         emit_failed(in, err);
+    } else if (!strcmp(in->kind, "launcher") && (!source || strcmp(source, running))) {
+        /* Power loss after boot selection: never write back over the previous slot. */
+        if (source && ((!strcmp(source, "launcher_a") && !strcmp(running, "launcher_b")) ||
+                       (!strcmp(source, "launcher_b") && !strcmp(running, "launcher_a")))) {
+            okou_event_json("install.done", receipt(in));
+            okou_nvs_erase(OKOU_KEY_PENDING);
+        } else {
+            emit_failed(in, "Stale launcher transfer");
+        }
     } else if (attempts >= MAX_ATTEMPTS) {
         emit_failed(in, "giving up after 3 attempts");
     } else {

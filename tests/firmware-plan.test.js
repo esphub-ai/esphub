@@ -178,4 +178,6 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
     boardPlans({}, after, released, { ...options, manual: true }),
     [],
   );
+  put("firmware/bootloader/esp32s3-4mb/sdkconfig.defaults", "CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y");
+  assert.throws(snapshot, /at least 8 MiB/);
 });

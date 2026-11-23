@@ -32,11 +32,10 @@ with ZipFile(args.launcher) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
     assert parts["data"][2] == "littlefs" and 0 < len(image) <= size
     launcher = base.read("esp-launcher.bin")
     variant = metadata["bootloader"]
-    shared = launcher[288:].startswith(f"ESPHUB2/launcher/{variant}\0single-launcher-v1\0".encode())
-    legacy = launcher[288:].startswith(f"ESPHUB1/launcher/{args.board}\0single-launcher-v1\0".encode())
-    assert launcher[0] == 0xE9 and (shared or legacy)
+    shared = launcher[288:].startswith(f"ESPHUB2/launcher/{variant}\0dual-launcher-v1\0".encode())
+    assert launcher[0] == 0xE9 and shared
     assert image[0] == 0xE9 and image[288:].startswith(
-        f"ESPHUB1/micropython/{args.board}\0single-launcher-v1\0".encode())
+        f"ESPHUB1/micropython/{args.board}\0dual-launcher-v1\0".encode())
     assert launcher[12:14] == image[12:14], "Mismatched ESP chips"
     for name in base.namelist():
         if name not in ("flash_args", "INSTALL.txt"):
@@ -44,10 +43,9 @@ with ZipFile(args.launcher) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
     dest.writestr("micropython.bin", image)
     dest.write(profile / "main.py", "main.py")
     flash_args = base.read("flash_args").rstrip() + f"\n{offset:#x} micropython.bin\n".encode()
-    if shared:
-        name = "board-nvs.bin"
-        assert len(base.read(name)) == int(parts["nvs"][4], 0)
-        flash_args += f"{parts['nvs'][3]} {name}\n".encode()
+    name = "board-nvs.bin"
+    assert len(base.read(name)) == int(parts["nvs"][4], 0)
+    flash_args += f"{parts['nvs'][3]} {name}\n".encode()
     dest.writestr("flash_args", flash_args)
     erase = "--erase-all " if os.environ.get("ERASE_ALL") == "true" else ""
     setup_note = ("Write the plain hub hostname, token and ble_secret from devices.create with OKL-PROVISION over USB at 115200.\n"

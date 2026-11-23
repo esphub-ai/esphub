@@ -68,6 +68,7 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
       /^firmware\/bootloader\/([a-z0-9]+)-(\d+)mb\/sdkconfig\.defaults$/.exec(path);
     if (!match) continue;
     const [, target, flash] = match;
+    if (Number(flash) < 8) throw Error("EspHub requires at least 8 MiB Flash: " + path);
     const variant = `${target}-${flash}mb`;
     const container =
       target === "esp32c5" || target === "esp32c61"

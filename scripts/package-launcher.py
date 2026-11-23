@@ -17,7 +17,7 @@ parts = json.loads((build / "flasher_args.json").read_text())
 config = Path("sdkconfig").read_text()
 image = (build / "esp-launcher.bin").read_bytes()
 assert parts["flash_settings"]["flash_size"].lower() == flash
-assert image[288:].startswith(f"ESPHUB2/launcher/{variant}\0single-launcher-v1\0".encode())
+assert image[288:].startswith(f"ESPHUB2/launcher/{variant}\0dual-launcher-v1\0".encode())
 # Check the linked firmware, including the alternate StopWatch USB layout.
 # An MQTT client configured for TLS can still link ESP-IDF's default WS transport.
 settings = set(config.splitlines())

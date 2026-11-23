@@ -410,23 +410,18 @@ export async function operate(c, owner, name, a) {
       ? { mode: "launcher", process_id: d.boot_id }
       : queue("reboot", { target: "launcher" }, d.boot_id);
   if (name === "ota.install") {
-    const runtimeWriter =
-      (a.kind ?? "launcher") === "launcher" &&
-      info?.role === "app" &&
-      info.single_launcher_ota === true &&
-      info.image_profile === "ESPHUB1/micropython/" + d.board;
     const variant = boards[d.board]?.bootloader;
     const launcher = info?.role === "launcher" && (
       info.image_profile === "ESPHUB1/launcher/" + d.board ||
       (variant && info.image_profile === "ESPHUB2/launcher/" + variant)
     );
-    if (info?.board !== d.board || (!launcher && !runtimeWriter))
+    if (info?.board !== d.board || !launcher)
       fail(409, "Start a compatible launcher first");
+    if ((a.kind ?? "launcher") === "launcher" && info.dual_launcher_ota !== true)
+      fail(409, "Back up this device and install the dual-slot USB setup kit first");
     if (!a.url) {
       const manifest = await launcherManifest(d.board);
       if (info.chip !== manifest.chip) fail(409, "Release target mismatch");
-      if (manifest.bootloader && runtimeWriter && info.bootloader_profile !== manifest.bootloader)
-        fail(409, "Install the latest board MicroPython runtime before updating to the shared launcher");
       return queue(
         "install",
         {
