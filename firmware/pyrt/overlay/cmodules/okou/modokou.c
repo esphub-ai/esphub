@@ -127,7 +127,17 @@ static mp_obj_t okou_wifi_join_py(size_t n_args, const mp_obj_t *args, mp_map_t 
     const char *password = mp_obj_str_get_data(values[ARG_password].u_obj, &password_len);
     if (memchr(ssid, 0, ssid_len) || memchr(password, 0, password_len))
         mp_raise_ValueError(MP_ERROR_TEXT("Wi-Fi credentials contain NUL"));
-    return mp_obj_new_bool(okou_wifi_join(ssid, password, values[ARG_hidden].u_bool));
+    char network[33], secret[65];
+    if (!ssid_len || ssid_len >= sizeof(network) || password_len >= sizeof(secret))
+        return mp_const_false;
+    memcpy(network, ssid, ssid_len);
+    network[ssid_len] = '\0';
+    memcpy(secret, password, password_len);
+    secret[password_len] = '\0';
+    bool queued = okou_wifi_join(network, secret, values[ARG_hidden].u_bool);
+    volatile char *wipe = secret;
+    for (size_t i = 0; i < sizeof(secret); i++) wipe[i] = 0;
+    return mp_obj_new_bool(queued);
 }
 static MP_DEFINE_CONST_FUN_OBJ_KW(okou_wifi_join_obj, 0, okou_wifi_join_py);
 

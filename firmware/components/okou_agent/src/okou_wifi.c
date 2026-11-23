@@ -383,7 +383,6 @@ static void try_requested_network(void)
     unlock();
 }
 
-
 static void wifi_task(void *arg)
 {
     xEventGroupWaitBits(s_ev, EV_STARTED, pdFALSE, pdFALSE, portMAX_DELAY);
@@ -445,7 +444,6 @@ static void wifi_task(void *arg)
         bool ok = false;
         for (int x = 0; x < k && !ok; x++) {
             if (join_queued()) break;
-
             ok = attempt(&nets[order[x]]);
         }
         xSemaphoreGive(s_radio_mu);
@@ -486,7 +484,6 @@ esp_err_t okou_wifi_init(void)
         return ESP_ERR_NO_MEM;
     }
     load();
-
     return xTaskCreate(wifi_task, "okou_wifi", 6144, NULL, 3, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
