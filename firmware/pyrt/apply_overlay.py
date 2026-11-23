@@ -14,6 +14,7 @@ import sys
 uiflow, fw, profile, version = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3], sys.argv[4]
 config = json.loads((fw / "boards" / profile / "micropython/profile.json").read_text())
 board = config["target"]
+bootloader = json.loads((fw / "boards" / profile / "board.json").read_text())["bootloader"]
 m5 = uiflow / "m5stack"
 ov = fw / "pyrt" / "overlay"
 
@@ -99,7 +100,7 @@ edit("../micropython/extmod/nimble/modbluetooth_nimble.c", "int mp_bluetooth_ini
      "extern bool okou_ble_host_owned(void);\nint mp_bluetooth_init(void) {\n"
      "    if (okou_ble_host_owned()) return MP_EBUSY;")
 
-(m5 / bdir / "sdkconfig.okl").write_text(frag + f'CONFIG_OKOU_BOARD_PROFILE="{profile}"\n')
+(m5 / bdir / "sdkconfig.okl").write_text(frag + f'CONFIG_OKOU_BOARD_PROFILE="{profile}"\nCONFIG_OKOU_BL_PROFILE="{bootloader}"\n')
 edit(f"{bdir}/mpconfigboard.cmake", f"    {bdir}/sdkconfig.board\n)",
      f"    {bdir}/sdkconfig.board\n    {bdir}/sdkconfig.okl\n)")
 edit(f"{bdir}/mpconfigboard.cmake", "set(FONT_ALIBABASANS_JA24 1)", "set(FONT_ALIBABASANS_JA24 0)")

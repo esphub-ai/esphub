@@ -17,7 +17,8 @@ profile = Path(__file__).resolve().parents[1] / "firmware/boards" / args.board
 recipe = {"tag": os.environ["TAG"], "launcher_version": os.environ["LAUNCHER_VERSION"],
           "runtime_version": os.environ["MICROPYTHON_VERSION"], "launcher_tag": os.environ["LAUNCHER_TAG"],
           "runtime_tag": os.environ["MICROPYTHON_TAG"]}
-chip = json.loads((profile / "board.json").read_text())["chip"]
+metadata = json.loads((profile / "board.json").read_text())
+chip = metadata["chip"]
 version = os.environ["VERSION"]
 prefix = f"esphub-{args.board}-{chip}-{version}-setup"
 kit = args.output / (prefix + ".zip")
@@ -29,14 +30,24 @@ with ZipFile(args.launcher) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
     offset, size = int(app[3], 0), int(app[4], 0)
     assert parts["data"][2] == "littlefs" and 0 < len(image) <= size
     launcher = base.read("esp-launcher.bin")
-    for kind, binary in (("launcher", launcher), ("micropython", image)):
-        assert binary[0] == 0xE9 and binary[288:].startswith(f"ESPHUB1/{kind}/{args.board}\0single-launcher-v1\0".encode())
+    variant = metadata["bootloader"]
+    shared = launcher[288:].startswith(f"ESPHUB2/launcher/{variant}\0single-launcher-v1\0".encode())
+    legacy = launcher[288:].startswith(f"ESPHUB1/launcher/{args.board}\0single-launcher-v1\0".encode())
+    assert launcher[0] == 0xE9 and (shared or legacy)
+    assert image[0] == 0xE9 and image[288:].startswith(
+        f"ESPHUB1/micropython/{args.board}\0single-launcher-v1\0".encode())
     assert launcher[12:14] == image[12:14], "Mismatched ESP chips"
     for name in base.namelist():
         if name not in ("flash_args", "INSTALL.txt"):
             dest.writestr(name, base.read(name))
     dest.writestr("micropython.bin", image)
-    dest.writestr("flash_args", base.read("flash_args").rstrip() + f"\n{offset:#x} micropython.bin\n".encode())
+    dest.write(profile / "hello.py", "main.py")
+    flash_args = base.read("flash_args").rstrip() + f"\n{offset:#x} micropython.bin\n".encode()
+    if shared:
+        name = "board-nvs.bin"
+        assert len(base.read(name)) == int(parts["nvs"][4], 0)
+        flash_args += f"{parts['nvs'][3]} {name}\n".encode()
+    dest.writestr("flash_args", flash_args)
     erase = "--erase-all " if os.environ.get("ERASE_ALL") == "true" else ""
     setup_note = ("Write the plain hub hostname, token and ble_secret from devices.create with OKL-PROVISION over USB at 115200.\n"
                   "Run the macOS BLE Wi-Fi tool and restart the board after Beacon ready.")
@@ -44,6 +55,7 @@ with ZipFile(args.launcher) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
 This replaces the partition table and application. Back up existing device data first.
 From this directory, use the correct local USB port:
 esptool.py --chip {chip} --port PORT write_flash {erase}@flash_args
+The included main.py is the board verification example. Install it after setup using Python OTA.
 {setup_note}
 """)
 

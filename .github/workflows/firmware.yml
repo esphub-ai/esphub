@@ -14,6 +14,7 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     outputs:
+      bootloaders: ${{ steps.plan.outputs.bootloaders }}
       boards: ${{ steps.plan.outputs.boards }}
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +24,22 @@ jobs:
       - id: plan
         env: {GH_TOKEN: '${{ github.token }}'}
         run: node scripts/firmware-plan.mjs
-  board:
+  bootloader:
     needs: plan
-    if: needs.plan.outputs.boards != '[]'
+    if: needs.plan.outputs.bootloaders != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        build: ${{ fromJSON(needs.plan.outputs.bootloaders) }}
+    permissions: {contents: write}
+    uses: ./.github/workflows/build-bootloader.yml
+    with:
+      variant: ${{ matrix.build.variant }}
+      fingerprint: ${{ matrix.build.fingerprint }}
+      version: ${{ matrix.build.version }}
+  board:
+    needs: [plan, bootloader]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.bootloader.result != 'failure' && needs.plan.outputs.boards != '[]' }}
     name: ${{ matrix.profile.board }}
     strategy:
       fail-fast: false

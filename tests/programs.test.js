@@ -27,13 +27,14 @@ test("each board links to the actual source, build recipes and provisioning exam
         );
         continue;
       }
-      const expected = `firmware/boards/${board}/${kind}`;
+      const expected = `firmware/boards/${board}/${kind === "launcher" ? "layout" : kind}`;
+      const buildAction =
+        kind === "launcher"
+          ? "scripts/build-bootloader.sh"
+          : expected + "/action.yml";
       assert.equal(localPath(layer.board_directory_url, "tree"), expected);
-      assert.equal(
-        localPath(layer.build_action_url, "blob"),
-        expected + "/action.yml",
-      );
-      assert.ok(statSync(expected + "/action.yml").isFile());
+      assert.equal(localPath(layer.build_action_url, "blob"), buildAction);
+      assert.ok(statSync(buildAction).isFile());
     }
     assert.equal(
       sources.micropython.upstream_directory_url,

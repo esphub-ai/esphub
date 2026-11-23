@@ -1,3 +1,0 @@
-CONFIG_OKOU_BOARD_PROFILE="cardputer-adv"
-CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="../boards/cardputer-adv/launcher/partitions.csv"

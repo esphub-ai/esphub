@@ -24,12 +24,17 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   };
   const addBoard = (id) => {
     const dir = "firmware/boards/" + id;
-    put(dir + "/board.json", JSON.stringify({ chip: "esp32s3" }));
     put(
-      dir + "/ci.json",
-      JSON.stringify({ launcher: {}, micropython: {}, setup: {} }),
+      dir + "/board.json",
+      JSON.stringify({
+        chip: "esp32s3",
+        flash_mb: 16,
+        bootloader: "esp32s3-16mb",
+      }),
     );
-    for (const kind of ["launcher", "micropython", "setup"])
+    put(dir + "/layout/partitions.csv", "table");
+    put(dir + "/ci.json", JSON.stringify({ micropython: {}, setup: {} }));
+    for (const kind of ["micropython", "setup"])
       put(dir + "/" + kind + "/action.yml", "runs: { using: composite }");
   };
   const snapshot = () => {
@@ -68,12 +73,24 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
     );
   };
   git("init", "-q");
+  for (const flash of [8, 16]) {
+    put(
+      `firmware/bootloader/variants/esp32s3-${flash}mb/sdkconfig.defaults`,
+      "defaults",
+    );
+    put(`firmware/partitions/${flash}mb.csv`, "table");
+  }
   addBoard("paper-color");
   addBoard("stopwatch");
   let before = snapshot();
-  put("firmware/boards/stopwatch/launcher/sdkconfig.defaults", "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y");
+  put("firmware/boards/stopwatch/layout/partitions.csv", "new table");
   let after = snapshot();
   assert.deepEqual(select(before, after), { stopwatch: ["launcher", "setup"] });
+  assert.equal(after.stopwatch.blFingerprint, before.stopwatch.blFingerprint);
+  assert.equal(
+    after.stopwatch.blFingerprint,
+    after["paper-color"].blFingerprint,
+  );
   before = after;
   put(
     "firmware/boards/stopwatch/micropython/profile.json",
@@ -91,11 +108,22 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   const advDir = "firmware/boards/cardputer-adv";
   cpSync(new URL("../" + advDir, import.meta.url), join(cwd, advDir), {
     recursive: true,
+    verbatimSymlinks: true,
   });
   after = snapshot();
   assert.deepEqual(select(before, after), {
     "cardputer-adv": ["launcher", "micropython", "setup"],
   });
+  before = after;
+  put(
+    "firmware/bootloader/variants/esp32s3-8mb/sdkconfig.defaults",
+    "new defaults",
+  );
+  after = snapshot();
+  assert.deepEqual(select(before, after), {
+    "cardputer-adv": ["launcher", "setup"],
+  });
+  assert.equal(after.stopwatch.blFingerprint, before.stopwatch.blFingerprint);
   before = after;
   appendFileSync(
     join(cwd, advDir, "micropython/manifest.py"),

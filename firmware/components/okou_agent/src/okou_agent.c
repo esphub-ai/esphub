@@ -279,14 +279,15 @@ void okou_metric(const char *name, double value)
 
 /* ------------------------------------------------------------------ hello / status */
 
+#include "okou_install.h"
+
 /* IDF places this directly after esp_app_desc_t in the first image segment.
  * The launcher can check the artifact type and board before erasing a slot. */
 #if CONFIG_OKL_URL_OTA
-#define OKOU_IMAGE_PROFILE "ESPHUB1/launcher/" CONFIG_OKOU_BOARD_PROFILE
+#define OKOU_IMAGE_PROFILE OKOU_BL_IMAGE_PREFIX CONFIG_OKOU_BL_PROFILE
 #elif CONFIG_OKOU_MICROPYTHON_RUNTIME
 #define OKOU_IMAGE_PROFILE "ESPHUB1/micropython/" CONFIG_OKOU_BOARD_PROFILE
 #endif
-#include "okou_install.h"
 #ifdef OKOU_IMAGE_PROFILE
 static const char image_profile[] __attribute__((section(".rodata_custom_desc"), aligned(4))) = OKOU_IMAGE_PROFILE "\0" OKOU_OTA_CAPABILITY;
 #endif
@@ -303,8 +304,15 @@ static void hello_fill(cJSON *o)
 #ifdef OKOU_IMAGE_PROFILE
     cJSON_AddStringToObject(o, "image_profile", image_profile);
     cJSON_AddBoolToObject(o, "single_launcher_ota", true);
+    if (CONFIG_OKOU_BL_PROFILE[0]) cJSON_AddStringToObject(o, "bootloader_profile", CONFIG_OKOU_BL_PROFILE);
 #endif
+#if CONFIG_OKL_URL_OTA
+    char board[OKOU_BOARD_CAPACITY];
+    if (okou_nvs_get_str(OKOU_BOARD_KEY, board, sizeof(board)) == ESP_OK && board[0])
+        cJSON_AddStringToObject(o, "board", board);
+#else
     if (CONFIG_OKOU_BOARD_PROFILE[0]) cJSON_AddStringToObject(o, "board", CONFIG_OKOU_BOARD_PROFILE);
+#endif
     cJSON_AddStringToObject(o, "boot_id", s_boot_id);
     cJSON_AddStringToObject(o, "role", okou_is_launcher() ? "launcher" : "app");
     cJSON *fw = cJSON_AddObjectToObject(o, "fw");

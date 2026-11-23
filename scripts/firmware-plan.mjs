@@ -1,18 +1,24 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, appendFileSync } from "node:fs";
-import { matchesGlob, resolve } from "node:path";
+import { matchesGlob, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { publishedFirmware } from "../shared/firmware-releases.js";
 
+const bootloaderInputs = [
+  "firmware/bootloader/**",
+  "firmware/components/**",
+  "firmware/sdkconfig.common",
+  "firmware/ble.defaults",
+  "firmware/version.txt",
+  "scripts/build-bootloader.sh",
+  "scripts/package-launcher.py",
+  ".github/workflows/build-bootloader.yml",
+];
 const sharedInputs = {
   launcher: [
-    "firmware/launcher/**",
-    "firmware/components/**",
-    "firmware/sdkconfig.common",
-    "firmware/ble.defaults",
-    "scripts/package-launcher.py",
-    ".github/actions/build-launcher/**",
+    "scripts/package-board-launcher.py",
+    ".github/workflows/build-board.yml",
   ],
   micropython: [
     "firmware/pyrt/overlay/**",
@@ -46,18 +52,67 @@ export function profiles(ref, cwd = process.cwd()) {
   );
   const json = (file) => JSON.parse(git("show", ref + ":" + file));
   const boards = {};
+  const matching = (patterns) =>
+    [...files].filter(
+      ([file]) =>
+        !file.endsWith(".md") &&
+        patterns.some((pattern) => matchesGlob(file, pattern)),
+    );
+  const variants = new Map();
   for (const path of files.keys()) {
     const match =
       /^firmware\/boards\/([a-z0-9]+(?:-[a-z0-9]+)*)\/ci\.json$/.exec(path);
     if (!match) continue;
     const board = match[1],
       dir = `firmware/boards/${board}`;
-    const { chip } = json(dir + "/board.json"),
+    const { chip, flash_mb, bootloader } = json(dir + "/board.json"),
       jobs = json(path),
       tasks = {};
+    if (bootloader) {
+      const config = `firmware/bootloader/variants/${bootloader}/sdkconfig.defaults`;
+      if (bootloader !== `${chip}-${flash_mb}mb` || !files.has(config))
+        throw Error("Invalid bootloader for " + board);
+      if (!variants.has(bootloader)) {
+        const sources = matching([
+          ...bootloaderInputs,
+          `firmware/partitions/${flash_mb}mb.csv`,
+        ]).filter(
+          ([file]) =>
+            !file.startsWith("firmware/bootloader/variants/") ||
+            file === config,
+        );
+        variants.set(bootloader, digest([bootloader, sources]));
+      }
+      const layouts = matching([`${dir}/layout/*.csv`]);
+      if (!files.has(`${dir}/layout/partitions.csv`))
+        throw Error("Missing partition layout for " + board);
+      const partitions = layouts.map(([file, entry]) => {
+        if (!entry.startsWith("120000 ")) return entry;
+        const target = posix.join(
+          posix.dirname(file),
+          git("show", ref + ":" + file),
+        );
+        if (!files.has(target)) throw Error("Unknown layout " + target);
+        return files.get(target);
+      });
+      tasks.launcher = {
+        kind: "launcher",
+        runner: "ubuntu-24.04",
+        container: "espressif/idf:v5.4.1",
+        fingerprint: digest([
+          board,
+          chip,
+          variants.get(bootloader),
+          layouts,
+          partitions,
+          ...matching(sharedInputs.launcher),
+        ]),
+      };
+    }
     for (const [kind, job] of Object.entries(jobs)) {
       if (
         !Object.hasOwn(sharedInputs, kind) ||
+        (bootloader && kind === "launcher") ||
         !files.has(`${dir}/${kind}/action.yml`)
       )
         throw Error(`Invalid CI task ${board}/${kind}`);
@@ -65,17 +120,20 @@ export function profiles(ref, cwd = process.cwd()) {
         ...sharedInputs[kind],
         `${dir}/${kind}/**`,
         ...(job.inputs ?? []),
+        ...(kind === "setup" ? [`${dir}/hello.py`] : []),
       ];
-      const sources = [...files].filter(
-        ([file]) =>
-          !file.endsWith(".md") &&
-          patterns.some((pattern) => matchesGlob(file, pattern)),
-      );
+      const sources = matching(patterns);
       tasks[kind] = {
         kind,
         runner: job.runner ?? "ubuntu-24.04",
         container: job.container ?? "",
-        fingerprint: digest([board, chip, job, sources]),
+        fingerprint: digest([
+          board,
+          chip,
+          kind === "micropython" ? bootloader : null,
+          job,
+          sources,
+        ]),
       };
     }
     if (tasks.setup) {
@@ -87,7 +145,12 @@ export function profiles(ref, cwd = process.cwd()) {
         tasks.micropython.fingerprint,
       ]);
     }
-    boards[board] = { chip, tasks };
+    boards[board] = {
+      chip,
+      tasks,
+      bootloader,
+      blFingerprint: variants.get(bootloader),
+    };
   }
   return boards;
 }
@@ -101,7 +164,10 @@ export function boardPlans(
   if (selected && !Object.hasOwn(after, selected))
     throw Error("Unknown board: " + selected);
   const matrix = [];
-  for (const [board, { chip, tasks }] of Object.entries(after)) {
+  for (const [
+    board,
+    { chip, tasks, bootloader, blFingerprint },
+  ] of Object.entries(after)) {
     if (selected && selected !== board) continue;
     const published = releases[board] ?? {},
       changed = {};
@@ -133,6 +199,8 @@ export function boardPlans(
       board,
       chip,
       jobs,
+      bootloader,
+      blFingerprint,
       components,
       kit: kit
         ? {
@@ -176,6 +244,24 @@ if (
     );
     plans = boardPlans(before, after, releases, options);
   }
+  const bootloaders = [
+    ...new Map(
+      plans
+        .filter((p) => p.components.some((task) => task.kind === "launcher"))
+        .map((p) => [
+          p.bootloader,
+          {
+            variant: p.bootloader,
+            fingerprint: p.blFingerprint,
+            version: options.version,
+          },
+        ]),
+    ).values(),
+  ];
+  appendFileSync(
+    process.env.GITHUB_OUTPUT,
+    `bootloaders=${JSON.stringify(bootloaders)}\n`,
+  );
   appendFileSync(
     process.env.GITHUB_OUTPUT,
     `boards=${JSON.stringify(plans)}\n`,

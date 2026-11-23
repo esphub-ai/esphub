@@ -415,12 +415,18 @@ export async function operate(c, owner, name, a) {
       info?.role === "app" &&
       info.single_launcher_ota === true &&
       info.image_profile === "ESPHUB1/micropython/" + d.board;
-    const launcher = info?.role === "launcher" && info.image_profile === "ESPHUB1/launcher/" + d.board;
+    const variant = boards[d.board]?.bootloader;
+    const launcher = info?.role === "launcher" && (
+      info.image_profile === "ESPHUB1/launcher/" + d.board ||
+      (variant && info.image_profile === "ESPHUB2/launcher/" + variant)
+    );
     if (info?.board !== d.board || (!launcher && !runtimeWriter))
       fail(409, "Start a compatible launcher first");
     if (!a.url) {
       const manifest = await launcherManifest(d.board);
       if (info.chip !== manifest.chip) fail(409, "Release target mismatch");
+      if (manifest.bootloader && runtimeWriter && info.bootloader_profile !== manifest.bootloader)
+        fail(409, "Install the latest board MicroPython runtime before updating to the shared launcher");
       return queue(
         "install",
         {
