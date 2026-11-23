@@ -1,8 +1,8 @@
 /*
- * esp-bootloader: headless bootloader. Boot/rollback rules from docs/protocol.md:
- *  - auto-starts the app CONFIG_OKL_AUTOSTART_MS after boot if the app partition holds an
+ * esp-bootloader: headless bootloader:
+ *  - auto-starts the app when the app partition holds an
  *    image, unless okl/pending exists, okl/stay is set, or a hub request arrived;
- *  - resumes okl/pending after the hub acked hello;
+ *  - reports an interrupted transfer after the hub acknowledges hello;
  *
  * SPDX-License-Identifier: MIT
  */
@@ -10,7 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "esp_timer.h"
+#include "esp_system.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "okou_agent.h"
@@ -27,7 +27,7 @@ static bool s_stay;
 
 static void on_hello_acked(void)
 {
-    install_resume_pending();
+    install_report_interrupted();
     s_acked_evt = true;
 }
 
@@ -74,13 +74,9 @@ void app_main(void)
         okou_nvs_erase(OKOU_KEY_SETUP);
     }
     s_stay = okou_nvs_get_u8(OKOU_KEY_STAY, 0) != 0;
-    uint8_t fail_boots = okou_nvs_get_u8(OKOU_KEY_FAIL_BOOTS, 0);
     char *pending = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
     bool has_pending = pending != NULL;
     free(pending);
-    const esp_partition_t *invalid = esp_ota_get_last_invalid_partition();
-    bool app_failed = (invalid && strcmp(invalid->label, "app") == 0) || fail_boots >= 3;
-
     okou_param_bool("stay_in_bootloader", &s_stay, false); /* stored in okl/stay by param_hook */
     okou_param_set_hook(param_hook);
     okou_op_register("install", install_op);
@@ -93,21 +89,15 @@ void app_main(void)
     ESP_ERROR_CHECK(okou_agent_start(&cfg));
 
     const esp_partition_t *app = app_partition_with_image();
-    ESP_LOGI(TAG, "running %s; app image %s; pending=%d stay=%d hold=%d fail_boots=%u app_failed=%d",
+    ESP_LOGI(TAG, "running %s; app image %s; pending=%d stay=%d hold=%d",
              run->label, app ? "present" : "absent",
-             has_pending, s_stay, hold, fail_boots, app_failed);
+             has_pending, s_stay, hold);
     prov_serial_start();
-    esp_ota_img_states_t st;
-    if (esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY)
-        ESP_ERROR_CHECK(esp_ota_mark_app_valid_cancel_rollback());
     ESP_ERROR_CHECK(okou_nvs_set_str(OKOU_KEY_LSLOT, run->label));
     if (hold) {
         ESP_LOGI(TAG, "held in bootloader; use USB setup or reboot target=app");
     }
 
-    int64_t t0 = esp_timer_get_time();
-    int64_t autostart_at = t0 + (app_failed ? (int64_t)CONFIG_OKL_FAILSAFE_WAIT_S * 1000000
-                                            : (int64_t)CONFIG_OKL_AUTOSTART_MS * 1000);
     /* An unprovisioned device must stay in the bootloader: the app cannot provision over USB, so
      * leaving would close the setup window. The app starts after the first hub ack instead. */
     char *p_hub = okou_nvs_get_str_alloc("hub");
@@ -122,16 +112,9 @@ void app_main(void)
     if (app && !provisioned) {
         ESP_LOGI(TAG, "not provisioned: staying in the bootloader (USB provisioning open)");
     }
-    if (autostart) {
-        ESP_LOGI(TAG, "auto-starting app in %d ms unless a hub request arrives",
-                 (int)((autostart_at - t0) / 1000));
-    }
-
     bool acked_once = false;
 
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(100));
-        int64_t now = esp_timer_get_time();
         if (s_acked_evt) {
             s_acked_evt = false;
             if (!acked_once) {
@@ -139,30 +122,26 @@ void app_main(void)
                 char *still_pending = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
                 bool resume = app && !still_pending && !s_stay && !hold && !s_req_seen;
                 free(still_pending);
-                if (resume && !autostart) {
-                    autostart = true;
-                    autostart_at = now + (int64_t)(app_failed ? CONFIG_OKL_FAILSAFE_WAIT_S * 1000 : CONFIG_OKL_AUTOSTART_MS) * 1000;
-                    ESP_LOGI(TAG, "auto-starting app in %d ms unless a hub request arrives",
-                             (int)((autostart_at - now) / 1000));
-                }
+                if (resume) autostart = true;
             }
         }
         if (autostart && (s_req_seen || s_stay)) {
             autostart = false;
         }
+        bool ready = autostart;
 #if CONFIG_OKOU_BLE_WIFI
-        if (okou_ble_host_owned()) continue;
+        ready = ready && !okou_ble_host_owned();
 #endif
-        if (autostart && now >= autostart_at) {
+        if (ready) {
             autostart = false;
-            okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);
             esp_err_t e = esp_ota_set_boot_partition(app);
             if (e == ESP_OK) {
                 ESP_LOGI(TAG, "starting app");
-                okou_schedule_reboot(100);
+                esp_restart();
             } else {
                 ESP_LOGE(TAG, "app image not bootable: %s", esp_err_to_name(e));
             }
         }
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }

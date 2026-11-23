@@ -23,15 +23,12 @@ bool okou_wifi_rssi(int *rssi);
 
 /* NVS namespace and keys shared between bootloader and SDK (docs/protocol.md). */
 #define OKOU_NVS_NS          "okl"
-#define OKOU_KEY_PENDING     "pending"    /* str: resumable install job or unacknowledged final event */
+#define OKOU_KEY_PENDING     "pending"    /* str: in-progress transfer identity or unacknowledged final event */
 #define OKOU_KEY_LSLOT "lslot" /* Last validated A/B bootloader slot. */
 #define OKOU_KEY_STAY        "stay"       /* u8: never auto-start the app */
-#define OKOU_KEY_FAIL_BOOTS  "fail_boots" /* u8: app boots without a hub ack */
 #define OKOU_KEY_HOLD        "hold"       /* u8: one-shot "stay in bootloader on next boot" (extension) */
 #define OKOU_KEY_WIFIS       "wifis"      /* str: saved Wi-Fi networks, JSON, most recent first */
 #define OKOU_KEY_SETUP       "setup"      /* u8: one-shot "stay in the bootloader until the hub acks" */
-#define OKOU_KEY_RB          "rb"         /* str: unreported rollback record (JSON) */
-#define OKOU_KEY_RB_LAST     "rb_last"    /* str: label of the invalid partition already recorded */
 #define OKOU_KEY_TOKEN       "tok"        /* str: hub device token okl_dev_... (HTTPS bearer) */
 
 /* Called by the bootloader download worker, never by the MQTT agent task. */

@@ -16,6 +16,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include "esp_check.h"
 #include "esp_timer.h"
 #include "esp_pm.h"
 #include "freertos/semphr.h"
@@ -99,7 +100,6 @@ static int64_t s_conn_start_us, s_up_since_us, s_next_connect_us;
 static uint32_t s_backoff_ms = 1000;
 static volatile int64_t s_reboot_at_us;
 static char s_boot_id[33];
-static bool s_rolled_back;
 static okou_hooks_t s_hooks;
 static char s_install_state[20] = "queued";
 static char s_inflight_id[37];
@@ -334,7 +334,6 @@ static void hello_fill(cJSON *o)
     cJSON_AddStringToObject(o, "chip", CONFIG_IDF_TARGET);
     cJSON_AddStringToObject(o, "mac", mac);
     cJSON_AddStringToObject(o, "reset_reason", okou_reset_reason_str());
-    cJSON_AddBoolToObject(o, "rolled_back", s_rolled_back);
     char *pending = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
     cJSON *pj = pending ? cJSON_Parse(pending) : NULL;
     free(pending);
@@ -546,7 +545,6 @@ static esp_err_t op_reboot(const cJSON *args, cJSON *data, char *err, size_t err
                 snprintf(err, errlen, "no bootable app image: %s", esp_err_to_name(e));
                 return e;
             }
-            okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);
             okou_nvs_erase(OKOU_KEY_HOLD);
         }
     } else if (strcmp(target, "bootloader") == 0) {
@@ -703,56 +701,6 @@ int okou_poll(uint32_t timeout_ms)
     return n;
 }
 
-/* Rollback visibility. The bootloader's "last invalid partition" survives only until the next
- * esp_ota_set_boot_partition() rewrites otadata (the bootloader auto-starting the app does exactly
- * that, usually before it has reached the hub). So record it in NVS on the first boot that sees
- * it, and report it as a `rollback` event from whichever role reaches the hub first. */
-static void record_rollback(void)
-{
-    const esp_partition_t *inv = esp_ota_get_last_invalid_partition();
-    char last[17] = "";
-    okou_nvs_get_str(OKOU_KEY_RB_LAST, last, sizeof(last));
-    if (!inv) {
-        if (last[0]) {
-            okou_nvs_erase(OKOU_KEY_RB_LAST); /* otadata moved on; a later rollback is new */
-        }
-        return;
-    }
-    if (strcmp(last, inv->label) == 0) {
-        return; /* same rollback, already recorded */
-    }
-    const esp_partition_t *run = esp_ota_get_running_partition();
-    cJSON *o = cJSON_CreateObject();
-    cJSON_AddStringToObject(o, "partition", inv->label);
-    cJSON_AddStringToObject(o, "kind", strcmp(inv->label, "app") == 0 ? "app" : "bootloader");
-    cJSON_AddStringToObject(o, "returned_to", run ? run->label : "?");
-    cJSON_AddStringToObject(o, "reset_reason", okou_reset_reason_str());
-    cJSON_AddStringToObject(o, "detected_by", okou_is_bootloader() ? "bootloader" : "app");
-    cJSON_AddStringToObject(o, "boot_id", s_boot_id);
-    char *js = cJSON_PrintUnformatted(o);
-    cJSON_Delete(o);
-    if (js) {
-        okou_nvs_set_str(OKOU_KEY_RB, js);
-        okou_nvs_set_str(OKOU_KEY_RB_LAST, inv->label);
-        ESP_LOGW(TAG, "rollback detected: %s was invalidated, running %s", inv->label, run ? run->label : "?");
-        free(js);
-    }
-}
-
-static void report_rollback(void)
-{
-    char *js = okou_nvs_get_str_alloc(OKOU_KEY_RB);
-    if (!js) {
-        return;
-    }
-    cJSON *d = cJSON_Parse(js);
-    free(js);
-    if (d) {
-        okou_event_json("rollback", d); /* takes ownership */
-    }
-    okou_nvs_erase(OKOU_KEY_RB);
-}
-
 esp_err_t okou_enter_bootloader(void)
 {
     const esp_partition_t *lp = okou_bootloader_partition();
@@ -772,28 +720,6 @@ esp_err_t okou_enter_bootloader(void)
     return ESP_OK;
 }
 
-esp_err_t okou_app_mark_valid(void)
-{
-    const esp_partition_t *run = esp_ota_get_running_partition();
-    esp_ota_img_states_t st;
-    esp_err_t e = run ? esp_ota_get_state_partition(run, &st) : ESP_ERR_NOT_FOUND;
-    if (e != ESP_OK) {
-        return e == ESP_ERR_NOT_FOUND ? ESP_OK : e; /* no otadata entry (USB flash): nothing to confirm */
-    }
-    if (st != ESP_OTA_IMG_PENDING_VERIFY) {
-        return st == ESP_OTA_IMG_VALID ? ESP_OK : ESP_ERR_INVALID_STATE;
-    }
-    e = esp_ota_mark_app_valid_cancel_rollback();
-    if (e == ESP_OK) {
-        ESP_LOGI(TAG, "app marked valid by its own health check (rollback cancelled)");
-        cJSON *d = cJSON_CreateObject();
-        cJSON_AddStringToObject(d, "partition", run->label);
-        cJSON_AddStringToObject(d, "by", "app");
-        okou_event_json("app.valid", d); /* queued; delivered once the hub is reachable */
-    }
-    return e;
-}
-
 // Called after hello in either role. A completed OTA may have switched slots
 // before the old boot had a chance to reconnect.
 static bool report_install_result(void)
@@ -807,22 +733,17 @@ static bool report_install_result(void)
         const char *label = cJSON_GetStringValue(cJSON_GetObjectItem(frame, "target"));
         const esp_partition_t *run = esp_ota_get_running_partition();
         if (label && strcmp(label, run->label)) {
-            // Power was lost between saving the verified receipt and boot selection.
 #if CONFIG_OKL_URL_OTA
-            const esp_partition_t *target = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
-                ESP_PARTITION_SUBTYPE_ANY, label);
-            const esp_partition_t *invalid = esp_ota_get_last_invalid_partition();
+            // Boot selection succeeded and the installer's reboot is still pending.
             const esp_partition_t *selected = esp_ota_get_boot_partition();
-            if (target && (!invalid || invalid->address != target->address) &&
-                ((selected && selected->address == target->address) ||
-                 esp_ota_set_boot_partition(target) == ESP_OK)) {
+            if (selected && !strcmp(selected->label, label)) {
                 okou_schedule_reboot(300);
                 cJSON_Delete(frame);
                 return false;
             }
 #endif
             cJSON_ReplaceItemInObject(frame, "name", cJSON_CreateString("install.failed"));
-            cJSON_AddStringToObject(cJSON_GetObjectItem(frame, "data"), "error", "Boot selection failed or rolled back");
+            cJSON_AddStringToObject(cJSON_GetObjectItem(frame, "data"), "error", "Boot selection did not take effect");
         }
         cJSON_DeleteItemFromObject(frame, "target");
         ok = okou_iot_publish(frame, true) && okou_nvs_erase(OKOU_KEY_PENDING) == ESP_OK;
@@ -835,21 +756,6 @@ static bool report_install_result(void)
 static void on_first_ack(void)
 {
     ESP_LOGI(TAG, "hello acknowledged by hub");
-    report_rollback();
-    if (!okou_is_bootloader() && !g_okou_cfg.app_validates) {
-        const esp_partition_t *run = esp_ota_get_running_partition();
-        esp_ota_img_states_t st;
-        if (esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY) {
-            if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
-                ESP_LOGI(TAG, "app marked valid (rollback cancelled)");
-                cJSON *d = cJSON_CreateObject();
-                cJSON_AddStringToObject(d, "partition", run->label);
-                cJSON_AddStringToObject(d, "by", "hub_ack");
-                okou_event_json("app.valid", d);
-            }
-        }
-        okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);
-    }
     if (s_hooks.on_hello_acked) {
         s_hooks.on_hello_acked();
     }
@@ -945,7 +851,6 @@ static void agent_task(void *arg)
             if (events & IOT_OFFLINE)
                 mqtt_teardown("MQTT disconnected");
             else if (events & IOT_SUBSCRIBED) {
-                okou_iot_subscribed();
                 s_up_since_us = now;
                 s_mqtt_up = true;
                 if (send_hello()) {
@@ -1058,20 +963,12 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     for (int i = 0; i < 4; ++i) {
         snprintf(s_boot_id + 8*i, 9, "%08" PRIx32, esp_random());
     }
-    s_rolled_back = esp_ota_get_last_invalid_partition() != NULL;
-    record_rollback();
-
-    if (!okou_is_bootloader() && !g_okou_cfg.app_validates && CONFIG_OKOU_MAX_FAIL_BOOTS > 0) {
-        uint8_t fb = okou_nvs_get_u8(OKOU_KEY_FAIL_BOOTS, 0);
-        if (fb >= CONFIG_OKOU_MAX_FAIL_BOOTS) {
-            const esp_partition_t *lp = okou_bootloader_partition();
-            ESP_LOGE(TAG, "fail_boots=%u without hub ack: booting bootloader (%s)", fb, lp ? lp->label : "none");
-            if (lp && esp_ota_set_boot_partition(lp) == ESP_OK) {
-                vTaskDelay(pdMS_TO_TICKS(100));
-                esp_restart();
-            }
-        }
-        okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, fb < 255 ? fb + 1 : fb);
+    // A launcher built before rollback was disabled can leave this image pending.
+    // Clear that legacy state on migration. Current writers never create it.
+    esp_ota_img_states_t state;
+    if (esp_ota_get_state_partition(esp_ota_get_running_partition(), &state) == ESP_OK &&
+        state == ESP_OTA_IMG_PENDING_VERIFY) {
+        ESP_RETURN_ON_ERROR(esp_ota_mark_app_valid_cancel_rollback(), TAG, "confirm legacy OTA selection");
     }
 
     okou_registry_builtin_cmds();

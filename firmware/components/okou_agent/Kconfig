@@ -44,11 +44,6 @@ menu "okou agent (esp-bootloader SDK)"
         int "Agent task priority (keep low)"
         default 2
 
-    config OKOU_MAX_FAIL_BOOTS
-        int "Boots without a hub ack before the SDK boots the bootloader (0 = never)"
-        range 0 20
-        default 3
-
     config OKOU_MICROPYTHON_RUNTIME
         bool "ESP Hub MicroPython runtime"
         default n

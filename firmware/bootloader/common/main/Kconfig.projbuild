@@ -8,16 +8,4 @@ menu "esp-bootloader"
         bool
         default y
 
-    config OKL_AUTOSTART_MS
-        int "Auto-start the app this long after boot (ms)"
-        default 3000
-
-    config OKL_FAILSAFE_WAIT_S
-        int "Auto-start delay after an app rollback / fail_boots trip (s)"
-        default 30
-        help
-            Extension to docs/protocol.md: after the app failed (bootloader rollback or
-            okl/fail_boots >= 3) the bootloader waits longer before starting it again so an
-            operator can catch it; any hub request cancels auto-start.
-
 endmenu
