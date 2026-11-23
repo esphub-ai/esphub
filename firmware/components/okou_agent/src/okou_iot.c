@@ -3,13 +3,10 @@
 #include "esp_crt_bundle.h"
 #include "esp_idf_version.h"
 #include "esp_random.h"
-#if ESP_IDF_VERSION_MAJOR >= 6
 #include "psa/crypto.h"
-#endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "mbedtls/pk.h"
-#include "mbedtls/sha256.h"
 #include "mbedtls/x509_csr.h"
 #include "mqtt_client.h"
 #include "okou_priv.h"
@@ -335,14 +332,15 @@ bool okou_iot_start(const char *boot_id, const char *hub, const char *token)
     // or a different hub must never connect using the previous registration.
     char binding[65];
     unsigned char hash[32];
-    mbedtls_sha256_context sha;
-    mbedtls_sha256_init(&sha);
-    int rc = mbedtls_sha256_starts(&sha, 0) ||
-             mbedtls_sha256_update(&sha, (const unsigned char *)hub, strlen(hub) + 1) ||
-             mbedtls_sha256_update(&sha, (const unsigned char *)token, strlen(token)) ||
-             mbedtls_sha256_finish(&sha, hash);
-    mbedtls_sha256_free(&sha);
-    if (rc) goto done;
+    psa_hash_operation_t sha = PSA_HASH_OPERATION_INIT;
+    size_t hash_len = 0;
+    int rc = psa_crypto_init() ||
+             psa_hash_setup(&sha, PSA_ALG_SHA_256) ||
+             psa_hash_update(&sha, (const unsigned char *)hub, strlen(hub) + 1) ||
+             psa_hash_update(&sha, (const unsigned char *)token, strlen(token)) ||
+             psa_hash_finish(&sha, hash, sizeof(hash), &hash_len);
+    psa_hash_abort(&sha);
+    if (rc || hash_len != sizeof(hash)) goto done;
     okou_hex(hash, sizeof(hash), binding);
     char *saved = okou_nvs_get_str_alloc("mqtt_grant");
     if (saved) {
