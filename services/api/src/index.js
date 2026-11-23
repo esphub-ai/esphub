@@ -25,13 +25,12 @@ api.get("/.well-known/openai-apps-challenge", (c) =>
   c.text("oQ1H5PIXgb4CmexhOlNNaTL2PkqnNppa17GSplpdaPY"),
 );
 api.get("/health", (c) => c.json({ service: "esphub-api", ok: true }));
-api.get("/releases/:board/:asset", (c) =>
-  releaseResponse(
-    c.req.param("board"),
-    c.req.param("asset"),
-    c.req.query("tag"),
-  ),
-);
+api.get("/releases/:board/:asset", (c) => {
+  const { board, asset } = c.req.param();
+  const tag = c.req.query("tag");
+  if (tag !== undefined) return releaseResponse(board, asset, tag);
+  return withDatabase(c.env, (sql) => releaseResponse(board, asset, tag, sql));
+});
 api.use(
   "*",
   cors({

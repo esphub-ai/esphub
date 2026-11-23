@@ -77,12 +77,12 @@ jobs:
           curl -fsS --retry 3 https://clerk.esphub.ai/.well-known/oauth-authorization-server | jq -e '.issuer == "https://clerk.esphub.ai" and .client_id_metadata_document_supported == true and (has("registration_endpoint") | not) and (.scopes_supported | contains(["devices:read","devices:write"]))'
       - name: Ensure production UART bucket exists
         run: node scripts/ensure-bucket.mjs
-      - name: Check the first-time setup kits before switching the API
+      - name: Validate and backfill the firmware catalog before switching the API
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
           # A newly added board can still be compiling its first release in parallel.
           for i in {1..40}; do
-            node scripts/check-board-releases.mjs && exit 0
+            node scripts/sync-board-releases.mjs && exit 0
             sleep 20
           done
           exit 1
