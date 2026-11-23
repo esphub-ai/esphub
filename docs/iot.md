@@ -17,7 +17,7 @@ The bootloader and MicroPython share one device agent. Firmware keeps a single a
 
 ## Command delivery and receipts
 
-The API queues commands in order, including while a device is offline. It waits for a hello on the current broker connection and dispatches one command at a time. The MQTT subscription is `devices/<uuid>/wake`. It carries complete commands, including their arguments, and application ACKs. An idle subscription sends no work requests. MQTT reconnects and cold boots reuse the cached grant. Two consecutive unsuccessful connection attempts trigger enrollment with `recover: true` before another MQTT client starts. The hub checks the broker certificate, reuses a valid certificate, and replaces a missing or expired one. A disabled registration requires reissue.
+The API queues commands in order, including while a device is offline. It waits for a hello on the current broker connection and dispatches one command at a time. The MQTT subscription is `devices/<uuid>/wake`. It carries complete commands, including their arguments, and application ACKs. An idle subscription sends no work requests. MQTT reconnects and cold boots reuse the cached grant. A changed provisioning token or hub requires enrollment. Reissue the registration to replace an unusable certificate.
 
 Commands carry a stable ID, a per-device sequence number and the target boot. A reconnect or missed publication can repeat a dispatch to that boot. The SDK remembers the last sequence across MQTT connections, suppresses duplicate execution and can resend an unacknowledged receipt. A new boot rejects messages addressed to the previous boot. Reboots complete when the hub observes the requested next boot. An install completes on a matching `install.done` or `install.failed` with the original transfer ID, including a receipt delivered by the next boot. Verify application startup separately.
 
@@ -27,7 +27,7 @@ The queue expires undelivered commands after five minutes. A dispatched command 
 
 Each uplink contains a `frame` with a per-boot message ID. The AWS rule attaches the device UUID from the topic and the certificate ID from the broker principal. A Lambda relay forwards the envelope to the Worker. The Worker checks the registered certificate and the active boot. The device policy scopes publish and subscribe to the attached thing.
 
-Hello, BLE confirmations, command receipts and install outcomes request an application acknowledgement on the downlink. The ACK echoes the boot ID and message ID. Hello confirms that the hub has recorded the boot before firmware can cancel rollback. Ordinary events use MQTT QoS 1. Console output is available locally over USB.
+Hello, BLE confirmations, command receipts and install outcomes request an application acknowledgement on the downlink. The ACK echoes the boot ID and message ID. The hello acknowledgement confirms that the hub has recorded the boot. The SDK confirms pending app images after successful local initialization. Apps with their own health checks call okou_app_mark_valid() explicitly. Ordinary events use MQTT QoS 1. Console output is available locally over USB.
 
 ## Deployment
 

@@ -35,8 +35,8 @@ typedef struct {
     /* false (default): command handlers run on the agent task.
      * true: `cmd` requests are queued and run inside okou_poll() on the caller's task. */
     bool handlers_in_poll;
-    /* false (default): the SDK marks a freshly installed app valid once the hub acknowledged
-     * its hello. true: the app confirms the image by calling okou_app_mark_valid()
+    /* false (default): the SDK marks a freshly installed app valid after successful local network and
+     * agent initialization. true: the app confirms the image by calling okou_app_mark_valid()
      * after its own startup health check, which can run offline. */
     bool app_validates;
     /* Static interpreter version string, set only by the MicroPython port. */

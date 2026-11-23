@@ -22,7 +22,6 @@ static uint32_t next_mid;
 static QueueHandle_t acks, controls;
 static char *incoming;
 static size_t received, expected;
-static unsigned failed_connects;
 
 cJSON *okou_iot_control(void)
 {
@@ -300,11 +299,6 @@ bool okou_iot_publish(cJSON *frame, bool confirm)
     return done;
 }
 
-void okou_iot_subscribed(void)
-{
-    failed_connects = 0;
-}
-
 bool okou_iot_start(const char *boot_id, const char *hub, const char *token)
 {
     cJSON *id = identity(), *req = cJSON_CreateObject(), *reply = NULL;
@@ -341,9 +335,7 @@ bool okou_iot_start(const char *boot_id, const char *hub, const char *token)
         free(saved);
     }
     const char *bound = cJSON_GetStringValue(cJSON_GetObjectItem(reply, "binding"));
-    bool recover = bound && !strcmp(bound, binding) && failed_connects >= 2;
-    if (!bound || strcmp(bound, binding) || recover) {
-        if (recover && !cJSON_AddTrueToObject(req, "recover")) goto done;
+    if (!bound || strcmp(bound, binding)) {
         cJSON_Delete(reply);
         reply = enroll(req);
         if (!reply || !cJSON_AddStringToObject(reply, "binding", binding)) goto done;
@@ -351,7 +343,6 @@ bool okou_iot_start(const char *boot_id, const char *hub, const char *token)
         bool stored = saved && okou_nvs_set_str("mqtt_grant", saved) == ESP_OK;
         free(saved);
         if (!stored) goto done;
-        failed_connects = 0;
     }
     const char *device = cJSON_GetStringValue(cJSON_GetObjectItem(reply, "device_id"));
     const char *host = cJSON_GetStringValue(cJSON_GetObjectItem(reply, "endpoint"));
@@ -382,9 +373,6 @@ bool okou_iot_start(const char *boot_id, const char *hub, const char *token)
     if (!started)
         okou_iot_stop();
     else {
-        // Only connection attempts count. A local allocation failure does not
-        // invalidate a cached certificate or justify starting an HTTPS client.
-        ++failed_connects;
         active_identity = id;
         active_certificate = reply;
         id = reply = NULL;

@@ -771,7 +771,7 @@ esp_err_t okou_enter_bootloader(void)
     return ESP_OK;
 }
 
-esp_err_t okou_app_mark_valid(void)
+static esp_err_t mark_app_valid(const char *by)
 {
     const esp_partition_t *run = esp_ota_get_running_partition();
     esp_ota_img_states_t st;
@@ -784,13 +784,18 @@ esp_err_t okou_app_mark_valid(void)
     }
     e = esp_ota_mark_app_valid_cancel_rollback();
     if (e == ESP_OK) {
-        ESP_LOGI(TAG, "app marked valid by its own health check (rollback cancelled)");
+        ESP_LOGI(TAG, "app marked valid by %s", by);
         cJSON *d = cJSON_CreateObject();
         cJSON_AddStringToObject(d, "partition", run->label);
-        cJSON_AddStringToObject(d, "by", "app");
+        cJSON_AddStringToObject(d, "by", by);
         okou_event_json("app.valid", d); /* queued; delivered once the hub is reachable */
     }
     return e;
+}
+
+esp_err_t okou_app_mark_valid(void)
+{
+    return mark_app_valid("app");
 }
 
 // Called after hello in either role. A completed OTA may have switched slots
@@ -835,19 +840,6 @@ static void on_first_ack(void)
 {
     ESP_LOGI(TAG, "hello acknowledged by hub");
     report_rollback();
-    if (!okou_is_bootloader() && !g_okou_cfg.app_validates) {
-        const esp_partition_t *run = esp_ota_get_running_partition();
-        esp_ota_img_states_t st;
-        if (esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY) {
-            if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
-                ESP_LOGI(TAG, "app marked valid (rollback cancelled)");
-                cJSON *d = cJSON_CreateObject();
-                cJSON_AddStringToObject(d, "partition", run->label);
-                cJSON_AddStringToObject(d, "by", "hub_ack");
-                okou_event_json("app.valid", d);
-            }
-        }
-    }
     if (s_hooks.on_hello_acked) {
         s_hooks.on_hello_acked();
     }
@@ -943,7 +935,6 @@ static void agent_task(void *arg)
             if (events & IOT_OFFLINE)
                 mqtt_teardown("MQTT disconnected");
             else if (events & IOT_SUBSCRIBED) {
-                okou_iot_subscribed();
                 s_up_since_us = now;
                 s_mqtt_up = true;
                 if (send_hello()) {
@@ -1079,5 +1070,9 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
 #if CONFIG_OKL_URL_OTA || CONFIG_OKOU_MICROPYTHON_RUNTIME
     xTaskCreate(sntp_task, "okl_sntp", 3072, NULL, 3, NULL);
 #endif
+    if (e == ESP_OK && !okou_is_bootloader() && !g_okou_cfg.app_validates) {
+        esp_err_t confirmed = mark_app_valid("sdk");
+        if (confirmed != ESP_OK) ESP_LOGW(TAG, "app confirmation: %s", esp_err_to_name(confirmed));
+    }
     return ESP_OK;
 }
