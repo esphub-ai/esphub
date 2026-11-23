@@ -1,5 +1,5 @@
 /*
- * okou agent core: hub connection, framing and request dispatch (docs/protocol.md v2).
+ * okou agent core: hub connection, framing and request dispatch.
  *
  * The agent task owns MQTT publishing, HTTPS requests and command dispatch.
  * Producer tasks only write bounded queues.
@@ -299,7 +299,6 @@ static void hello_fill(cJSON *o)
     okou_hex(d->app_elf_sha256, 32, sha);
     okou_mac_str(mac);
     const esp_partition_t *run = esp_ota_get_running_partition();
-    cJSON_AddNumberToObject(o, "proto", 2);
     cJSON_AddBoolToObject(o, "log_flush", true);
 #ifdef OKOU_IMAGE_PROFILE
     cJSON_AddStringToObject(o, "image_profile", image_profile);

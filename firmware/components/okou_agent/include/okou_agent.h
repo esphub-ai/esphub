@@ -1,5 +1,5 @@
 /*
- * okou_agent - device side of the esp-bootloader protocol (docs/protocol.md, v2).
+ * okou_agent - device side of the esp-bootloader protocol.
  *
  * Link this component into an app, register commands/params, call okou_agent_start().
  * Nothing in this API blocks on the network: logs, metrics and events are queued into

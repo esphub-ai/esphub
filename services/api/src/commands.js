@@ -39,8 +39,7 @@ export async function pull(db, device, boot) {
   // One delivery, even when two callers pull concurrently or the HTTP response is lost.
   // The conditional UPDATE also rechecks state after waiting for a competing update.
   return db`WITH current_device AS (
-    SELECT id FROM esphub.devices WHERE id=${device} AND boot_id=${boot} AND enrolled_boot=${boot}
-      AND boot_info->'proto' = '2'::jsonb FOR UPDATE
+    SELECT id FROM esphub.devices WHERE id=${device} AND boot_id=${boot} AND enrolled_boot=${boot} FOR UPDATE
   ), first AS (
     SELECT q.id,q.args FROM esphub.device_commands q JOIN current_device d ON d.id=q.device_id
     WHERE q.state='dispatched' OR (q.state='queued' AND q.expires_at>now() AND (q.boot_id IS NULL OR q.boot_id=${boot}))

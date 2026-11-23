@@ -1,6 +1,6 @@
 # Physical device protocol
 
-Current firmware reports `proto: 2` in the MQTT hello. The EspHub Bootloader reports role `bootloader`; Runtime and Native Program builds report role `app`.
+In the MQTT hello, the EspHub Bootloader reports role `bootloader` and Runtime and Native Program builds report role `app`.
 
 The bootloader and MicroPython share one device agent. Firmware keeps a single authenticated MQTT session with AWS IoT Core in us-west-2. A device needs its registration token and P-256 key to enroll. USB installs the initial registration token and BLE bootstrap key. The SDK stores a plain ASCII hostname in `okl/hub` (up to 99 bytes). It builds HTTPS request URLs internally. USB rejects a scheme, port, path, query or fragment before writing any part of the registration. Replace old URL-valued settings by sending `OKL-PROVISION {"hub":"api.esphub.ai"}` over USB. The virtual ESP32 has no device credentials or network transport.
 

@@ -19,7 +19,7 @@ export function updateSources(board) {
         setup_manifest_url: `https://api.esphub.ai/releases/${board}/setup-manifest`,
         download_url: `https://api.esphub.ai/releases/${board}/ota`,
         instructions:
-          "For the latest official EspHub Bootloader, call ota.install with kind bootloader and omit url. For devices on the previous protocol, back up device data and install the current board USB setup kit before using OTA.",
+          "For the latest official EspHub Bootloader, call ota.install with kind bootloader and omit url.",
       },
       runtime: {
         download_url: runtimeDownloadUrl(board),

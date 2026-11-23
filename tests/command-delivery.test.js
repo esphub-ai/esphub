@@ -18,7 +18,7 @@ test(
       await db`INSERT INTO esphub.accounts(handle) VALUES(${crypto.randomUUID()}) RETURNING id`;
     try {
       const [device] =
-        await db`INSERT INTO esphub.devices(owner,name,board,token_hash,enrolled_boot,boot_id,boot_info) VALUES(${owner.id},'test','paper-color',${crypto.randomUUID()},${boot},${boot},'{"proto":1}'::jsonb) RETURNING id`;
+        await db`INSERT INTO esphub.devices(owner,name,board,token_hash,enrolled_boot,boot_id) VALUES(${owner.id},'test','paper-color',${crypto.randomUUID()},${boot},${boot}) RETURNING id`;
       const c = { sql: db, env: {} },
         id = device.id,
         key = crypto.randomUUID();
@@ -33,8 +33,6 @@ test(
         (e) => e.status === 409,
       );
       const second = await enqueue(c, id, "status", {}, boot);
-      assert.equal((await pull(db, id, boot)).length, 0);
-      await db`UPDATE esphub.devices SET boot_info='{"proto":2}'::jsonb WHERE id=${id}`;
       const batches = await Promise.all([
         pull(db, id, boot),
         pull(db, id, boot),

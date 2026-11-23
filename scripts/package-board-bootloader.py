@@ -67,7 +67,6 @@ def package(table, suffix):
                        "".join(f"{offset} {name}\n" for offset, name in offsets.items()))
             z.writestr("INSTALL.txt", f"""For {board} only. Use the setup kit for a first installation.
 This archive preserves NVS and resets boot selection to the bootloader.
-Use the full USB setup kit to switch from firmware using an earlier protocol.
 """)
     return {"file": usb, "sha256": sha256((out / usb).read_bytes()).hexdigest()}, offsets
 

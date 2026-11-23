@@ -125,7 +125,7 @@ const defs = [
   [
     "ota.install",
     { ...destructive, openWorldHint: true },
-    "Update a registered device. For the latest official EspHub Bootloader, use kind bootloader and omit url. Devices on the previous protocol need the current USB setup kit before using OTA. Use bootloader.enter for Runtime or Python Program updates. For a Python Program, use kind python and a UTF-8 main.py URL. A compatible MicroPython Runtime can also start a Bootloader update directly. For a Native Program, read the SDK version and board-specific guidance from devices.get. Native Program binaries require a separate OTA path. Confirm completion from the install event and the next boot.",
+    "Update a registered device. For the latest official EspHub Bootloader, use kind bootloader and omit url. Use bootloader.enter for Runtime or Python Program updates. For a Python Program, use kind python and a UTF-8 main.py URL. A compatible MicroPython Runtime can also start a Bootloader update directly. For a Native Program, read the SDK version and board-specific guidance from devices.get. Native Program binaries require a separate OTA path. Confirm completion from the install event and the next boot.",
     {
       ...id,
       kind: otaKind,
@@ -295,7 +295,7 @@ async function summary(c, d) {
       serial_input: false,
     };
   const [online, broker] = await Promise.all([
-    d.boot_info?.proto === 2 && d.cert_ready && d.boot_id === d.enrolled_boot && connected(c.env, d.id),
+    d.cert_ready && d.boot_id === d.enrolled_boot && connected(c.env, d.id),
     internal(c, d.id, "summary"),
   ]);
   return {
@@ -405,13 +405,10 @@ export async function operate(c, owner, name, a) {
   const info = d.boot_info;
   if (name === "uart.write")
     return queue("term.write", { data: a.text }, a.process_id);
-  if (name === "bootloader.enter") {
-    if (info?.proto !== 2)
-      fail(409, "Install the current EspHub USB setup kit before using OTA");
+  if (name === "bootloader.enter")
     return info?.role === "bootloader"
       ? { mode: "bootloader", process_id: d.boot_id }
       : queue("reboot", { target: "bootloader" }, d.boot_id);
-  }
   if (name === "ota.install") {
     const runtimeWriter =
       a.kind === "bootloader" &&
@@ -422,9 +419,7 @@ export async function operate(c, owner, name, a) {
     const variant = boards[d.board]?.bootloader;
     const bootloader = info?.role === "bootloader" &&
       info.image_profile === "ESPHUB2/bootloader/" + variant;
-    if (info?.proto !== 2)
-      fail(409, "Install the current EspHub USB setup kit before using OTA");
-    if (info.board !== d.board || (!bootloader && !runtimeWriter))
+    if (info?.board !== d.board || (!bootloader && !runtimeWriter))
       fail(409, "Enter compatible EspHub Bootloader mode first using bootloader.enter");
     if (!a.url) {
       const manifest = await bootloaderManifest(d.board);
