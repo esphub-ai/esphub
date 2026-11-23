@@ -1,0 +1,32 @@
+name: ESP-Mosaico MicroPython
+description: Build the preview ESP32-S31 Runtime against pinned upstream MicroPython.
+runs:
+  using: composite
+  steps:
+    - name: Read the upstream revision
+      id: upstream
+      shell: bash
+      run: |
+        jq -er '"repository=" + .repository, "ref=" + .ref' "$BOARD_DIR/micropython/upstream.json" >> "$GITHUB_OUTPUT"
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ steps.upstream.outputs.repository }}
+        ref: ${{ steps.upstream.outputs.ref }}
+        path: micropython
+    - name: Build and verify the Runtime
+      shell: bash
+      run: |
+        set -eo pipefail
+        source "$IDF_PATH/export.sh"
+        python firmware/pyrt/apply_s31_overlay.py micropython firmware "$BOARD" "$VERSION" "$BOARD_DIR"
+        make -C micropython/mpy-cross -j"$(nproc)"
+        make -C micropython/ports/esp32 BOARD=ESPHUB_MOSAICO submodules
+        make -C micropython/ports/esp32 BOARD=ESPHUB_MOSAICO -j"$(nproc)"
+        image=micropython/ports/esp32/build-ESPHUB_MOSAICO/micropython.bin
+        python -c 'import sys; assert open(sys.argv[1], "rb").read(400)[288:].startswith(("ESPHUB2/micropython/" + sys.argv[2] + "\0bootloader-ota-v2\0").encode())' "$image" "$BOARD"
+        test "$(stat -c %s "$image")" -le 4194304
+        grep -Fx "CONFIG_IDF_TARGET_ESP32S31=y" micropython/ports/esp32/build-ESPHUB_MOSAICO/sdkconfig
+        mkdir -p dist
+        asset="esphub-$BOARD-micropython-$VERSION"
+        cp "$image" "dist/$asset.bin"
+        (cd dist && sha256sum "$asset.bin" > "$asset.sha256")
