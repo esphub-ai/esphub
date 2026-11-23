@@ -7,7 +7,7 @@ EspHub has three deployment targets: the EspHub Bootloader, a Runtime, and a Pro
 | Term | What it does | Where it lives in the single-slot design |
 | --- | --- | --- |
 | ESP-IDF bootloader | After the ESP32 ROM starts it, it reads the partition table and OTA boot-selection metadata, then loads the selected executable. | Bootloader region before the partition table. |
-| EspHub Bootloader | Provides device setup, maintenance, and OTA installation. It selects the application image to start on reboot. Existing code and API identifiers call it the launcher. | `launcher` partition, ESP-IDF type/subtype `app/ota_0`. |
+| EspHub Bootloader | Provides device setup, maintenance, and OTA installation. It selects the application image to start on reboot. Existing code and API identifiers call it the launcher. | `bl` partition, ESP-IDF type/subtype `app/ota_0`. |
 | EspHub SDK | Provides device-side integration with EspHub, including networking, commands, and console forwarding. A Native Program can integrate it too. | Linked into each firmware image that uses it. It has no separate partition. |
 | Runtime | Provides an execution environment for a Program. EspHub currently provides the MicroPython Runtime. | `app` partition, type/subtype `app/ota_1`. |
 | Program | The application the user wants the device to run. Its form determines how it starts and how it is installed. | One of the two forms below. |
@@ -21,11 +21,11 @@ EspHub has three deployment targets: the EspHub Bootloader, a Runtime, and a Pro
 | MicroPython Runtime and Python Program | ESP-IDF bootloader → MicroPython Runtime in `app` → `/flash/main.py` | Write `main.py` in `data`. |
 | Native Program (target design) | ESP-IDF bootloader → Native Program in `app` | Write the native image to `app` from the EspHub Bootloader. |
 
-In maintenance mode the ESP-IDF bootloader loads the EspHub Bootloader instead. Normal boots can go directly to the selected application. In the single-slot implementation, updating the EspHub Bootloader itself uses the MicroPython Runtime's native agent to write back to `launcher`. A Native Program would need an equivalent writer to retain this OTA capability while it occupies `app`. SDK integration alone does not establish that capability.
+In maintenance mode the ESP-IDF bootloader loads the EspHub Bootloader instead. Normal boots can go directly to the selected application. In the single-slot implementation, updating the EspHub Bootloader itself uses the MicroPython Runtime's native agent to write back to `bl`. A Native Program would need an equivalent writer to retain this OTA capability while it occupies `app`. SDK integration alone does not establish that capability.
 
 ## Partition mapping
 
-The two executable partitions are `launcher` and `app`. The ESP-IDF subtypes `ota_0` and `ota_1` identify these two different executables. There is only one copy of the EspHub Bootloader. The remaining named partitions serve these purposes:
+The two executable partitions are `bl` (EspHub Bootloader) and `app` (application image). The ESP-IDF subtypes `ota_0` and `ota_1` identify these two different executables. There is only one copy of the EspHub Bootloader. The remaining named partitions serve these purposes:
 
 | Label | Contents |
 | --- | --- |
