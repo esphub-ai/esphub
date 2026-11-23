@@ -53,7 +53,11 @@ main = port / "main.c"
 replace(main, '#include "py/runtime.h"', '#include "py/runtime.h"\n#include "okou_agent.h"')
 replace(main, "void MICROPY_ESP_IDF_ENTRY(void) {",
         "void okl_runtime_start(void);\n\nvoid MICROPY_ESP_IDF_ENTRY(void) {")
-replace(main, "    MICROPY_BOARD_STARTUP();", "    MICROPY_BOARD_STARTUP();\n    okl_runtime_start();")
+# The EspHub SDK initializes the installed NVS without erasing it on error.
+# Its partition table already defines the filesystem, so skip the generic board hook.
+replace(main, "    MICROPY_BOARD_STARTUP();", "    okl_runtime_start();")
+replace(main, '    if (err != ESP_OK) {\n        ESP_LOGE("esp_init", "can\'t create event loop',
+        '    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {\n        ESP_LOGE("esp_init", "can\'t create event loop')
 replace(main, "    if (pyexec_mode_kind == PYEXEC_MODE_FRIENDLY_REPL && ret != 0) {",
         '    mp_obj_t run_main = mp_load_global(MP_QSTR__uiflow_run_main);\n'
         '    if (mp_obj_is_true(run_main) && ret != 0) {')
