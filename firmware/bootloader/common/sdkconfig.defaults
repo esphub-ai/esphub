@@ -16,7 +16,7 @@ CONFIG_WS_TRANSPORT=n
 CONFIG_MQTT_TRANSPORT_WEBSOCKET=n
 CONFIG_MQTT_TRANSPORT_WEBSOCKET_SECURE=n
 
-# Provisioning scans for the host beacon, then accepts its BLE connection.
+# Provisioning advertises a peripheral service for the host to connect to.
 # Wi-Fi only joins existing networks.
 CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
 CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n

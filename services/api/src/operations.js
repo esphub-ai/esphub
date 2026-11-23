@@ -72,7 +72,7 @@ const defs = [
   [
     "wifi.ble_credential",
     additive,
-    "Issues a private BLE Wi-Fi provisioning credential for a registered physical device with a BLE bootstrap key. Returns a beacon identifier and a pre-shared key.",
+    "Issues a private BLE Wi-Fi provisioning credential for a registered physical device with a BLE bootstrap key. Returns a connection preface (beacon field) and a pre-shared key.",
     id,
   ],
   [

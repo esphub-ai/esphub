@@ -11,6 +11,7 @@ import subprocess
 import sys
 import uuid
 
+SERVICE = "a2eefb31-6c36-481f-ae10-7724fa912101"
 CHANNEL = "a2eefb31-6c36-481f-ae10-7724fa912102"
 
 
@@ -68,128 +69,90 @@ class Channel:
         return result
 
 
-async def provision(credential):
-    import CoreBluetooth as cb
-    from Foundation import NSObject, NSRunLoop, NSDate
+async def authenticate(ble, credential):
+    preface = bytes.fromhex(credential["beacon"])
+    key = bytes.fromhex(credential["psk"])
+    if len(preface) != 16 or len(key) != 32:
+        raise ValueError("Invalid credential")
+    await ble.write_gatt_char(CHANNEL, preface, response=True)
+    session = Channel(ble, key)
+    await session.run(session.tls.do_handshake)
+    return session
+
+
+@contextlib.asynccontextmanager
+async def direct_session(credential):
     from bleak import BleakClient, BleakScanner
+    from bleak.exc import BleakError
 
-    class PeripheralDelegate(NSObject):
-        def peripheralManagerDidUpdateState_(self, manager):
-            pass
+    credentials = [credential]
+    if credential.get("alternate"):
+        credentials.append(credential["alternate"])
+    tried = set()
+    deadline = asyncio.get_running_loop().time() + 90
+    while (remaining := deadline - asyncio.get_running_loop().time()) > 0:
+        device = await BleakScanner.find_device_by_filter(
+            lambda device, adv: SERVICE in adv.service_uuids and device.address not in tried,
+            timeout=remaining,
+            service_uuids=[SERVICE],
+        )
+        if device is None:
+            break
+        tried.add(device.address)
+        for candidate in credentials:
+            async with contextlib.AsyncExitStack() as stack:
+                try:
+                    async with asyncio.timeout(45):
+                        ble = await stack.enter_async_context(BleakClient(device))
+                        session = await authenticate(ble, candidate)
+                except (BleakError, OSError, TimeoutError):
+                    # Nearby boards share the service UUID. Only the target can authenticate.
+                    continue
+                yield session
+                return
+    raise RuntimeError("No board authenticated. Check bootloader mode and obtain a fresh credential.")
 
-        def peripheralManagerDidStartAdvertising_error_(self, manager, error):
-            self.started = True
-            self.failed = error is not None
 
-    delegate = PeripheralDelegate.alloc().init()
-    delegate.started = delegate.failed = False
-    manager = cb.CBPeripheralManager.alloc().initWithDelegate_queue_options_(
-        delegate, None, None
-    )
-
-    async def pump():
-        while True:
-            NSRunLoop.currentRunLoop().runUntilDate_(
-                NSDate.dateWithTimeIntervalSinceNow_(0.002)
+async def provision(credential):
+    async with direct_session(credential) as session:
+        result = await session.request("wifi.scan")
+        with open("/dev/tty", "r") as keyboard, open("/dev/tty", "w") as terminal:
+            for i, name in enumerate(result["ssids"], 1):
+                print(f"{i}. {name!r}", file=terminal)
+            print(
+                "Network number, or enter a hidden SSID: ",
+                end="",
+                file=terminal,
+                flush=True,
             )
-            await asyncio.sleep(0.01)
-
-    runloop = asyncio.create_task(pump())
-    try:
-        async with asyncio.timeout(15):
-            while manager.state() in (0, 1):
-                await asyncio.sleep(0.05)
-        if manager.state() != 5:
-            raise RuntimeError(
-                "Bluetooth unavailable. Check the Mac's Bluetooth permission and power."
-            )
-        candidates = [credential]
-        if credential.get("alternate"):
-            candidates.append(credential["alternate"])
-        # A board listens only at boot. Cycle the two possible key generations
-        # inside that window while the user restarts the board.
-        deadline = asyncio.get_running_loop().time() + 90
-        attempt = 0
-        while asyncio.get_running_loop().time() < deadline:
-            candidate = candidates[attempt % len(candidates)]
-            beacon = uuid.UUID(hex=candidate["beacon"])
-            key = bytes.fromhex(candidate["psk"])
-            if len(key) != 32:
-                raise ValueError("Invalid credential")
-            reply = str(uuid.UUID(int=beacon.int ^ (1 << 127)))
-            delegate.started = delegate.failed = False
-            manager.startAdvertising_(
-                {
-                    cb.CBAdvertisementDataServiceUUIDsKey: [
-                        cb.CBUUID.UUIDWithString_(str(beacon))
-                    ]
-                }
-            )
-            async with asyncio.timeout(10):
-                while not delegate.started:
-                    await asyncio.sleep(0.05)
-            if delegate.failed:
-                raise RuntimeError("macOS declined Bluetooth advertising")
-            if attempt == 0:
-                print("Beacon ready. Restart the board now.", file=sys.stderr, flush=True)
-            attempt += 1
-            device = await BleakScanner.find_device_by_filter(
-                lambda _, adv: reply in adv.service_uuids,
-                timeout=3 if len(candidates) > 1 else 90,
-                service_uuids=[reply],
-            )
-            manager.stopAdvertising()
-            if device:
-                break
-        else:
-            raise RuntimeError("No matching board replied. Run again and restart the board after Beacon ready.")
-        async with BleakClient(device) as ble:
-            session = Channel(ble, key)
-            async with asyncio.timeout(45):
-                await session.run(session.tls.do_handshake)
-            result = await session.request("wifi.scan")
-            with open("/dev/tty", "r") as keyboard, open("/dev/tty", "w") as terminal:
-                for i, name in enumerate(result["ssids"], 1):
-                    print(f"{i}. {name!r}", file=terminal)
-                print(
-                    "Network number, or enter a hidden SSID: ",
-                    end="",
-                    file=terminal,
-                    flush=True,
+            choice = keyboard.readline().rstrip("\r\n")
+            listed = choice.isdecimal() and 0 < int(choice) <= len(result["ssids"])
+            ssid = result["ssids"][int(choice) - 1] if listed else choice
+            while True:
+                password = getpass.getpass(
+                    "Wi-Fi password (empty for open network): ", stream=terminal
                 )
-                choice = keyboard.readline().rstrip("\r\n")
-                listed = choice.isdecimal() and 0 < int(choice) <= len(result["ssids"])
-                ssid = result["ssids"][int(choice) - 1] if listed else choice
-                while True:
-                    password = getpass.getpass(
-                        "Wi-Fi password (empty for open network): ", stream=terminal
-                    )
-                    await session.request(
-                        "wifi.join", ssid=ssid, password=password, hidden=not listed
-                    )
-                    async with asyncio.timeout(90):
-                        while True:
-                            status = await session.request("wifi.status")
-                            if (
-                                status["state"] == "saved"
-                                and status["connected"] == ssid
-                            ):
-                                print(
-                                    "Device saved the network and obtained an IP on the selected Wi-Fi."
-                                )
-                                return
-                            if status["state"] == "failed":
-                                print(
-                                    "The board could not join or save the network. Re-enter the password or press Ctrl-C.",
-                                    file=terminal,
-                                )
-                                break
-                            await asyncio.sleep(1)
-    finally:
-        manager.stopAdvertising()
-        runloop.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await runloop
+                await session.request(
+                    "wifi.join", ssid=ssid, password=password, hidden=not listed
+                )
+                async with asyncio.timeout(90):
+                    while True:
+                        status = await session.request("wifi.status")
+                        if (
+                            status["state"] == "saved"
+                            and status["connected"] == ssid
+                        ):
+                            print(
+                                "Device saved the network and obtained an IP on the selected Wi-Fi."
+                            )
+                            return
+                        if status["state"] == "failed":
+                            print(
+                                "The board could not join or save the network. Re-enter the password or press Ctrl-C.",
+                                file=terminal,
+                            )
+                            break
+                        await asyncio.sleep(1)
 
 
 def unwrap(payload):

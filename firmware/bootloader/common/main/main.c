@@ -85,7 +85,6 @@ void app_main(void)
     okou_set_hooks(&hooks);
     okou_config_t cfg = OKOU_CONFIG_DEFAULT();
     cfg.role = OKOU_ROLE_BOOTLOADER;
-    cfg.ble_setup = setup;
     ESP_ERROR_CHECK(okou_agent_start(&cfg));
 
     const esp_partition_t *app = app_partition_with_image();
@@ -130,7 +129,7 @@ void app_main(void)
         }
         bool ready = autostart;
 #if CONFIG_OKOU_BLE_WIFI
-        ready = ready && !okou_ble_host_owned();
+        ready = ready && !okou_ble_busy();
 #endif
         if (ready) {
             autostart = false;

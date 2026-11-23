@@ -287,7 +287,7 @@ try {
   assert.match(watch.verification_source, /Hello, M5Stack Stopwatch/);
   assert.match(watch.verification_source, /setBrightness/);
   assert.match(watch.ble_secret, /^[0-9a-f]{64}$/);
-  assert.match(watch.prompt, /Beacon ready/);
+  assert.match(watch.prompt, /Bootloader mode for the BLE connection/);
   assert.doesNotMatch(watch.prompt, /wifi scan/);
   const watchBle = await op("wifi.ble_credential", { device_id: watch.id });
   assert.deepEqual(

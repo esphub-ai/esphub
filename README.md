@@ -30,11 +30,11 @@ OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret
 
 The USB `hub` setting takes a plain hostname such as `api.esphub.ai`. A scheme, port or path is rejected. An existing URL-valued setting requires writing the hostname over USB. OTA artifacts still use full HTTPS URLs.
 
-After `OKL-PROVISION-OK`, start the Mac BLE tool, wait for **Beacon ready**, restart the board, and choose a network or enter a hidden SSID and password locally. Then wait for the online MicroPython app and use the OTA procedure to install the returned verification program. Check the new boot for its board-specific hello message.
+After `OKL-PROVISION-OK`, run the Mac BLE tool while the board is in the bootloader and choose a network or enter a hidden SSID and password locally. Then wait for the online MicroPython app and use the OTA procedure to install the returned verification program. Check the new boot for its board-specific hello message.
 
 On an online device, use `wifi.add` with an SSID and optional password to save a network remotely. Read `commands.get` for the result. First-time and offline setup use the [Mac BLE tool](tools/ble-wifi/README.md).
 
-On ordinary boots, applications use the saved Wi-Fi networks and can initialize their own Bluetooth stack immediately. The bootloader scans for a provisioning beacon when its Wi-Fi list is empty or when an application explicitly requests setup. For offline recovery, expose an application menu item or startup key that calls `okou_enter_bootloader()` in C or `okou.enter_bootloader()` in MicroPython. Start the Mac beacon before selecting setup.
+On ordinary boots, applications use the saved Wi-Fi networks and can initialize their own Bluetooth stack immediately. The bootloader advertises the EspHub provisioning service whenever it is running with a BLE bootstrap key, including when Wi-Fi is already configured. For offline recovery, expose an application menu item or startup key that calls `okou_enter_bootloader()` in C or `okou.enter_bootloader()` in MicroPython.
 
 Applications with their own Wi-Fi settings screen can use the SDK-managed station to try a new network:
 

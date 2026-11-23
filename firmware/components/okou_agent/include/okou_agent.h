@@ -37,7 +37,7 @@ typedef struct {
     bool handlers_in_poll;
     /* Static interpreter version string, set only by the MicroPython port. */
     const char *micropython_version;
-    /* BL only: scan for a BLE provisioning beacon on this boot. */
+    /* BL only: reserved for source compatibility; provisioning is always available in the bootloader. */
     bool ble_setup;
 } okou_config_t;
 
