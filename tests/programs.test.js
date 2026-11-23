@@ -170,7 +170,7 @@ test("publishing bounds UTF-8 byte size and OTA accepts only the three HTTPS tar
   );
 });
 
-test("runtime reports directly installed source, including broken programs", () => {
+test("runtime starts without opening main.py for network reporting", () => {
   const script = `import os, sys, tempfile, types
 from pathlib import Path
 boot = compile(Path("firmware/pyrt/overlay/okl/_boot.py").read_text(), "_boot.py", "exec")
@@ -179,25 +179,21 @@ def module(name, **methods):
 with tempfile.TemporaryDirectory() as root:
     module("vfs", mount=lambda *a: None)
     module("esp32", Partition=types.SimpleNamespace(TYPE_DATA=1, find=lambda *a, **k: [object()]))
-    reports = []
-    module("okou", term=lambda: None, safe_boot=lambda: False, report_program=lambda *args: reports.append(args))
+    module("okou", term=lambda: None, safe_boot=lambda: False)
     module("micropython", alloc_emergency_exception_buf=lambda size: None)
     module("os", chdir=lambda path: os.chdir(root), rename=os.rename, remove=os.remove, dupterm=lambda *a: None)
     main = Path(root, "main.py")
     main.write_text("print('old')")
     Path(root, ".esphub-download").write_text("print('partial')")
-    exec(boot, {})
+    exec(boot, {"open": lambda *a: (_ for _ in ()).throw(AssertionError("unexpected file read"))})
     assert main.read_text() == "print('old')"
     main.write_text("if (")
-    exec(boot, {})
+    exec(boot, {"open": lambda *a: (_ for _ in ()).throw(AssertionError("unexpected file read"))})
     assert main.read_text() == "if ("
-    assert reports == [("available", b"print('old')"), ("available", b"if (")]
     main.unlink()
-    exec(boot, {})
-    assert reports[-1] == ("missing", b"")
+    exec(boot, {"open": lambda *a: (_ for _ in ()).throw(AssertionError("unexpected file read"))})
     main.write_bytes(b"x" * 32769)
-    exec(boot, {})
-    assert reports[-1] == ("too_large", b"")
+    exec(boot, {"open": lambda *a: (_ for _ in ()).throw(AssertionError("unexpected file read"))})
     sys.modules["os"] = os
 `;
   execFileSync("python3", ["-I", "-c", script]);

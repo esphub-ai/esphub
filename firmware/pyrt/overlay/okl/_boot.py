@@ -29,25 +29,6 @@ if _p:
         vfs.mount(_p[0], "/flash")
     os.chdir("/flash")
     sys.path.append("/flash/lib")
-    # Snapshot the file selected for this boot, including locally installed files.
-    def _report_main():
-        try:
-            with open("main.py", "rb") as program:
-                data = program.read(32769)
-        except OSError as exc:
-            okou.report_program("missing" if exc.errno == 2 else "unreadable", b"")
-            return
-        if len(data) > 32768:
-            okou.report_program("too_large", b"")
-        else:
-            okou.report_program("available", data)
-
-    try:
-        _report_main()
-    except (MemoryError, OSError):
-        # Source reporting must not prevent the user's application from starting.
-        pass
-    del _report_main
 del _p
 
 micropython.alloc_emergency_exception_buf(256)

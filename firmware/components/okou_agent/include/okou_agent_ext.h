@@ -23,7 +23,7 @@ bool okou_wifi_rssi(int *rssi);
 
 /* NVS namespace and keys shared between bootloader and SDK (docs/protocol.md). */
 #define OKOU_NVS_NS          "okl"
-#define OKOU_KEY_PENDING     "pending"    /* str: install args JSON + "attempts" */
+#define OKOU_KEY_PENDING     "pending"    /* str: resumable install job or unacknowledged final event */
 #define OKOU_KEY_LSLOT "lslot" /* Last validated A/B bootloader slot. */
 #define OKOU_KEY_STAY        "stay"       /* u8: never auto-start the app */
 #define OKOU_KEY_FAIL_BOOTS  "fail_boots" /* u8: app boots without a hub ack */
@@ -32,7 +32,12 @@ bool okou_wifi_rssi(int *rssi);
 #define OKOU_KEY_SETUP       "setup"      /* u8: one-shot "stay in the bootloader until the hub acks" */
 #define OKOU_KEY_RB          "rb"         /* str: unreported rollback record (JSON) */
 #define OKOU_KEY_RB_LAST     "rb_last"    /* str: label of the invalid partition already recorded */
-#define OKOU_KEY_TOKEN       "tok"        /* str: hub device token okl_dev_... (pull only; bearer) */
+#define OKOU_KEY_TOKEN       "tok"        /* str: hub device token okl_dev_... (HTTPS bearer) */
+
+/* Called by the bootloader download worker, never by the MQTT agent task. */
+void okou_pause_mqtt(void);
+void okou_resume_mqtt(void);
+void okou_install_result_ready(void);
 
 /* Custom op handler. Fill `data` (a cJSON object, owned by the caller) and return ESP_OK,
  * or write a message into err and return an error. Runs on the agent task: must be quick. */
@@ -57,7 +62,6 @@ void okou_log_text(char level, const char *text, size_t len);
 typedef struct {
     void (*on_hello_acked)(void);       /* first hub ack after our hello (agent task) */
     void (*on_request)(const char *op); /* every hub req (agent task) */
-    void (*on_connected_poll)(const char *boot_id); /* agent task, after hello acknowledgement */
 } okou_hooks_t;
 void okou_set_hooks(const okou_hooks_t *hooks); /* call before okou_agent_start() */
 
