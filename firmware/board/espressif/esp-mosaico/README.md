@@ -10,7 +10,9 @@ Early ESP-IDF boot messages use UART0.
 The preview MicroPython Runtime uses a pinned [upstream ESP32-S31 port](https://github.com/micropython/micropython/pull/19726)
 and ESP-IDF 6.1.1. It runs from the `app` partition and reads [main.py](main.py)
 from the LittleFS `data` partition. The example prints the board name to the console.
-The preview build publishes a separate Runtime image. It has no full first-time kit.
+CI also assembles a first-time USB kit with both images and the matching
+`setup-manifest`. ESP-Mosaico remains a preview board pending hardware testing
+of the Runtime and the complete kit.
 
 ## Bootloader-only registration
 
