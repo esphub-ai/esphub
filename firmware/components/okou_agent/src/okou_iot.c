@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 #include "okou_iot.h"
 #include "esp_crt_bundle.h"
+#include "esp_idf_version.h"
 #include "esp_random.h"
+#include "psa/crypto.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "mbedtls/pk.h"
-#include "mbedtls/sha256.h"
 #include "mbedtls/x509_csr.h"
 #include "mqtt_client.h"
 #include "okou_priv.h"
@@ -99,12 +100,51 @@ static cJSON *enroll(cJSON *body)
     free(r.data);
     return answer;
 }
+#if ESP_IDF_VERSION_MAJOR < 6
 static int hardware_random(void *ctx, unsigned char *buf, size_t len)
 {
     (void)ctx;
     esp_fill_random(buf, len);
     return 0;
 }
+#endif
+
+static int generate_key(mbedtls_pk_context *key)
+{
+#if ESP_IDF_VERSION_MAJOR >= 6
+    psa_status_t status = psa_crypto_init();
+    if (status != PSA_SUCCESS)
+        return status;
+    psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
+    psa_set_key_type(&attributes, PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_SECP_R1));
+    psa_set_key_bits(&attributes, 256);
+    psa_set_key_algorithm(&attributes, PSA_ALG_ECDSA(PSA_ALG_SHA_256));
+    psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_EXPORT | PSA_KEY_USAGE_SIGN_HASH);
+    mbedtls_svc_key_id_t key_id = MBEDTLS_SVC_KEY_ID_INIT;
+    status = psa_generate_key(&attributes, &key_id);
+    psa_reset_key_attributes(&attributes);
+    if (status != PSA_SUCCESS)
+        return status;
+    int result = mbedtls_pk_copy_from_psa(key_id, key);
+    psa_destroy_key(key_id);
+    return result;
+#else
+    int result = mbedtls_pk_setup(key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
+    if (result)
+        return result;
+    return mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1, mbedtls_pk_ec(*key), hardware_random, NULL);
+#endif
+}
+
+static int write_csr(mbedtls_x509write_csr *csr, unsigned char *pem, size_t size)
+{
+#if ESP_IDF_VERSION_MAJOR >= 6
+    return mbedtls_x509write_csr_pem(csr, pem, size);
+#else
+    return mbedtls_x509write_csr_pem(csr, pem, size, hardware_random, NULL);
+#endif
+}
+
 /* Save key and original CSR together so a retry uses the identical enrollment. */
 static cJSON *identity(void)
 {
@@ -120,8 +160,7 @@ static cJSON *identity(void)
     mbedtls_x509write_csr_init(&csr);
     unsigned char *pem = calloc(1, 1024);
     cJSON *id = NULL;
-    if (!pem || mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY)) ||
-        mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1, mbedtls_pk_ec(key), hardware_random, NULL) ||
+    if (!pem || generate_key(&key) ||
         mbedtls_pk_write_key_pem(&key, pem, 1024))
         goto done;
     id = cJSON_CreateObject();
@@ -130,7 +169,7 @@ static cJSON *identity(void)
     mbedtls_x509write_csr_set_key(&csr, &key);
     mbedtls_x509write_csr_set_md_alg(&csr, MBEDTLS_MD_SHA256);
     if (mbedtls_x509write_csr_set_subject_name(&csr, "CN=ESPHub device") ||
-        mbedtls_x509write_csr_pem(&csr, pem, 1024, hardware_random, NULL) ||
+        write_csr(&csr, pem, 1024) ||
         !cJSON_AddStringToObject(id, "csr", (char *)pem))
         goto failed;
     char *encoded = cJSON_PrintUnformatted(id);
@@ -286,14 +325,15 @@ bool okou_iot_start(const char *boot_id, const char *hub, const char *token)
     // or a different hub must never connect using the previous registration.
     char binding[65];
     unsigned char hash[32];
-    mbedtls_sha256_context sha;
-    mbedtls_sha256_init(&sha);
-    int rc = mbedtls_sha256_starts(&sha, 0) ||
-             mbedtls_sha256_update(&sha, (const unsigned char *)hub, strlen(hub) + 1) ||
-             mbedtls_sha256_update(&sha, (const unsigned char *)token, strlen(token)) ||
-             mbedtls_sha256_finish(&sha, hash);
-    mbedtls_sha256_free(&sha);
-    if (rc) goto done;
+    psa_hash_operation_t sha = PSA_HASH_OPERATION_INIT;
+    size_t hash_len = 0;
+    int rc = psa_crypto_init() ||
+             psa_hash_setup(&sha, PSA_ALG_SHA_256) ||
+             psa_hash_update(&sha, (const unsigned char *)hub, strlen(hub) + 1) ||
+             psa_hash_update(&sha, (const unsigned char *)token, strlen(token)) ||
+             psa_hash_finish(&sha, hash, sizeof(hash), &hash_len);
+    psa_hash_abort(&sha);
+    if (rc || hash_len != sizeof(hash)) goto done;
     okou_hex(hash, sizeof(hash), binding);
     char *saved = okou_nvs_get_str_alloc("mqtt_grant");
     if (saved) {

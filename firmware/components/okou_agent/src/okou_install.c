@@ -20,7 +20,7 @@
 #include "okou_agent_ext.h"
 #include "sdkconfig.h"
 #include "esp_littlefs.h"
-#include "mbedtls/sha256.h"
+#include "psa/crypto.h"
 
 #define CHUNK 4096
 #define PROGRAM_LIMIT (32 * 1024)
@@ -222,11 +222,12 @@ static bool run_install(inst_t *in)
     int64_t length = 0;
     uint32_t written = 0;
     const char *fail = NULL;
-    mbedtls_sha256_context sha;
+    psa_hash_operation_t sha = PSA_HASH_OPERATION_INIT;
     uint8_t hash[32];
     char digest[65];
-    mbedtls_sha256_init(&sha);
-    if (script && mbedtls_sha256_starts(&sha, 0)) { fail = "Cannot hash main.py"; goto out; }
+    if (script && (psa_crypto_init() || psa_hash_setup(&sha, PSA_ALG_SHA_256))) {
+        fail = "Cannot hash main.py"; goto out;
+    }
     if (!c || !buf || (!script && !header)) { fail = "Out of memory"; goto out; }
     if (!target || target->address == esp_ota_get_running_partition()->address) { fail = "Incompatible partition layout"; goto out; }
     if (script && !compatible_runtime(target, board)) {
@@ -253,7 +254,7 @@ static bool run_install(inst_t *in)
         if (!n) break;
         if ((uint32_t)n > limit - written) { fail = "Download exceeds target size"; goto out; }
         if (script) {
-            if (mbedtls_sha256_update(&sha, buf, n) || memchr(buf, 0, n) || write(fd, buf, n) != n) {
+            if (psa_hash_update(&sha, buf, n) || memchr(buf, 0, n) || write(fd, buf, n) != n) {
                 fail = "Invalid Python source or main.py write failed"; goto out;
             }
         } else {
@@ -283,7 +284,10 @@ static bool run_install(inst_t *in)
         int closed = close(fd);
         fd = -1;
         if (closed) { fail = "Cannot finish main.py"; goto out; }
-        if (mbedtls_sha256_finish(&sha, hash)) { fail = "Cannot hash main.py"; goto out; }
+        size_t hash_len = 0;
+        if (psa_hash_finish(&sha, hash, sizeof(hash), &hash_len) || hash_len != sizeof(hash)) {
+            fail = "Cannot hash main.py"; goto out;
+        }
         for (size_t i = 0; i < sizeof(hash); ++i) snprintf(digest + 2*i, 3, "%02x", hash[i]);
         partial_program = false;
     } else {
@@ -305,7 +309,7 @@ static bool run_install(inst_t *in)
     }
 
 out:
-    mbedtls_sha256_free(&sha);
+    psa_hash_abort(&sha);
     if (ota_open) esp_ota_abort(ota);
     if (fd >= 0) close(fd);
     if (partial_program) unlink(PROGRAM);

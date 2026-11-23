@@ -1138,7 +1138,12 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     esp_pm_config_t pm = {
         .max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
         .min_freq_mhz = CONFIG_XTAL_FREQ,
+#if CONFIG_OKL_USB_CDC
+        // Keep the USB device active while diagnosing real-hardware enumeration.
+        .light_sleep_enable = false,
+#else
         .light_sleep_enable = true,
+#endif
     };
     esp_err_t pm_err = esp_pm_configure(&pm);
     if (pm_err != ESP_OK) ESP_LOGW(TAG, "Power management unavailable: %s", esp_err_to_name(pm_err));

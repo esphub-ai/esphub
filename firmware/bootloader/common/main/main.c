@@ -58,6 +58,9 @@ static const esp_partition_t *app_partition_with_image(void)
 
 void app_main(void)
 {
+#if CONFIG_OKL_USB_CDC
+    prov_usb_cdc_init();
+#endif
     ESP_ERROR_CHECK(okou_nvs_init());
     const esp_partition_t *run = esp_ota_get_running_partition();
     uint8_t hold = okou_nvs_get_u8(OKOU_KEY_HOLD, 0);

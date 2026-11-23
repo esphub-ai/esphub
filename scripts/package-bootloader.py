@@ -9,7 +9,7 @@ from pathlib import Path
 from elftools.elf.elffile import ELFFile
 
 variant, version = sys.argv[1:]
-flash = variant.rsplit("-", 1)[1]
+flash = variant.split("-", 2)[1]
 build = Path("build")
 out = Path(__file__).resolve().parents[1] / "shared-bl"
 out.mkdir(exist_ok=True)

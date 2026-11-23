@@ -5,7 +5,7 @@ import { readFileSync, statSync } from "node:fs";
 import boards from "../shared/boards.generated.json" with { type: "json" };
 import { updateSources } from "../services/api/src/update-sources.js";
 import { provisioning } from "../services/api/src/provisioning.js";
-import { validate } from "../services/api/src/operations.js";
+import { operate, validate } from "../services/api/src/operations.js";
 
 test("each board links to the actual source, build recipes and provisioning example", () => {
   const { repository, ref } = JSON.parse(
@@ -17,6 +17,7 @@ test("each board links to the actual source, build recipes and provisioning exam
     return url.slice(prefix.length);
   }
   for (const board of Object.keys(boards)) {
+    if (boards[board].preview) continue;
     const { sources, custom_build_guide_url, firmware_update } =
       updateSources(board);
     assert.equal(
@@ -65,6 +66,34 @@ test("each board links to the actual source, build recipes and provisioning exam
       "README.md#build-your-own-update",
     );
   }
+});
+
+test("ESP-Mosaico can register for bootloader-only provisioning", async () => {
+  const board = "esp-mosaico";
+  const sql = async (strings, ...args) => {
+    assert.match(strings.join("?"), /INSERT INTO esphub.devices/);
+    assert.equal(args[2], board);
+    assert.match(args[3], /^[a-f0-9]{64}$/);
+    return [
+      { id: "test-device", name: "ESP-Mosaico", board, kind: "physical" },
+    ];
+  };
+  const result = await operate({ sql }, "owner", "devices.create", {
+    name: "ESP-Mosaico",
+    board,
+  });
+  assert.equal(result.board, board);
+  assert.match(result.token, /^okl_dev_/);
+  assert.match(result.ble_secret, /^[a-f0-9]{64}$/);
+  assert.match(result.prompt, /online in EspHub Bootloader mode/);
+  assert.match(
+    result.sources.bootloader.variant_directory_url,
+    /esp32s31-16mb-usb-cdc$/,
+  );
+  assert.equal(result.setup_manifest, undefined);
+  assert.equal(result.firmware_update.bootloader.setup_manifest_url, undefined);
+  assert.equal(result.firmware_update.runtime, undefined);
+  assert.equal(result.sources.micropython, undefined);
 });
 
 test("Paper Color and StopWatch verification programs draw the measured status and greeting in a single frame", () => {
