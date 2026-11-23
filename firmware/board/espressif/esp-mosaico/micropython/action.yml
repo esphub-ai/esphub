@@ -20,8 +20,8 @@ runs:
         source "$IDF_PATH/export.sh"
         python firmware/pyrt/apply_s31_overlay.py micropython firmware "$BOARD" "$VERSION" "$BOARD_DIR"
         make -C micropython/mpy-cross -j"$(nproc)"
-        make -C micropython/ports/esp32 BOARD=ESPHUB_MOSAICO submodules
-        make -C micropython/ports/esp32 BOARD=ESPHUB_MOSAICO -j"$(nproc)"
+        env -u BOARD_DIR make -C micropython/ports/esp32 BOARD=ESPHUB_MOSAICO submodules
+        env -u BOARD_DIR make -C micropython/ports/esp32 BOARD=ESPHUB_MOSAICO -j"$(nproc)"
         image=micropython/ports/esp32/build-ESPHUB_MOSAICO/micropython.bin
         python -c 'import sys; assert open(sys.argv[1], "rb").read(400)[288:].startswith(("ESPHUB2/micropython/" + sys.argv[2] + "\0bootloader-ota-v2\0").encode())' "$image" "$BOARD"
         test "$(stat -c %s "$image")" -le 4194304
