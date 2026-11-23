@@ -65,11 +65,11 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
   const variants = new Map();
   for (const path of files.keys()) {
     const match =
-      /^firmware\/bootloader\/([a-z0-9]+)-(\d+)mb\/sdkconfig\.defaults$/.exec(path);
+      /^firmware\/bootloader\/([a-z0-9]+)-(\d+)mb(-usb-cdc)?\/sdkconfig\.defaults$/.exec(path);
     if (!match) continue;
-    const [, target, flash] = match;
+    const [, target, flash, transport = ""] = match;
     if (Number(flash) < 8) throw Error("EspHub requires at least 8 MiB Flash: " + path);
-    const variant = `${target}-${flash}mb`;
+    const variant = `${target}-${flash}mb${transport}`;
     const container =
       target === "esp32s31"
         ? "espressif/idf:v6.1.1"
@@ -84,6 +84,8 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
     variants.set(variant, {
       variant,
       container,
+      target,
+      flashMb: Number(flash),
       fingerprint: digest([variant, container, sources]),
     });
   }
@@ -107,7 +109,7 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
       tasks = {};
     const sharedBootloader = variants.get(bootloader);
     {
-      if (bootloader !== `${chip}-${flash_mb}mb` || !sharedBootloader)
+      if (sharedBootloader?.target !== chip || sharedBootloader?.flashMb !== flash_mb)
         throw Error("Invalid bootloader for " + board);
       const layouts = matching([`${dir}/layout/*.csv`]);
       if (!files.has(`${dir}/layout/partitions.csv`))
