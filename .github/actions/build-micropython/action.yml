@@ -49,6 +49,9 @@ runs:
       shell: bash
       run: |
         target=$(jq -er .target "$BOARD_DIR/micropython/profile.json")
+        port=m5stack
+        if [[ "$target" == ESP32_GENERIC* ]]; then port=micropython/ports/esp32; fi
+        echo "MP_PORT=$port" >> "$GITHUB_ENV"
         echo "MP_TARGET=$target" >> "$GITHUB_ENV"
         python3 firmware/pyrt/apply_overlay.py uiflow firmware "$BOARD" "$VERSION" "$BOARD_DIR"
     - name: Build
@@ -56,17 +59,23 @@ runs:
       shell: bash
       run: |
         source esp-idf/export.sh
-        make -C m5stack BOARD="$MP_TARGET" build
+        if [[ "$MP_PORT" == m5stack ]]; then
+          make -C m5stack BOARD="$MP_TARGET" build
+        else
+          make -C micropython/mpy-cross -j2
+          make -C "$MP_PORT" BOARD="$MP_TARGET" USER_C_MODULES="$PWD/$MP_PORT/cmodules/okou/micropython.cmake" \
+            FROZEN_MANIFEST="$PWD/$MP_PORT/okl/manifest.py"
+        fi
     - name: Verify and package the board runtime
       shell: bash
       run: |
-        image="uiflow/m5stack/build-${MP_TARGET}/micropython.bin"
+        image="uiflow/${MP_PORT}/build-${MP_TARGET}/micropython.bin"
         python3 -c 'import sys; assert open(sys.argv[1], "rb").read(400)[288:].startswith(("ESPHUB2/micropython/" + sys.argv[2] + "\0bootloader-ota-v2\0").encode())' "$image" "$BOARD"
         test "$(stat -c %s "$image")" -le 4194304
-        grep -Fx "CONFIG_PM_ENABLE=y" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"
-        grep -Fx "CONFIG_OKOU_BLE_WIFI=y" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"
-        grep -Fx "CONFIG_FREERTOS_USE_TICKLESS_IDLE=y" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"
-        grep -Fx "CONFIG_OKOU_BOARD_PROFILE=\"$BOARD\"" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"
+        grep -Fx "CONFIG_PM_ENABLE=y" "uiflow/${MP_PORT}/build-${MP_TARGET}/sdkconfig"
+        grep -Fx "CONFIG_OKOU_BLE_WIFI=y" "uiflow/${MP_PORT}/build-${MP_TARGET}/sdkconfig"
+        grep -Fx "CONFIG_FREERTOS_USE_TICKLESS_IDLE=y" "uiflow/${MP_PORT}/build-${MP_TARGET}/sdkconfig"
+        grep -Fx "CONFIG_OKOU_BOARD_PROFILE=\"$BOARD\"" "uiflow/${MP_PORT}/build-${MP_TARGET}/sdkconfig"
         mkdir -p dist
         cp "$image" "dist/esphub-$BOARD-micropython-$VERSION.bin"
         cd dist && sha256sum *.bin > "esphub-$BOARD-micropython-$VERSION.sha256"
