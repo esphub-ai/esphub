@@ -15,7 +15,8 @@ uiflow, fw, profile, version = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[
 board_dir = pathlib.Path(sys.argv[5])
 config = json.loads((board_dir / "micropython/profile.json").read_text())
 board = config["target"]
-bootloader = json.loads((board_dir / "board.json").read_text())["bootloader"]
+metadata = json.loads((board_dir / "board.json").read_text())
+bootloader = metadata["bootloader"]
 m5 = uiflow / "m5stack"
 ov = fw / "pyrt" / "overlay"
 
@@ -96,16 +97,20 @@ for option in config.get("disable_cmake_options", []):
     path.write_text(text)
 frag = (ov / "sdkconfig.okl").read_text() + f'CONFIG_APP_PROJECT_VER="{version}"\n'
 frag += (fw / "ble.defaults").read_text()
+frag += f'\nCONFIG_ESPTOOLPY_FLASHSIZE_{metadata["flash_mb"]}MB=y\n'
 # The provisioning service owns NimBLE during boot discovery and provisioning.
 edit("../micropython/extmod/nimble/modbluetooth_nimble.c", "int mp_bluetooth_init(void) {",
      "extern bool okou_ble_host_owned(void);\nint mp_bluetooth_init(void) {\n"
      "    if (okou_ble_host_owned()) return MP_EBUSY;")
 
 (m5 / bdir / "sdkconfig.okl").write_text(frag + f'CONFIG_OKOU_BOARD_PROFILE="{profile}"\nCONFIG_OKOU_BL_PROFILE="{bootloader}"\n')
-edit(f"{bdir}/mpconfigboard.cmake", f"    {bdir}/sdkconfig.board\n)",
-     f"    {bdir}/sdkconfig.board\n    {bdir}/sdkconfig.okl\n)")
-edit(f"{bdir}/mpconfigboard.cmake", "set(FONT_ALIBABASANS_JA24 1)", "set(FONT_ALIBABASANS_JA24 0)")
-edit(f"{bdir}/mpconfigboard.cmake", "set(FONT_ALIBABASANS_KR24 1)", "set(FONT_ALIBABASANS_KR24 0)")
+cmake = m5 / bdir / "mpconfigboard.cmake"
+text, count = re.subn(r"(set\(SDKCONFIG_DEFAULTS\b[^)]*)\)", rf"\1    {bdir}/sdkconfig.okl\n)", cmake.read_text())
+assert count == 1, f"{board}: missing SDKCONFIG_DEFAULTS"
+for font in ("FONT_ALIBABASANS_JA24", "FONT_ALIBABASANS_KR24"):
+    text, count = re.subn(rf"set\({font} [01]\)", f"set({font} 0)", text)
+    assert count == 1, f"{board}: missing {font}"
+cmake.write_text(text)
 edit(f"{bdir}/mpconfigboard.cmake", "if(NOT MICROPY_FROZEN_MANIFEST)",
      "set(MICROPY_FROZEN_MANIFEST ${CMAKE_SOURCE_DIR}/okl/manifest.py)\nif(NOT MICROPY_FROZEN_MANIFEST)")
 
