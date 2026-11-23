@@ -81,7 +81,7 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
     variants.set(variant, {
       variant,
       container,
-      fingerprint: digest([variant, sources]),
+      fingerprint: digest([variant, container, sources]),
     });
   }
   for (const path of files.keys()) {
@@ -102,8 +102,9 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
       throw Error("Invalid or duplicate board ID: " + board);
     const jobs = json(path),
       tasks = {};
+    const sharedBootloader = variants.get(bootloader);
     if (bootloader) {
-      if (bootloader !== `${chip}-${flash_mb}mb` || !variants.has(bootloader))
+      if (bootloader !== `${chip}-${flash_mb}mb` || !sharedBootloader)
         throw Error("Invalid bootloader for " + board);
       const layouts = matching([`${dir}/layout/*.csv`]);
       if (!files.has(`${dir}/layout/partitions.csv`))
@@ -120,11 +121,11 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
       tasks.launcher = {
         kind: "launcher",
         runner: "ubuntu-24.04",
-        container: variants.get(bootloader).container,
+        container: sharedBootloader.container,
         fingerprint: digest([
           board,
           chip,
-          variants.get(bootloader).fingerprint,
+          sharedBootloader.fingerprint,
           layouts,
           partitions,
           ...matching(sharedInputs.launcher),
@@ -172,7 +173,7 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
       chip,
       tasks,
       bootloader,
-      blFingerprint: variants.get(bootloader)?.fingerprint,
+      blFingerprint: sharedBootloader?.fingerprint,
     };
   }
   return { boards, variants };
