@@ -164,19 +164,20 @@ lcd.drawString.assert_any_call('Key: x', 8, 98)
   assert.match(output, /Keyboard event: 120/);
 });
 
-test("publishing bounds UTF-8 byte size and OTA accepts only the three HTTPS targets", () => {
+test("publishing bounds UTF-8 byte size and OTA accepts the supported HTTPS targets", () => {
   const device_id = crypto.randomUUID();
   assert.throws(
     () =>
       validate("programs.publish", { device_id, source: "é".repeat(16385) }),
     /Invalid source/,
   );
-  for (const kind of ["bootloader", "micropython", "python"])
+  for (const kind of ["bootloader", "micropython", "native", "python"])
     validate("ota.install", {
       device_id,
       kind,
       url: "https://example.com/artifact",
     });
+  assert.throws(() => validate("ota.install", { device_id, kind: "native" }), /Artifact URL required/);
   for (const url of [
     "http://example.com/a",
     "https://user:password@example.com/a",
@@ -306,6 +307,7 @@ test("local upload sizes match the bootloader limits", () => {
   for (const [kind, limit] of [
     ["bootloader", 4194304],
     ["micropython", 4194304],
+    ["native", 4194304],
   ]) {
     validate("ota.prepare_upload", { device_id, kind, size: limit });
     for (const size of [-1, 0, 1.5, limit + 1])

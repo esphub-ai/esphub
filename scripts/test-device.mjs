@@ -297,7 +297,7 @@ try {
 
   const local = (url) => base + "/backend" + new URL(url).pathname;
   const localFiles = {};
-  for (const kind of ["bootloader", "micropython"]) {
+  for (const kind of ["bootloader", "micropython", "native"]) {
     const file = Buffer.alloc(200000, 0xe9);
     const grant = await op("ota.prepare_upload", {
       ...id,
@@ -491,6 +491,7 @@ try {
     ["python", staged.url],
     ["bootloader", localFiles.bootloader],
     ["micropython", localFiles.micropython],
+    ["native", localFiles.native],
   ]) {
     const key = randomUUID(),
       queued = await op("ota.install", { ...id, kind, url, request_id: key });

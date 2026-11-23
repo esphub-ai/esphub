@@ -13,7 +13,7 @@ const programByteLimit = 32 * 1024;
 const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
 const id = strings("device_id");
-const otaKind = { type: "string", enum: ["bootloader", "micropython", "python"] };
+const otaKind = { type: "string", enum: ["bootloader", "micropython", "native", "python"] };
 const additive = {
   readOnlyHint: false,
   destructiveHint: false,
@@ -117,14 +117,14 @@ const defs = [
     "Returns a short-lived PUT URL, authorization headers, and an artifact URL for one file of the specified kind and byte size. A successful upload of exactly that size returns HTTP 201. The device can be offline.",
     {
       ...id,
-      kind: { type: "string", enum: ["bootloader", "micropython"] },
+      kind: { type: "string", enum: ["bootloader", "micropython", "native"] },
       size: { type: "integer", minimum: 1, maximum: maxUploadBytes },
     },
   ],
   [
     "ota.install",
     { ...destructive, openWorldHint: true },
-    "Update a registered device. For the latest official EspHub Bootloader, use kind bootloader and omit url. Use bootloader.enter before any OTA installation. For a Python Program, use kind python and a UTF-8 main.py URL. For a Native Program, read the SDK version and board-specific guidance from devices.get. Native Program binaries require a separate OTA path. Confirm completion from the install event and the next boot.",
+    "Update a registered device. For the latest official EspHub Bootloader, use kind bootloader and omit url. Use bootloader.enter before any OTA installation. For a Python Program, use kind python and a UTF-8 main.py URL. For a Native Program, use kind native and the HTTPS URL of an ESP application binary for your hardware. It replaces the current app partition contents. Confirm completion from the install event and the next boot.",
     {
       ...id,
       kind: otaKind,

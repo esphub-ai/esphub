@@ -36,7 +36,7 @@ export function updateSources(board) {
           sdk_version: sdk.version,
           sdk_source_url: sdkSource,
           instructions:
-            "For a Python Program, stage main.py with programs.publish and install its URL in EspHub Bootloader mode with kind python. For a Native Program without MicroPython, compare the installed app SDK version with sdk_version. Rebuild the board-specific firmware with the latest EspHub SDK and deploy through the Program's supported native OTA path. If the Program has no native OTA path, use its documented USB installation procedure. A Native Program needs a compatible writer to update the EspHub Bootloader over OTA.",
+            "For a Python Program, stage main.py with programs.publish and install its URL in EspHub Bootloader mode with kind python. For a Native Program, enter EspHub Bootloader mode and call ota.install with kind native and the HTTPS URL of the application binary for your hardware. Update older bootloaders first if they do not recognize kind native.",
         },
       }),
     },

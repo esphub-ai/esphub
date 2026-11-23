@@ -12,14 +12,14 @@ EspHub has three deployment targets: the EspHub Bootloader, a Runtime, and a Pro
 | Runtime | Provides an execution environment for a Program. EspHub currently provides the MicroPython Runtime. | `app` partition, type/subtype `app/ota_2`. |
 | Program | The application the user wants the device to run. Its form determines how it starts and how it is installed. | One of the two forms below. |
 | Python Program | The MicroPython Runtime opens and executes `main.py`. Updating this file leaves the interpreter installed. | `/flash/main.py` in the `data` LittleFS partition on fresh installations. |
-| Native Program | A board-compatible executable image that the EspHub Bootloader selects to boot directly. It can run independently of MicroPython. | In the target design, it occupies the same `app` partition that would otherwise hold a Runtime. Installing it replaces the Runtime. |
+| Native Program | A board-compatible executable image that the EspHub Bootloader selects to boot directly. It can run independently of MicroPython. | It occupies the same `app` partition that would otherwise hold a Runtime. Installing it replaces the Runtime. |
 
 ## Boot and update paths
 
 | Installed application | Normal boot | Program update |
 | --- | --- | --- |
 | MicroPython Runtime and Python Program | ESP-IDF bootloader → MicroPython Runtime in `app` → `/flash/main.py` | Write `main.py` in `data`. |
-| Native Program (target design) | ESP-IDF bootloader → Native Program in `app` | Write the native image to `app` from the EspHub Bootloader. |
+| Native Program | ESP-IDF bootloader → Native Program in `app` | Write the native image to `app` from the EspHub Bootloader. |
 
 In maintenance mode the ESP-IDF bootloader loads the EspHub Bootloader instead. Normal boots can go directly to the selected application. The active EspHub Bootloader writes and validates the other slot before selecting it for the next boot.
 
@@ -53,4 +53,4 @@ The remaining named partitions serve these purposes:
 | EspHub Bootloader | `bootloader` | Supported |
 | MicroPython Runtime | `micropython` | Supported |
 | Python Program | `python` | Supported |
-| Native Program | No kind defined | Target design. A native install target and image identification still need implementation. |
+| Native Program | `native` | Supported. Supply the application binary for the intended hardware. |

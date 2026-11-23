@@ -60,8 +60,8 @@ static bool parse_args(const cJSON *a, inst_t *in, char *err, size_t n)
     const char *board = cJSON_GetStringValue(cJSON_GetObjectItem(a, "board"));
     const char *url = cJSON_GetStringValue(cJSON_GetObjectItem(a, "url"));
     const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(a, "transfer_id"));
-    if (!kind || (strcmp(kind, "bootloader") && strcmp(kind, "micropython") && strcmp(kind, "python"))) {
-        snprintf(err, n, "Expected bootloader, micropython or python"); return false;
+    if (!kind || (strcmp(kind, "bootloader") && strcmp(kind, "micropython") && strcmp(kind, "native") && strcmp(kind, "python"))) {
+        snprintf(err, n, "Expected bootloader, micropython, native or python"); return false;
     }
     char expected[OKOU_BOARD_CAPACITY];
     if (!device_board(expected)) { snprintf(err, n, "Device board is missing from NVS"); return false; }
@@ -165,6 +165,7 @@ static bool valid_header(const uint8_t *header, const char *kind, const char *bo
 {
     const esp_image_header_t *ih = (const esp_image_header_t *)header;
     if (ih->magic != ESP_IMAGE_HEADER_MAGIC || ih->chip_id != CONFIG_IDF_FIRMWARE_CHIP_ID) return false;
+    if (!strcmp(kind, "native")) return true;
     const uint8_t *profile = header + PROFILE_OFFSET;
     bool bootloader = !strcmp(kind, "bootloader");
     if (bootloader)
