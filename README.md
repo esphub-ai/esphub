@@ -15,7 +15,7 @@ See the [firmware glossary and partition mapping](docs/firmware-terminology.md) 
 
 All supported models use ESP32-S3. Paper Color, PaperDIY, StackChan and StopWatch have 16 MB flash. Cardputer-Adv has 8 MB flash and its own partition layout. Its MicroPython runtime includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for the TCA8418 keyboard. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the shared launcher, MicroPython runtime, partition table, board identity, example main.py, flash arguments and a SHA-256 manifest. This kit replaces the partition table and app. The separate StopWatch launcher-only kit preserves its legacy partition layout.
 
-To build the shared launcher locally, use ESP-IDF 5.4.1 from the selected `firmware/bootloader/<target>-<size>mb/` directory. Use `esp32s3-8mb` for Cardputer-Adv and `esp32s3-16mb` for the other boards:
+To build the shared launcher locally, use ESP-IDF 5.4.1 from the selected `firmware/bootloader/<target>-<size>mb/` directory. Use ESP-IDF 5.5.4 for `esp32c5-16mb` and `esp32c61-16mb`. Use `esp32s3-8mb` for Cardputer-Adv and `esp32s3-16mb` for the other boards:
 
 ```sh
 cd firmware/bootloader/esp32s3-16mb

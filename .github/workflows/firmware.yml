@@ -34,6 +34,7 @@ jobs:
     permissions: {contents: write}
     uses: ./.github/workflows/build-bootloader.yml
     with:
+      container: ${{ matrix.build.container }}
       variant: ${{ matrix.build.variant }}
       fingerprint: ${{ matrix.build.fingerprint }}
       version: ${{ matrix.build.version }}
