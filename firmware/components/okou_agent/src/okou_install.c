@@ -194,7 +194,7 @@ static bool run_install(inst_t *in)
     uint8_t *buf = malloc(CHUNK), *header = script ? NULL : malloc(CHUNK);
     int fd = -1;
     int64_t length = 0;
-    uint32_t written = 0, next_progress = 0;
+    uint32_t written = 0;
     const char *fail = NULL;
     if (!c || !buf || (!script && !header)) { fail = "Out of memory"; goto out; }
     if (!target || target->address == esp_ota_get_running_partition()->address) { fail = "Incompatible partition layout"; goto out; }
@@ -249,13 +249,6 @@ static bool run_install(inst_t *in)
             }
         }
         written += n;
-        if (written >= next_progress) {
-            cJSON *d = receipt(in);
-            cJSON_AddNumberToObject(d, "written", written);
-            if (length > 0) cJSON_AddNumberToObject(d, "size", length);
-            okou_event_json("install.progress", d);
-            next_progress = written + (length > 0 ? (uint32_t)length / 10 : 65536);
-        }
     }
     if (!written || (length > 0 && written != length) || !esp_http_client_is_complete_data_received(c)) {
         fail = "Incomplete download"; goto out;

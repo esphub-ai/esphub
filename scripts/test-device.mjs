@@ -557,11 +557,6 @@ try {
     const [cmd] = await mcu.pull();
     assert.equal(cmd.id, queued.command_id);
     assert.deepEqual(cmd.args, { url, board: d.board, kind, transfer_id: key });
-    await mcu.send({
-      t: "event",
-      name: "install.progress",
-      data: { transfer_id: key, written: 100 },
-    });
     const ok = kind !== "launcher";
     await mcu.send({
       t: "event",
