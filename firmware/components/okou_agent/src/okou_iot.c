@@ -222,13 +222,12 @@ static void mqtt_event(void *ctx, esp_event_base_t base, int32_t event, void *ar
             uint32_t ack = (uint32_t)mid->valuedouble;
             xQueueSend(acks, &ack, 0);
         }
-        if (pid && !strcmp(pid, boot) && (cJSON_GetObjectItemCaseSensitive(m, "command") ||
-                                              cJSON_GetObjectItemCaseSensitive(m, "rotate"))) {
+        if (pid && !strcmp(pid, boot) && cJSON_GetObjectItemCaseSensitive(m, "command")) {
             if (xQueueSend(controls, &m, 0) == pdTRUE) {
                 okou_agent_notify();
                 break;
             }
-            // A fresh hello requests the outstanding command and generation again.
+            // A fresh hello requests the outstanding command again.
             signal_event(IOT_OFFLINE);
         }
         cJSON_Delete(m);

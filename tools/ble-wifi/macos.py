@@ -85,9 +85,6 @@ async def direct_session(credential):
     from bleak import BleakClient, BleakScanner
     from bleak.exc import BleakError
 
-    credentials = [credential]
-    if credential.get("alternate"):
-        credentials.append(credential["alternate"])
     tried = set()
     deadline = asyncio.get_running_loop().time() + 90
     while (remaining := deadline - asyncio.get_running_loop().time()) > 0:
@@ -99,17 +96,16 @@ async def direct_session(credential):
         if device is None:
             break
         tried.add(device.address)
-        for candidate in credentials:
-            async with contextlib.AsyncExitStack() as stack:
-                try:
-                    async with asyncio.timeout(45):
-                        ble = await stack.enter_async_context(BleakClient(device))
-                        session = await authenticate(ble, candidate)
-                except (BleakError, OSError, TimeoutError):
-                    # Nearby boards share the service UUID. Only the target can authenticate.
-                    continue
-                yield session
-                return
+        async with contextlib.AsyncExitStack() as stack:
+            try:
+                async with asyncio.timeout(45):
+                    ble = await stack.enter_async_context(BleakClient(device))
+                    session = await authenticate(ble, credential)
+            except (BleakError, OSError, TimeoutError):
+                # Nearby boards share the service UUID. Only the target can authenticate.
+                continue
+            yield session
+            return
     raise RuntimeError("No board authenticated. Check bootloader mode and obtain a fresh credential.")
 
 

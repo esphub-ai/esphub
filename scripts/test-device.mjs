@@ -132,6 +132,7 @@ async function testVirtualDevice(read) {
     ["wifi.ble_credential", vid],
     ["devices.reissue", vid],
     ["bootloader.enter", vid],
+    ["bootloader.exit", vid],
     ["ota.install", { ...vid, kind: "python", url: staged.url }],
   ]) {
     const result = await call("tools/call", { name, arguments: args });
@@ -192,7 +193,7 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
-  assert.equal(listed.length, 20);
+  assert.equal(listed.length, 21);
   assert.ok(!listed.some((t) => t.name === "programs.install"));
   const readOnly = new Set([
     "commands.get",
@@ -359,7 +360,6 @@ try {
     dual_bootloader_ota: true,
     image_profile: "ESPHUB2/bootloader/esp32s3-16mb",
     fw: { version: "1.2.3" },
-    ble_generation: 1,
   });
   assert.equal((await op("devices.get", id)).online, true);
   for (const route of [
@@ -402,22 +402,8 @@ try {
   );
   assert.equal((await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, { t: "log", lines: [] })).status, 400);
   assert.equal((await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, { t: "metric", items: [] })).status, 400);
-  const sync = async generation =>
-    (await mcu.send({t:"ble.confirm", ble_generation:generation})).rotate;
-  const offer = mcu.lastHello.rotate;
-  assert.equal(offer.generation, 2);
-  assert.deepEqual(await sync(1), offer);
-  const { alternate, ...previous } = await op("wifi.ble_credential", id);
-  assert.deepEqual(previous, await deriveFor(d.ble_secret, previous.beacon));
-  assert.deepEqual(alternate, await deriveFor(offer.secret, alternate.beacon));
-  const afterRecovery = await sync(2);
-  assert.equal(afterRecovery.generation, 3);
-  assert.equal(await sync(3), undefined);
-  const rotated = await op("wifi.ble_credential", id);
-  assert.deepEqual(
-    rotated,
-    await deriveFor(afterRecovery.secret, rotated.beacon),
-  );
+  const reusable = await op("wifi.ble_credential", id);
+  assert.deepEqual(reusable, await deriveFor(d.ble_secret, reusable.beacon));
 
   const result = (idValue) =>
     op("commands.get", { ...id, command_id: idValue }, read);
@@ -561,6 +547,13 @@ try {
   await mcu.send({ t: "event", name: "install.done",
     data: { transfer_id: nextAttempt.args.transfer_id, kind: "bootloader" } });
   assert.equal((await result(nextAttempt.id)).state, "succeeded");
+  const exit = await op("bootloader.exit", id);
+  const exitCommand = await mcu.nextCommand();
+  assert.equal(exitCommand.id, exit.command_id);
+  assert.deepEqual(exitCommand.args, { target: "app" });
+  await mcu.hello({ ...info, role: "app", image_profile: "ESPHUB2/micropython/" + d.board });
+  assert.equal((await result(exit.command_id)).state, "succeeded");
+  await assert.rejects(op("bootloader.exit", id), /bootloader mode/);
   await op("devices.reissue", id);
   assert.equal(
     (
@@ -574,7 +567,7 @@ try {
   await op("devices.delete", { device_id: watch.id });
   await op("devices.delete", id);
   console.log(
-    "PASS Clerk, virtual devices, broker enrollment, command dispatch, duplicate receipts, cloud Wi-Fi, BLE rotation, MQTT events, OTA, private file transfer and revocation",
+    "PASS Clerk, virtual devices, broker enrollment, command dispatch, duplicate receipts, cloud Wi-Fi, BLE credentials, MQTT events, OTA, private file transfer and revocation",
   );
 } finally {
   mcu?.close();

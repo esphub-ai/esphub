@@ -383,15 +383,22 @@ esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen)
     return ESP_OK;
 }
 
-void install_report_interrupted(void)
+void install_reconcile_boot(void)
 {
-    if (s_running) return;
+    // Preserve the OTA outcome before the bootloader can hand off to the application.
     char *saved = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
     if (!saved) return;
     cJSON *marker = cJSON_Parse(saved);
     free(saved);
-    if (cJSON_IsObject(marker) && !cJSON_GetObjectItem(marker, "t")) {
-        // Older bootloaders also stored the URL and retry count here.
+    const char *target = cJSON_GetStringValue(cJSON_GetObjectItem(marker, "target"));
+    if (target && !strcmp(target, esp_ota_get_running_partition()->label)) {
+        cJSON_DeleteItemFromObject(marker, "target");
+        char *result = cJSON_PrintUnformatted(marker);
+        if (result) {
+            ESP_ERROR_CHECK(okou_nvs_set_str(OKOU_KEY_PENDING, result));
+            free(result);
+        }
+    } else if (cJSON_IsObject(marker) && !cJSON_GetObjectItem(marker, "t")) {
         const char *kind = cJSON_GetStringValue(cJSON_GetObjectItem(marker, "kind"));
         const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(marker, "transfer_id"));
         cJSON *data = cJSON_CreateObject();

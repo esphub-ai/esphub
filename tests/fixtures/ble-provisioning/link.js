@@ -38,7 +38,6 @@ function link() {
 
 export async function connect(board, credential) {
   const { beacon, psk } = credential;
-  const generation = board.keys.generation;
   const devicePsk = recognizeBeacon(board.keys.secret, beacon);
   if (!devicePsk) throw Error("unknown beacon");
 
@@ -53,7 +52,6 @@ export async function connect(board, credential) {
     peer = socket;
     const requests = createInterface({ input: socket });
     requests.on("line", (line) => {
-      if (board.keys.generation !== generation) return socket.end();
       const request = JSON.parse(line);
       board.requests++;
       let reply;

@@ -16,7 +16,7 @@ esp_err_t okou_nvs_set_str(const char *key, const char *value)
 }
 esp_err_t okou_nvs_get_str(const char *key, char *value, size_t len) { return -1; }
 esp_err_t okou_nvs_erase(const char *key) { ++writes; return ESP_OK; }
-esp_err_t okou_ble_install(unsigned generation, const char *hex, bool usb) { ++writes; return ESP_OK; }
+esp_err_t okou_ble_install(const char *hex) { ++writes; return ESP_OK; }
 
 int main(void)
 {

@@ -43,7 +43,6 @@ static cmd_t s_cmds[CONFIG_OKOU_MAX_CMDS];
 static int s_ncmds;
 static param_t s_params[CONFIG_OKOU_MAX_PARAMS];
 static int s_nparams;
-static void (*s_param_hook)(const char *name);
 
 int okou_outf(okou_out_t *o, const char *fmt, ...)
 {
@@ -289,11 +288,6 @@ esp_err_t okou_param_save(const char *name)
     return p->persist ? param_save(p) : ESP_ERR_INVALID_STATE;
 }
 
-void okou_param_set_hook(void (*cb)(const char *name))
-{
-    s_param_hook = cb;
-}
-
 static const char *type_str(okou_ptype_t t)
 {
     return t == OKOU_P_INT ? "int" : (t == OKOU_P_FLOAT ? "float" : "bool");
@@ -385,9 +379,6 @@ esp_err_t okou_param_set_json(const cJSON *args, cJSON *data, char *err, size_t 
         }
     }
     ESP_LOGI(OKOU_TAG, "param %s = %g%s", p->name, v, persist ? " (saved)" : "");
-    if (s_param_hook) {
-        s_param_hook(p->name);
-    }
     cJSON_AddStringToObject(data, "name", p->name);
     param_add_value(data, "value", p);
     return ESP_OK;

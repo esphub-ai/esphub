@@ -25,11 +25,12 @@ bool okou_wifi_rssi(int *rssi);
 #define OKOU_NVS_NS          "okl"
 #define OKOU_KEY_PENDING     "pending"    /* str: in-progress transfer identity or unacknowledged final event */
 #define OKOU_KEY_LSLOT "lslot" /* Last validated A/B bootloader slot. */
-#define OKOU_KEY_STAY        "stay"       /* u8: never auto-start the app */
 #define OKOU_KEY_HOLD        "hold"       /* u8: one-shot "stay in bootloader on next boot" (extension) */
 #define OKOU_KEY_WIFIS       "wifis"      /* str: saved Wi-Fi networks, JSON, most recent first */
-#define OKOU_KEY_SETUP       "setup"      /* u8: one-shot "stay in the bootloader until the hub acks" */
 #define OKOU_KEY_TOKEN       "tok"        /* str: hub device token okl_dev_... (HTTPS bearer) */
+
+/* Verify the app image and select its partition for the next boot. */
+esp_err_t okou_select_app(void);
 
 /* Called by the bootloader download worker, never by the MQTT agent task. */
 void okou_pause_mqtt(void);
@@ -52,15 +53,6 @@ esp_err_t okou_op_register_async(const char *op, okou_op_async_handler_t handler
 void okou_op_reply(okou_req_t *req, bool ok, cJSON *data, const char *err);
 
 int okou_cmd_run(const char *name, const cJSON *argv, char **out_text);
-
-typedef struct {
-    void (*on_hello_acked)(void);       /* first hub ack after our hello (agent task) */
-    void (*on_request)(const char *op); /* every hub req (agent task) */
-} okou_hooks_t;
-void okou_set_hooks(const okou_hooks_t *hooks); /* call before okou_agent_start() */
-
-/* Called after a successful param.set (agent task). */
-void okou_param_set_hook(void (*cb)(const char *name));
 
 /* State string reported in hello/status pending_install.state (default "queued"). */
 void okou_set_install_state(const char *state);

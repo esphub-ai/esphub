@@ -84,7 +84,7 @@ bool prov_apply(const char *line, char *err, size_t n)
         }
     }
 #if CONFIG_OKOU_BLE_WIFI
-    if (ok && ble && okou_ble_install(1, ble->valuestring, true) != ESP_OK) {
+    if (ok && ble && okou_ble_install(ble->valuestring) != ESP_OK) {
         snprintf(err, n, "invalid BLE bootstrap or NVS write failed");
         ok = false;
     }

@@ -36,41 +36,12 @@ export async function credential(
 }
 
 export async function issueBle(sql, owner, id) {
-  const [d] = await sql`UPDATE esphub.devices SET ble_issued=true,
-    ble_pending_issued=(ble_pending IS NOT NULL) WHERE id=${id}
-    AND owner=${owner} AND kind='physical' AND ble_secret IS NOT NULL
-    RETURNING ble_secret, ble_pending`;
+  const [d] = await sql`SELECT ble_secret FROM esphub.devices WHERE id=${id}
+    AND owner=${owner} AND kind='physical' AND ble_secret IS NOT NULL`;
   if (!d)
     fail(
       409,
       "For a registration missing BLE credentials, use devices.reissue and write the new token and ble_secret over USB",
     );
-  const current = await credential(d.ble_secret);
-  if (d.ble_pending) current.alternate = await credential(d.ble_pending);
-  return current;
-}
-
-// The authenticated device reports its durably installed generation after reconnect.
-// A lost offer or confirmation is retried using the same pending key.
-export async function syncBle(sql, id, tokenHash, generation) {
-  if (
-    !tokenHash ||
-    !Number.isSafeInteger(generation) ||
-    generation < 1 ||
-    generation >= 2147483647
-  )
-    return;
-  await sql`UPDATE esphub.devices SET ble_secret=ble_pending, ble_pending=NULL,
-    ble_generation=ble_generation+1, ble_issued=ble_pending_issued, ble_pending_issued=false WHERE id=${id} AND token_hash=${tokenHash} AND ble_pending IS NOT NULL
-    AND ble_generation=${generation - 1} RETURNING id`;
-  const [next] =
-    await sql`UPDATE esphub.devices SET ble_pending=COALESCE(ble_pending,${newBleSecret()})
-    WHERE id=${id} AND token_hash=${tokenHash} AND ble_generation=${generation} AND ble_issued=true
-    RETURNING ble_pending, ble_generation`;
-  if (next)
-    return {
-      t: "ble.rotate",
-      generation: generation + 1,
-      secret: next.ble_pending,
-    };
+  return credential(d.ble_secret);
 }

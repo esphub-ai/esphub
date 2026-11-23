@@ -12,8 +12,7 @@ function derive(secret, purpose, nonce) {
 }
 
 // Models an owner-authorized MCP call; the host receives only the two return values.
-export function issueCredential({ secret, pending }) {
-  if (pending) throw Error("rotation pending");
+export function issueCredential({ secret }) {
   const nonce = randomBytes(nonceBytes);
   const tag = derive(secret, "beacon", nonce).subarray(0, tagBytes);
   return {
@@ -31,33 +30,5 @@ export function recognizeBeacon(secret, beacon) {
 }
 
 export function register() {
-  return { generation: 1, secret: randomBytes(32) };
-}
-
-// These operations travel over the authenticated hub channel after Wi-Fi is up.
-// Each returned state replaces a single durable record atomically in the model.
-export function prepareRotation(hub) {
-  if (hub.pending) return hub;
-  return {
-    ...hub,
-    pending: { generation: hub.generation + 1, secret: randomBytes(32) },
-  };
-}
-
-export function installRotation(device, next) {
-  if (
-    next.generation === device.generation &&
-    next.secret.equals(device.secret)
-  )
-    return device;
-  if (next.generation !== device.generation + 1)
-    throw Error("unexpected generation");
-  return { generation: next.generation, secret: Buffer.from(next.secret) };
-}
-
-export function acknowledgeRotation(hub, installedGeneration) {
-  if (installedGeneration === hub.generation) return hub;
-  if (hub.pending?.generation !== installedGeneration)
-    throw Error("unexpected acknowledgement");
-  return hub.pending;
+  return { secret: randomBytes(32) };
 }

@@ -106,6 +106,12 @@ const defs = [
     id,
   ],
   [
+    "bootloader.exit",
+    destructive,
+    "Start the installed app from EspHub Bootloader mode. Verify the new app boot with devices.get.",
+    id,
+  ],
+  [
     "firmware.get",
     readOnly,
     "Read firmware metadata for a physical or virtual board. Physical boards also include EspHub Bootloader, Runtime, and Program update guidance and SDK information.",
@@ -182,6 +188,7 @@ function queueable(name) {
       "devices.reboot",
       "devices.reset",
       "bootloader.enter",
+      "bootloader.exit",
       "ota.install",
       "firmware.get",
     ].includes(name)
@@ -367,8 +374,8 @@ export async function operate(c, owner, name, a) {
   if (name === "devices.reissue") {
     const secret = token("okl_dev_");
     const bleSecret = newBleSecret();
-    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,mqtt_connected_since=NULL,boot_id=NULL,boot_info=NULL,ble_generation=1,
-      ble_secret=${bleSecret}, ble_pending=NULL, ble_pending_issued=false, ble_issued=false WHERE owner=${owner} AND id=${d.id}`;
+    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,mqtt_connected_since=NULL,boot_id=NULL,boot_info=NULL,
+      ble_secret=${bleSecret} WHERE owner=${owner} AND id=${d.id}`;
     await internal(c, d.id, "revoke", { device: d.id });
     return { token: secret, ble_secret: bleSecret };
   }
@@ -382,6 +389,10 @@ export async function operate(c, owner, name, a) {
     return info?.role === "bootloader"
       ? { mode: "bootloader", process_id: d.boot_id }
       : queue("reboot", { target: "bootloader" }, d.boot_id);
+  if (name === "bootloader.exit") {
+    if (info?.role !== "bootloader" || !d.boot_id) fail(409, "Device must be in bootloader mode");
+    return queue("reboot", { target: "app" }, d.boot_id);
+  }
   if (name === "ota.install") {
     const variant = boards[d.board]?.bootloader;
     const bootloader = info?.role === "bootloader" &&

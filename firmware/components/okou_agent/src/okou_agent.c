@@ -100,14 +100,10 @@ static int64_t s_conn_start_us, s_up_since_us, s_next_connect_us;
 static uint32_t s_backoff_ms = 1000;
 static volatile int64_t s_reboot_at_us;
 static char s_boot_id[33];
-static okou_hooks_t s_hooks;
 static char s_install_state[20] = "queued";
 static char s_inflight_id[37];
 static uint64_t s_last_sequence;
 static char *s_last_receipt;
-#if CONFIG_OKOU_BLE_WIFI
-static cJSON *s_ble_offer;
-#endif
 static bool s_iot_started;
 static bool s_started, s_cfg_ok;
 static char s_hub[OKOU_HUB_HOST_MAX + 1], s_tok[96];
@@ -179,11 +175,6 @@ void okou_http_apply_auth(esp_http_client_handle_t client)
 }
 
 /* ------------------------------------------------------------------ public small API */
-
-void okou_set_hooks(const okou_hooks_t *hooks)
-{
-    s_hooks = *hooks;
-}
 
 void okou_set_install_state(const char *state)
 {
@@ -296,10 +287,6 @@ static void hello_fill(cJSON *o)
     okou_hex(d->app_elf_sha256, 32, sha);
     okou_mac_str(mac);
     const esp_partition_t *run = esp_ota_get_running_partition();
-#if CONFIG_OKOU_BLE_WIFI
-    unsigned generation = okou_ble_generation();
-    if (generation) cJSON_AddNumberToObject(o, "ble_generation", generation);
-#endif
 #ifdef OKOU_IMAGE_PROFILE
     cJSON_AddStringToObject(o, "image_profile", image_profile);
 #if CONFIG_OKL_URL_OTA
@@ -393,10 +380,6 @@ static bool send_text(const char *s, size_t len)
 
 static void mqtt_teardown(const char *why)
 {
-#if CONFIG_OKOU_BLE_WIFI
-    cJSON_Delete(s_ble_offer);
-    s_ble_offer = NULL;
-#endif
     if (s_iot_started) {
         okou_iot_stop();
         s_iot_started = false;
@@ -531,6 +514,22 @@ static esp_err_t run_cmd(const char *name, const cJSON *argv, cJSON *data, char 
     return ESP_OK;
 }
 
+esp_err_t okou_select_app(void)
+{
+    const esp_partition_t *app = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY, "app");
+    return app ? esp_ota_set_boot_partition(app) : ESP_ERR_NOT_FOUND;
+}
+
+static esp_err_t select_bootloader(void)
+{
+    esp_err_t e = okou_nvs_set_u8(OKOU_KEY_HOLD, 1);
+    if (e != ESP_OK || okou_is_bootloader()) return e;
+    const esp_partition_t *lp = okou_bootloader_partition();
+    e = lp ? esp_ota_set_boot_partition(lp) : ESP_ERR_NOT_FOUND;
+    if (e != ESP_OK) okou_nvs_erase(OKOU_KEY_HOLD);
+    return e;
+}
+
 static esp_err_t op_reboot(const cJSON *args, cJSON *data, char *err, size_t errlen)
 {
     const cJSON *jt = cJSON_GetObjectItemCaseSensitive(args, "target");
@@ -538,30 +537,19 @@ static esp_err_t op_reboot(const cJSON *args, cJSON *data, char *err, size_t err
     bool bootloader = okou_is_bootloader();
     if (strcmp(target, "app") == 0) {
         if (bootloader) {
-            const esp_partition_t *app = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY,
-                                                                  "app");
-            esp_err_t e = app ? esp_ota_set_boot_partition(app) : ESP_ERR_NOT_FOUND;
+            esp_err_t e = okou_select_app();
             if (e != ESP_OK) {
                 snprintf(err, errlen, "no bootable app image: %s", esp_err_to_name(e));
                 return e;
             }
-            okou_nvs_erase(OKOU_KEY_HOLD);
         }
     } else if (strcmp(target, "bootloader") == 0) {
-        if (!bootloader) {
-            const esp_partition_t *lp = okou_bootloader_partition();
-            esp_err_t e = lp ? esp_ota_set_boot_partition(lp) : ESP_ERR_NOT_FOUND;
-            if (e != ESP_OK) {
-                snprintf(err, errlen, "cannot select bootloader: %s", esp_err_to_name(e));
-                return e;
-            }
+        esp_err_t e = select_bootloader();
+        if (e != ESP_OK) {
+            snprintf(err, errlen, "cannot enter bootloader: %s", esp_err_to_name(e));
+            return e;
         }
-        okou_nvs_set_u8(OKOU_KEY_HOLD, 1);
-    } else if (strcmp(target, "self") == 0) {
-        if (bootloader) {
-            okou_nvs_set_u8(OKOU_KEY_HOLD, 1);
-        }
-    } else {
+    } else if (strcmp(target, "self") != 0) {
         snprintf(err, errlen, "bad target: %s", target);
         return ESP_ERR_INVALID_ARG;
     }
@@ -576,9 +564,6 @@ static void handle_req(const cJSON *root)
     const cJSON *jop = cJSON_GetObjectItemCaseSensitive(root, "op");
     const cJSON *args = cJSON_GetObjectItemCaseSensitive(root, "args");
     const char *op = cJSON_IsString(jop) ? jop->valuestring : "";
-    if (s_hooks.on_request) {
-        s_hooks.on_request(op);
-    }
     cJSON *data = cJSON_CreateObject();
     char err[192] = "";
     esp_err_t r = ESP_ERR_NOT_SUPPORTED;
@@ -661,14 +646,8 @@ static void handle_req(const cJSON *root)
         for (size_t i = 0; r == ESP_OK && i < sizeof(keys)/sizeof(keys[0]); ++i) {
             r = okou_nvs_erase(keys[i]);
         }
-        if (r == ESP_OK && !okou_is_bootloader()) {
-            const esp_partition_t *lp = okou_bootloader_partition();
-            r = lp ? esp_ota_set_boot_partition(lp) : ESP_ERR_NOT_FOUND;
-        }
-        if (r == ESP_OK) {
-            okou_nvs_set_u8(OKOU_KEY_SETUP, 1);
-            okou_schedule_reboot(500);
-        }
+        if (r == ESP_OK) r = select_bootloader();
+        if (r == ESP_OK) okou_schedule_reboot(500);
         if (r != ESP_OK) snprintf(err, sizeof(err), "reset failed: %s", esp_err_to_name(r));
     } else if (strcmp(op, "reboot") == 0) {
         r = op_reboot(args, data, err, sizeof(err));
@@ -703,18 +682,8 @@ int okou_poll(uint32_t timeout_ms)
 
 esp_err_t okou_enter_bootloader(void)
 {
-    const esp_partition_t *lp = okou_bootloader_partition();
-    if (!lp) {
-        return ESP_ERR_NOT_FOUND;
-    }
-    esp_err_t e = okou_nvs_set_u8(OKOU_KEY_SETUP, 1);
+    esp_err_t e = select_bootloader();
     if (e != ESP_OK) return e;
-    e = esp_ota_set_boot_partition(lp);
-    if (e != ESP_OK) {
-        okou_nvs_erase(OKOU_KEY_SETUP);
-        return e;
-    }
-    ESP_LOGW(TAG, "entering setup: rebooting into %s for provisioning", lp->label);
     vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();
     return ESP_OK;
@@ -753,14 +722,6 @@ static bool report_install_result(void)
     return ok;
 }
 
-static void on_first_ack(void)
-{
-    ESP_LOGI(TAG, "hello acknowledged by hub");
-    if (s_hooks.on_hello_acked) {
-        s_hooks.on_hello_acked();
-    }
-}
-
 static void do_reboot(void)
 {
     ESP_LOGW(TAG, "rebooting");
@@ -790,36 +751,10 @@ static void service_control(void)
             send_text(s_last_receipt, strlen(s_last_receipt));
         }
     }
-#if CONFIG_OKOU_BLE_WIFI
-    cJSON *rotate = cJSON_DetachItemFromObjectCaseSensitive(frame, "rotate");
-    if (rotate) {
-        cJSON_Delete(s_ble_offer);
-        s_ble_offer = rotate;
-    }
-#endif
     cJSON_Delete(frame);
     okou_agent_notify();
 }
 
-#if CONFIG_OKOU_BLE_WIFI
-static void service_ble_offer(void)
-{
-    if (!s_ble_offer || okou_ble_busy()) return;
-    const cJSON *gen = cJSON_GetObjectItem(s_ble_offer, "generation");
-    const char *secret = cJSON_GetStringValue(cJSON_GetObjectItem(s_ble_offer, "secret"));
-    if (cJSON_IsNumber(gen) && gen->valueint >= (int)okou_ble_generation()) {
-        cJSON *confirm = cJSON_CreateObject();
-        if (!secret || okou_ble_install(gen->valueint, secret, false) != ESP_OK ||
-            !cJSON_AddStringToObject(confirm, "t", "ble.confirm") ||
-            !cJSON_AddNumberToObject(confirm, "ble_generation", okou_ble_generation()) ||
-            !okou_iot_publish(confirm, true))
-            s_mqtt_broken = true; // Retry the outstanding generation on the next hello.
-        cJSON_Delete(confirm);
-    }
-    cJSON_Delete(s_ble_offer);
-    s_ble_offer = NULL;
-}
-#endif
 
 static void agent_task(void *arg)
 {
@@ -854,9 +789,7 @@ static void agent_task(void *arg)
                 s_up_since_us = now;
                 s_mqtt_up = true;
                 if (send_hello()) {
-                    s_hello_acked = true;
-                    if (report_install_result()) on_first_ack();
-                    else s_hello_acked = false;
+                    s_hello_acked = report_install_result();
                 } else {
                     s_mqtt_broken = true;
                 }
@@ -882,9 +815,6 @@ static void agent_task(void *arg)
 #endif
             if (s_hello_acked && !s_mqtt_broken) {
                 service_control();
-#if CONFIG_OKOU_BLE_WIFI
-                service_ble_offer();
-#endif
             }
             if (!okou_net_has_ip()) {
                 mqtt_teardown("network down");
@@ -978,8 +908,7 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
         ESP_LOGE(TAG, "network start: %s", esp_err_to_name(e));
     }
 #if CONFIG_OKOU_BLE_WIFI
-    /* Keep credential storage/rotation available in apps without starting NimBLE. */
-    okou_ble_init(okou_is_bootloader() && g_okou_cfg.manage_network && e == ESP_OK);
+    if (okou_is_bootloader() && g_okou_cfg.manage_network && e == ESP_OK) okou_ble_init();
 #endif
     const esp_app_desc_t *d = esp_app_get_description();
     ESP_LOGI(TAG, "agent start: %s %s role=%s boot_id=%s", d->project_name, d->version,

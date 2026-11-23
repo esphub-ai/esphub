@@ -69,7 +69,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             await host.run(host.tls.do_handshake)
         self.assertEqual(device.requests, [])
 
-    async def test_direct_discovery_rotation_and_reconnect(self):
+    async def test_direct_discovery_and_reconnect(self):
         from bleak.exc import BleakError
 
         nonce = bytes(range(8))
@@ -78,7 +78,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
                 return hmac.digest(secret, b"esphub/wifi/uuid-v1/" + label + b"\0" + nonce, hashlib.sha256)
             return {"beacon": (nonce + derive(b"beacon")[:8]).hex(), "psk": derive(b"session").hex()}
 
-        old, current = issue(b"a" * 32), issue(b"b" * 32)
+        current = issue(b"b" * 32)
         devices = [SimpleNamespace(address=name) for name in ("neighbor", "target")]
         attempts, closed = [], []
         async def find(predicate, *, timeout, service_uuids):
@@ -109,9 +109,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
 
         with patch("bleak.BleakClient", Client), patch("bleak.BleakScanner.find_device_by_filter", find):
             for _ in range(2):
-                async with direct_session({**old, "alternate": current}) as session:
+                async with direct_session(current) as session:
                     self.assertEqual(await session.request("wifi.scan"), {"ssids": ["lab"]})
-        expected = [(d.address, c["beacon"]) for d in devices for c in (old, current)] * 2
+        expected = [(d.address, current["beacon"]) for d in devices] * 2
         self.assertEqual(attempts, expected)
         self.assertEqual(closed, [address for address, _ in expected])
 
