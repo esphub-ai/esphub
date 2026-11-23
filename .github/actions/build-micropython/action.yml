@@ -63,7 +63,7 @@ runs:
           make -C m5stack BOARD="$MP_TARGET" build
         else
           make -C micropython/mpy-cross -j2
-          make -C "$MP_PORT" BOARD="$MP_TARGET" USER_C_MODULES="$PWD/$MP_PORT/cmodules/okou/micropython.cmake" \
+          make -C "$MP_PORT" BOARD="$MP_TARGET" BOARD_DIR="boards/$MP_TARGET" USER_C_MODULES="$PWD/$MP_PORT/cmodules/okou/micropython.cmake" \
             FROZEN_MANIFEST="$PWD/$MP_PORT/okl/manifest.py"
         fi
     - name: Verify and package the board runtime

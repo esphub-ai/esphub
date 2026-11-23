@@ -1,3 +1,6 @@
 {
-  "target": "M5STACK_Unit_C6L"
+  "target": "M5STACK_Unit_C6L",
+  "disable_cmake_options": [
+    "FONT_ALIBABAPUHUITI_CN24"
+  ]
 }

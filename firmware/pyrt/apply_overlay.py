@@ -107,6 +107,9 @@ for option in config.get("disable_cmake_options", []):
     path.write_text(text)
 frag = (ov / "sdkconfig.okl").read_text() + f'CONFIG_APP_PROJECT_VER="{version}"\n'
 frag += (fw / "ble.defaults").read_text()
+extra_config = board_dir / "micropython/sdkconfig.defaults"
+if extra_config.exists():
+    frag += "\n" + extra_config.read_text()
 frag += f'\nCONFIG_ESPTOOLPY_FLASHSIZE_{metadata["flash_mb"]}MB=y\n'
 # The provisioning service owns NimBLE during boot discovery and provisioning.
 edit(mp.resolve() / "extmod/nimble/modbluetooth_nimble.c", "int mp_bluetooth_init(void) {",
@@ -147,8 +150,14 @@ edit(f"{bdir}/mpconfigboard.cmake", "if(NOT MICROPY_FROZEN_MANIFEST)",
 edit("components/M5Unified/CMakeLists.txt",
      "    USR_FONT_ALIBABASANS_KR24=${FONT_ALIBABASANS_KR24}\n)",
      "    USR_FONT_ALIBABASANS_KR24=${FONT_ALIBABASANS_KR24}\n"
+     "    ALIBABAPUHUITI_CN24=${FONT_ALIBABAPUHUITI_CN24}\n"
      "    ALIBABASANS_JP24=${FONT_ALIBABASANS_JA24}\n"
      "    ALIBABASANS_KR24=${FONT_ALIBABASANS_KR24}\n)")
+gfx = m5 / "components/M5Unified/mpy_m5gfx.cpp"
+font, count = re.subn(r"(extern const lv_font_t AlibabaPuHuiTi_CN24;.*?gfx_font_AlibabaPuHuiTi_CN24_obj = [^;]+;)",
+                      r"#if USR_FONT_ALIBABAPUHUITI_CN24\n\1\n#endif", gfx.read_text(), flags=re.S)
+assert count == 1, "missing Chinese font definition"
+gfx.write_text(font)
 edit("components/M5Unified/mpy_m5gfx.cpp",
      "// FONT_ALIBABASANS_JA24\nextern const lv_font_t AlibabaSans_JP24;\n"
      "const M5LvglFont AlibabaSans_JP24_obj(&AlibabaSans_JP24);\n"
