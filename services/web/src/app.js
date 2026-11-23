@@ -688,7 +688,8 @@ async function start() {
     const selectedBoard = new URLSearchParams(location.search).get("board");
     const profiles = Object.entries(boardName).filter(
       ([board]) =>
-        !Object.hasOwn(boardName, selectedBoard) || board === selectedBoard,
+        !boards[board].preview &&
+        (!Object.hasOwn(boardName, selectedBoard) || board === selectedBoard),
     );
     docs(
       "USB provisioning",
