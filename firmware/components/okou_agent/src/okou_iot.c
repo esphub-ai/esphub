@@ -320,12 +320,13 @@ bool okou_iot_start(const char *boot_id, const char *hub, const char *token)
         if (!stored) goto done;
         failed_connects = 0;
     }
-    ++failed_connects;
     const char *device = cJSON_GetStringValue(cJSON_GetObjectItem(reply, "device_id"));
     const char *host = cJSON_GetStringValue(cJSON_GetObjectItem(reply, "endpoint"));
     const char *cert = cJSON_GetStringValue(cJSON_GetObjectItem(reply, "certificate"));
-    if (!device || strlen(device) != 36 || !host || !cert)
+    if (!device || strlen(device) != 36 || !host || !*host || !cert || !*cert) {
+        okou_nvs_erase("mqtt_grant");
         goto done;
+    }
     char client_id[48];
     snprintf(client_id, sizeof(client_id), "esphub-%s", device);
     snprintf(topic, sizeof(topic), "devices/%s/wake", device);
@@ -348,6 +349,9 @@ bool okou_iot_start(const char *boot_id, const char *hub, const char *token)
     if (!started)
         okou_iot_stop();
     else {
+        // Only connection attempts count. A local allocation failure does not
+        // invalidate a cached certificate or justify starting an HTTPS client.
+        ++failed_connects;
         active_identity = id;
         active_certificate = reply;
         id = reply = NULL;
