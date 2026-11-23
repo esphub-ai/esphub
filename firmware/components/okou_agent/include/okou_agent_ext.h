@@ -70,7 +70,7 @@ void okou_set_install_state(const char *state);
 /* Queue an event; takes ownership of data (may be NULL). Never blocks. */
 void okou_event_json(const char *name, cJSON *data);
 
-/* Last validated launcher slot (okl/lslot), else factory/launcher_a/launcher_b with an image. */
+/* Single launcher partition, or the last booted launcher on a legacy table. */
 const esp_partition_t *okou_launcher_partition(void);
 
 /* Builds https://<host> from the registered plain hostname. */

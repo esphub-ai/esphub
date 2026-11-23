@@ -22,13 +22,16 @@ config = Path("sdkconfig.setup" if setup_base else "sdkconfig").read_text()
 assert f'CONFIG_OKOU_BOARD_PROFILE="{board}"' in config.splitlines()
 table = Path(re.search(r'^CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="([^"]+)"$', config, re.M)[1])
 with table.open() as f:
-    offset = next(int(row[3], 0) for row in csv.reader(f, skipinitialspace=True) if row and row[0] == "launcher_a")
+    apps = [row for row in csv.reader(f, skipinitialspace=True) if len(row) >= 5 and row[1] == "app"]
+    assert [(row[0], row[2]) for row in apps] == [("launcher", "ota_0"), ("app", "ota_1")]
+    offset = int(apps[0][3], 0)
+    assert (build / "esp-launcher.bin").stat().st_size <= int(apps[0][4], 0)
 files = parts["flash_files"]
 assert any(int(k, 16) == offset and v == "esp-launcher.bin" for k, v in files.items()), files
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 image = (build / "esp-launcher.bin").read_bytes()
-assert image[288:].startswith(f"ESPHUB1/launcher/{board}\0".encode()), "Invalid OTA image profile"
+assert image[288:].startswith(f"ESPHUB1/launcher/{board}\0single-launcher-v1\0".encode()), "Invalid OTA image profile"
 # Check the linked firmware, including the alternate StopWatch USB layout.
 # An MQTT client configured for TLS can still link ESP-IDF's default WS transport.
 settings = set(config.splitlines())

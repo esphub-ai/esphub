@@ -286,8 +286,9 @@ void okou_metric(const char *name, double value)
 #elif CONFIG_OKOU_MICROPYTHON_RUNTIME
 #define OKOU_IMAGE_PROFILE "ESPHUB1/micropython/" CONFIG_OKOU_BOARD_PROFILE
 #endif
+#include "okou_install.h"
 #ifdef OKOU_IMAGE_PROFILE
-static const char image_profile[] __attribute__((section(".rodata_custom_desc"), aligned(4))) = OKOU_IMAGE_PROFILE;
+static const char image_profile[] __attribute__((section(".rodata_custom_desc"), aligned(4))) = OKOU_IMAGE_PROFILE "\0" OKOU_OTA_CAPABILITY;
 #endif
 
 static void hello_fill(cJSON *o)
@@ -301,6 +302,7 @@ static void hello_fill(cJSON *o)
     cJSON_AddBoolToObject(o, "log_flush", true);
 #ifdef OKOU_IMAGE_PROFILE
     cJSON_AddStringToObject(o, "image_profile", image_profile);
+    cJSON_AddBoolToObject(o, "single_launcher_ota", true);
 #endif
     if (CONFIG_OKOU_BOARD_PROFILE[0]) cJSON_AddStringToObject(o, "board", CONFIG_OKOU_BOARD_PROFILE);
     cJSON_AddStringToObject(o, "boot_id", s_boot_id);

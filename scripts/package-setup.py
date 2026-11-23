@@ -30,7 +30,7 @@ with ZipFile(args.launcher) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
     assert parts["data"][2] == "littlefs" and 0 < len(image) <= size
     launcher = base.read("esp-launcher.bin")
     for kind, binary in (("launcher", launcher), ("micropython", image)):
-        assert binary[0] == 0xE9 and binary[288:].startswith(f"ESPHUB1/{kind}/{args.board}\0".encode())
+        assert binary[0] == 0xE9 and binary[288:].startswith(f"ESPHUB1/{kind}/{args.board}\0single-launcher-v1\0".encode())
     assert launcher[12:14] == image[12:14], "Mismatched ESP chips"
     for name in base.namelist():
         if name not in ("flash_args", "INSTALL.txt"):

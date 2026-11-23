@@ -348,21 +348,14 @@ esp_err_t okou_nvs_erase(const char *key)
 
 const esp_partition_t *okou_launcher_partition(void)
 {
-    char label[17] = {0};
-    esp_app_desc_t d;
-    if (okou_nvs_get_str(OKOU_KEY_LSLOT, label, sizeof(label)) == ESP_OK) {
-        const esp_partition_t *p = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY, label);
-        if (p && esp_ota_get_partition_description(p, &d) == ESP_OK) {
-            return p;
-        }
-    }
-    static const char *const labels[] = {"factory", "launcher_a", "launcher_b"};
-    for (size_t i = 0; i < sizeof(labels) / sizeof(labels[0]); i++) {
-        const esp_partition_t *p = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY,
-                                                            labels[i]);
-        if (p && esp_ota_get_partition_description(p, &d) == ESP_OK) {
-            return p;
-        }
+    const esp_partition_t *part = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, "launcher");
+    if (part) return part;
+    /* On an existing table, overwrite the launcher last booted on this device.
+     * Lookup must still work after an interrupted write erased its header. */
+    char label[17] = "";
+    if (okou_nvs_get_str(OKOU_KEY_LSLOT, label, sizeof(label)) == ESP_OK &&
+        (!strcmp(label, "launcher_a") || !strcmp(label, "launcher_b"))) {
+        return esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY, label);
     }
     return NULL;
 }

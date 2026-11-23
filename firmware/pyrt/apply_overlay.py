@@ -38,9 +38,9 @@ edit("CMakeListsDefault.cmake", "    esp_driver_ppa\n)", "    esp_driver_ppa\n  
 
 # 2. Start the agent (Wi-Fi, hub) from C before the MicroPython task exists.
 edit("main.c", "void MICROPY_ESP_IDF_ENTRY(void) {",
-     "void okl_runtime_start(void); /* esp-launcher: cmodules/okou/modokou.c */\n\nvoid MICROPY_ESP_IDF_ENTRY(void) {")
+     "bool okl_runtime_start(void); /* esp-launcher: cmodules/okou/modokou.c */\n\nvoid MICROPY_ESP_IDF_ENTRY(void) {")
 edit("main.c", "    MICROPY_BOARD_STARTUP();\n",
-     "    MICROPY_BOARD_STARTUP();\n    okl_runtime_start(); /* okou_agent owns Wi-Fi and the hub link */\n")
+     "    MICROPY_BOARD_STARTUP();\n    if (okl_runtime_start()) return; /* native OTA agent only during a launcher handoff */\n")
 
 # pyexec prints the exception and traceback through dupterm. Report its outcome
 # to the Hub immediately even if the periodic log batch is still pending.

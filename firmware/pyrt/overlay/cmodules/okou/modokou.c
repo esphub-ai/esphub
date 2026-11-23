@@ -22,6 +22,7 @@
 
 #include "okou_agent.h"
 #include "okou_agent_ext.h"
+#include "okou_install.h"
 
 static const char *TAG = "okl_py";
 
@@ -245,21 +246,24 @@ void okl_usb_bus_active(bool active)
     if (result == ESP_OK) held = active;
 }
 
-void okl_runtime_start(void)
+bool okl_runtime_start(void)
 {
+    ESP_ERROR_CHECK(okou_nvs_init());
+    bool maintenance = install_launcher_pending();
+    okou_op_register("install", install_op);
     okou_op_register("py.interrupt", op_py_interrupt);
     s_input = xMessageBufferCreate(4096);
     okou_op_register("py.safe_boot", op_py_safe_boot);
     okou_op_register("term.write", op_term_write);
     okou_config_t cfg = OKOU_CONFIG_DEFAULT(); /* role app, SDK-managed Wi-Fi */
     cfg.micropython_version = MICROPY_VERSION_STRING;
-    okou_hooks_t hooks = {.on_connected_poll = send_program};
+    okou_hooks_t hooks = {.on_connected_poll = send_program, .on_hello_acked = install_resume_pending};
     okou_set_hooks(&hooks);
     esp_err_t e = okou_agent_start(&cfg);
     if (e != ESP_OK) {
         ESP_LOGE(TAG, "okou_agent_start: %s", esp_err_to_name(e));
     }
-
+    return maintenance;
 }
 
 /* ------------------------------------------------------------------ Python module */
