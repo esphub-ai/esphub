@@ -50,7 +50,7 @@ with ZipFile(args.bootloader) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
     flash_args += f"{parts['nvs'][3]} {name}\n".encode()
     dest.writestr("flash_args", flash_args)
     setup_note = ("Write the plain hub hostname, token and ble_secret from devices.create with OKL-PROVISION over USB at 115200.\n"
-                  "Run the macOS BLE Wi-Fi tool and restart the board after Beacon ready.")
+                  "Run the macOS BLE Wi-Fi tool while the board is in the bootloader.")
     dest.writestr("INSTALL.txt", f"""First installation for {args.board} only. Includes the bootloader and MicroPython.
 This erases flash and replaces the partition table and application. Back up existing device data first.
 From this directory, use the correct local USB port:

@@ -979,8 +979,7 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     }
 #if CONFIG_OKOU_BLE_WIFI
     /* Keep credential storage/rotation available in apps without starting NimBLE. */
-    okou_ble_init(okou_is_bootloader() && g_okou_cfg.manage_network && e == ESP_OK &&
-                  (g_okou_cfg.ble_setup || okou_wifi_count() == 0));
+    okou_ble_init(okou_is_bootloader() && g_okou_cfg.manage_network && e == ESP_OK);
 #endif
     const esp_app_desc_t *d = esp_app_get_description();
     ESP_LOGI(TAG, "agent start: %s %s role=%s boot_id=%s", d->project_name, d->version,

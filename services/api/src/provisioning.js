@@ -10,7 +10,7 @@ export function provisioning(board) {
   const usb =
     'Send OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret>"} with a newline over USB at 115200. Use the plain hostname and credentials returned at registration. Wait for OKL-PROVISION-OK. Keep the response private.';
   const wifi =
-    "On the Mac, pass wifi.ble_credential to tools/ble-wifi/macos.py as private JSON on stdin. Wait for Beacon ready, then have the user restart the board. Select a listed network or enter a hidden SSID, then enter its password locally.";
+    "On the Mac, pass wifi.ble_credential to tools/ble-wifi/macos.py as private JSON on stdin. Keep the board in EspHub Bootloader mode for the BLE connection. Select a listed network or enter a hidden SSID, then enter its password locally.";
   if (profile.preview) {
     return {
       board_setup_guide_url: `https://github.com/okou-ai/esphub/blob/main/${profile.directory}/README.md#bootloader-only-registration`,

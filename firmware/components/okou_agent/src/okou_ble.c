@@ -1,4 +1,4 @@
-// Recognize a host's rotating service UUID, then serve TLS over GATT.
+// Advertise the provisioning service and authenticate each connection with TLS over GATT.
 // Only the BLE worker reads/writes TLS state. NimBLE callbacks move bounded chunks.
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,10 +26,9 @@
 #include "mbedtls/platform_util.h"
 #include "psa/crypto.h"
 
-#define BOOT_SCAN_MS 12000
 #define IO_CHUNK 20
 #define NO_CONN BLE_HS_CONN_HANDLE_NONE
-static const ble_uuid128_t service = BLE_UUID128_INIT(0x01, 0x21, 0x91, 0xfa, 0x24, 0x77, 0x10, 0xae, 0x1f,
+static ble_uuid128_t service = BLE_UUID128_INIT(0x01, 0x21, 0x91, 0xfa, 0x24, 0x77, 0x10, 0xae, 0x1f,
                                                       0x48, 0x36, 0x6c, 0x31, 0xfb, 0xee, 0xa2);
 static const ble_uuid128_t channel = BLE_UUID128_INIT(0x02, 0x21, 0x91, 0xfa, 0x24, 0x77, 0x10, 0xae, 0x1f,
                                                       0x48, 0x36, 0x6c, 0x31, 0xfb, 0xee, 0xa2);
@@ -37,12 +36,11 @@ static StreamBufferHandle_t rx, tx;
 static TaskHandle_t worker;
 static SemaphoreHandle_t key_lock;
 static uint8_t address_type, root_key[32], session_key[32];
-static ble_uuid128_t reply_uuid;
-static volatile uint16_t connection = NO_CONN;
-static volatile bool matched, synced;
+static atomic_uint connection = NO_CONN;
+static atomic_bool synced;
 static atomic_bool host_owned;
 bool okou_ble_host_owned(void) { return atomic_load(&host_owned); }
-static unsigned scan_generation;
+static unsigned session_generation;
 static int64_t io_deadline;
 
 static int nibble(char ch)
@@ -76,7 +74,7 @@ static unsigned read_key(uint8_t *out)
 }
 
 unsigned okou_ble_generation(void) { return read_key(NULL); }
-bool okou_ble_busy(void) { return matched || connection != NO_CONN; }
+bool okou_ble_busy(void) { return connection != NO_CONN; }
 
 esp_err_t okou_ble_install(unsigned gen, const char *hex, bool usb)
 {
@@ -111,27 +109,12 @@ static bool derive(const char *label, const uint8_t nonce[8], uint8_t out[32])
 
 static int gap_event(struct ble_gap_event *e, void *unused)
 {
-    if (e->type == BLE_GAP_EVENT_DISC && !matched) {
-        struct ble_hs_adv_fields f;
-        if (ble_hs_adv_parse_fields(&f, e->disc.data, e->disc.length_data) != 0) return 0;
-        for (int i = 0; i < f.num_uuids128; i++) {
-            uint8_t wire[16], tag[32];
-            for (int j = 0; j < 16; j++)
-                wire[j] = f.uuids128[i].value[15 - j];
-            if (!derive("beacon", wire, tag) || memcmp(tag, wire + 8, 8)) continue;
-            if (!derive("session", wire, session_key)) continue;
-            reply_uuid = f.uuids128[i];
-            reply_uuid.value[15] ^= 0x80;
-            matched = true;
-            ble_gap_disc_cancel();
-            xTaskNotifyGive(worker);
-            break;
-        }
-    } else if (e->type == BLE_GAP_EVENT_CONNECT) {
+    if (e->type == BLE_GAP_EVENT_CONNECT) {
         connection = e->connect.status ? NO_CONN : e->connect.conn_handle;
         xTaskNotifyGive(worker);
     } else if (e->type == BLE_GAP_EVENT_DISCONNECT) {
         connection = NO_CONN;
+    } else if (e->type == BLE_GAP_EVENT_ADV_COMPLETE) {
         xTaskNotifyGive(worker);
     }
     return 0;
@@ -233,7 +216,6 @@ static void tls_session(void)
         mbedtls_ssl_setup(&ssl, &conf))
         goto end;
     mbedtls_ssl_set_bio(&ssl, NULL, push, pull, NULL);
-    io_deadline = esp_timer_get_time() + 45000000;
     if (mbedtls_ssl_handshake(&ssl)) goto end;
     for (;;) {
         io_deadline = esp_timer_get_time() + 180000000;
@@ -253,7 +235,7 @@ static void tls_session(void)
         }
         xSemaphoreTake(key_lock, portMAX_DELAY);
         uint8_t live_key[32];
-        if (read_key(live_key) == scan_generation && !memcmp(live_key, root_key, 32) && connection != NO_CONN)
+        if (read_key(live_key) == session_generation && !memcmp(live_key, root_key, 32) && connection != NO_CONN)
             command(request, reply);
         else
             cJSON_AddStringToObject(reply, "error", "credential revoked");
@@ -280,55 +262,48 @@ end:
 
 static void radio(void *unused)
 {
-    worker = xTaskGetCurrentTaskHandle();
-    const int64_t deadline = esp_timer_get_time() + BOOT_SCAN_MS * 1000LL;
-    while (esp_timer_get_time() < deadline) {
-        if (!synced || !(scan_generation = read_key(root_key))) {
+    struct ble_hs_adv_fields fields = {.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP,
+                                       .num_uuids128 = 1,
+                                       .uuids128 = &service,
+                                       .uuids128_is_complete = 1};
+    struct ble_gap_adv_params adv = {.conn_mode = BLE_GAP_CONN_MODE_UND, .disc_mode = BLE_GAP_DISC_MODE_GEN};
+    for (;;) {
+        if (!synced || !okou_ble_generation()) {
             vTaskDelay(pdMS_TO_TICKS(500));
             continue;
         }
-        matched = false;
-        struct ble_gap_disc_params scan = {.itvl = 320, .window = 48, .passive = 0};
-        int remaining_ms = (deadline - esp_timer_get_time()) / 1000;
-        if (remaining_ms <= 0) break;
-        int scan_ms = remaining_ms < 3000 ? remaining_ms : 3000;
-        if (ble_gap_disc(address_type, scan_ms, &scan, gap_event, NULL)) {
-            vTaskDelay(pdMS_TO_TICKS(500));
-            continue;
-        }
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(scan_ms + 100));
-        ble_gap_disc_cancel();
-        if (!matched || okou_ble_generation() != scan_generation) continue;
         xStreamBufferReset(rx);
         xStreamBufferReset(tx);
-        struct ble_hs_adv_fields fields = {.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP,
-                                           .num_uuids128 = 1,
-                                           .uuids128 = &reply_uuid,
-                                           .uuids128_is_complete = 1};
-        struct ble_gap_adv_params adv = {.conn_mode = BLE_GAP_CONN_MODE_UND,
-                                         .disc_mode = BLE_GAP_DISC_MODE_GEN};
+        ulTaskNotifyTake(pdTRUE, 0);
         if (ble_gap_adv_set_fields(&fields) ||
-            ble_gap_adv_start(address_type, NULL, 12000, &adv, gap_event, NULL))
+            ble_gap_adv_start(address_type, NULL, BLE_HS_FOREVER, &adv, gap_event, NULL)) {
+            vTaskDelay(pdMS_TO_TICKS(500));
             continue;
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(12500));
-        ble_gap_adv_stop();
-        if (connection != NO_CONN) tls_session();
+        }
+        do {
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        } while (connection == NO_CONN && ble_gap_adv_active());
+        if (connection == NO_CONN) continue;
+
+        // The host sends the issued nonce and tag as the first 16 stream bytes.
+        uint8_t preface[16], tag[32];
+        session_generation = read_key(root_key);
+        io_deadline = esp_timer_get_time() + 45000000;
+        size_t pos = 0;
+        while (pos < sizeof(preface)) {
+            int n = pull(NULL, preface + pos, sizeof(preface) - pos);
+            if (n <= 0) break;
+            pos += n;
+        }
+        if (session_generation && pos == sizeof(preface) && derive("beacon", preface, tag) &&
+            memcmp(tag, preface + 8, 8) == 0 && derive("session", preface, session_key))
+            tls_session();
         if (connection != NO_CONN) ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
         while (connection != NO_CONN)
             vTaskDelay(pdMS_TO_TICKS(50));
-        ulTaskNotifyTake(pdTRUE, 0);
-        break;
+        mbedtls_platform_zeroize(session_key, sizeof(session_key));
+        mbedtls_platform_zeroize(root_key, sizeof(root_key));
     }
-    // Wait for host callbacks to finish before releasing their stream buffers.
-    if (nimble_port_stop() == 0 && nimble_port_deinit() == ESP_OK) {
-        vStreamBufferDelete(rx);
-        vStreamBufferDelete(tx);
-        atomic_store(&host_owned, false);
-    }
-    matched = false;
-    mbedtls_platform_zeroize(session_key, sizeof(session_key));
-    mbedtls_platform_zeroize(root_key, sizeof(root_key));
-    vTaskDelete(NULL);
 }
 
 static void on_sync(void) { synced = ble_hs_id_infer_auto(0, &address_type) == 0; }
@@ -336,6 +311,7 @@ static void on_reset(int reason)
 {
     synced = false;
     connection = NO_CONN;
+    xTaskNotifyGive(worker);
 }
 static void host_task(void *arg)
 {
@@ -345,7 +321,6 @@ static void host_task(void *arg)
 
 static void launch_nimble(void *arg)
 {
-    // The USB bootstrap key takes effect on the next boot.
     rx = xStreamBufferCreate(4096, 1);
     tx = xStreamBufferCreate(4096, 1);
     if (!rx || !tx || psa_crypto_init() != PSA_SUCCESS || nimble_port_init() != ESP_OK) {
@@ -357,7 +332,7 @@ static void launch_nimble(void *arg)
     ble_svc_gap_init();
     ble_svc_gatt_init();
     if (ble_gatts_count_cfg(services) || ble_gatts_add_svcs(services) ||
-        xTaskCreate(radio, "ble_wifi", 10240, NULL, 3, NULL) != pdPASS) {
+        xTaskCreate(radio, "ble_wifi", 10240, NULL, 3, &worker) != pdPASS) {
         ESP_LOGE("ble_wifi", "BLE provisioning unavailable");
         nimble_port_deinit();
         goto fail;
@@ -373,10 +348,10 @@ fail:
     vTaskDelete(NULL);
 }
 
-void okou_ble_init(bool start_scan)
+void okou_ble_init(bool enable)
 {
     key_lock = xSemaphoreCreateMutex();
-    if (!start_scan || !okou_ble_generation()) return;
+    if (!enable) return;
     atomic_store(&host_owned, true);
     if (!key_lock || xTaskCreate(launch_nimble, "ble_init", 4096, NULL, 3, NULL) != pdPASS) {
         atomic_store(&host_owned, false);
