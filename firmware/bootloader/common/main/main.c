@@ -74,12 +74,11 @@ void app_main(void)
         okou_nvs_erase(OKOU_KEY_SETUP);
     }
     s_stay = okou_nvs_get_u8(OKOU_KEY_STAY, 0) != 0;
-    uint8_t fail_boots = okou_nvs_get_u8(OKOU_KEY_FAIL_BOOTS, 0);
     char *pending = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
     bool has_pending = pending != NULL;
     free(pending);
     const esp_partition_t *invalid = esp_ota_get_last_invalid_partition();
-    bool app_failed = (invalid && strcmp(invalid->label, "app") == 0) || fail_boots >= 3;
+    bool app_failed = invalid && strcmp(invalid->label, "app") == 0;
 
     okou_param_bool("stay_in_bootloader", &s_stay, false); /* stored in okl/stay by param_hook */
     okou_param_set_hook(param_hook);
@@ -93,9 +92,9 @@ void app_main(void)
     ESP_ERROR_CHECK(okou_agent_start(&cfg));
 
     const esp_partition_t *app = app_partition_with_image();
-    ESP_LOGI(TAG, "running %s; app image %s; pending=%d stay=%d hold=%d fail_boots=%u app_failed=%d",
+    ESP_LOGI(TAG, "running %s; app image %s; pending=%d stay=%d hold=%d app_failed=%d",
              run->label, app ? "present" : "absent",
-             has_pending, s_stay, hold, fail_boots, app_failed);
+             has_pending, s_stay, hold, app_failed);
     prov_serial_start();
     esp_ota_img_states_t st;
     if (esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY)
@@ -155,7 +154,6 @@ void app_main(void)
 #endif
         if (autostart && now >= autostart_at) {
             autostart = false;
-            okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);
             esp_err_t e = esp_ota_set_boot_partition(app);
             if (e == ESP_OK) {
                 ESP_LOGI(TAG, "starting app");

@@ -320,7 +320,6 @@ out:
     free(header);
     if (fail) { emit_failed(in, fail); return false; }
     okou_set_install_state("done");
-    if (strcmp(in->kind, "bootloader")) okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);
     okou_schedule_reboot(1500);
     return true;
 }

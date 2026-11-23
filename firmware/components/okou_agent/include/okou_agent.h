@@ -9,7 +9,7 @@
  */
 #pragma once
 
-#define OKOU_SDK_VERSION "4.1.0"
+#define OKOU_SDK_VERSION "4.1.1"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -36,10 +36,8 @@ typedef struct {
      * true: `cmd` requests are queued and run inside okou_poll() on the caller's task. */
     bool handlers_in_poll;
     /* false (default): the SDK marks a freshly installed app valid once the hub acknowledged
-     * its hello, and boots the bootloader after CONFIG_OKOU_MAX_FAIL_BOOTS boots without a hub
-     * ack. true: the app runs its own startup health check and then calls okou_app_mark_valid();
-     * the SDK neither marks the app valid nor applies the fail_boots safety net. Use this for
-     * devices that must keep working offline. */
+     * its hello. true: the app confirms the image by calling okou_app_mark_valid()
+     * after its own startup health check, which can run offline. */
     bool app_validates;
     /* Static interpreter version string, set only by the MicroPython port. */
     const char *micropython_version;
@@ -49,8 +47,7 @@ typedef struct {
 
 #define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .app_validates = false, .micropython_version = NULL, .ble_setup = false }
 
-/* One-call init: NVS, network (optional), agent task. cfg may be NULL (defaults).
- * For role=app it also implements the fail_boots safety net (may reboot into the bootloader). */
+/* One-call init: NVS, network (optional), agent task. cfg may be NULL (defaults). */
 esp_err_t okou_agent_start(const okou_config_t *cfg);
 
 /* For app_validates apps: confirm the running image after the app's own health check. Marks a

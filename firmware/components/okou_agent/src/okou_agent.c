@@ -546,7 +546,6 @@ static esp_err_t op_reboot(const cJSON *args, cJSON *data, char *err, size_t err
                 snprintf(err, errlen, "no bootable app image: %s", esp_err_to_name(e));
                 return e;
             }
-            okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);
             okou_nvs_erase(OKOU_KEY_HOLD);
         }
     } else if (strcmp(target, "bootloader") == 0) {
@@ -848,7 +847,6 @@ static void on_first_ack(void)
                 okou_event_json("app.valid", d);
             }
         }
-        okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0);
     }
     if (s_hooks.on_hello_acked) {
         s_hooks.on_hello_acked();
@@ -1060,19 +1058,6 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     }
     s_rolled_back = esp_ota_get_last_invalid_partition() != NULL;
     record_rollback();
-
-    if (!okou_is_bootloader() && !g_okou_cfg.app_validates && CONFIG_OKOU_MAX_FAIL_BOOTS > 0) {
-        uint8_t fb = okou_nvs_get_u8(OKOU_KEY_FAIL_BOOTS, 0);
-        if (fb >= CONFIG_OKOU_MAX_FAIL_BOOTS) {
-            const esp_partition_t *lp = okou_bootloader_partition();
-            ESP_LOGE(TAG, "fail_boots=%u without hub ack: booting bootloader (%s)", fb, lp ? lp->label : "none");
-            if (lp && esp_ota_set_boot_partition(lp) == ESP_OK) {
-                vTaskDelay(pdMS_TO_TICKS(100));
-                esp_restart();
-            }
-        }
-        okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, fb < 255 ? fb + 1 : fb);
-    }
 
     okou_registry_builtin_cmds();
     s_cfg_ok = load_config();

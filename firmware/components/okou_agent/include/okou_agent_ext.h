@@ -26,7 +26,6 @@ bool okou_wifi_rssi(int *rssi);
 #define OKOU_KEY_PENDING     "pending"    /* str: resumable install job or unacknowledged final event */
 #define OKOU_KEY_LSLOT "lslot" /* Last validated A/B bootloader slot. */
 #define OKOU_KEY_STAY        "stay"       /* u8: never auto-start the app */
-#define OKOU_KEY_FAIL_BOOTS  "fail_boots" /* u8: app boots without a hub ack */
 #define OKOU_KEY_HOLD        "hold"       /* u8: one-shot "stay in bootloader on next boot" (extension) */
 #define OKOU_KEY_WIFIS       "wifis"      /* str: saved Wi-Fi networks, JSON, most recent first */
 #define OKOU_KEY_SETUP       "setup"      /* u8: one-shot "stay in the bootloader until the hub acks" */
