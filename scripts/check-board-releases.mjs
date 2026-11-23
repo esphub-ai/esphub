@@ -1,8 +1,8 @@
 import boards from "../shared/boards.generated.json" with { type: "json" };
 import { publishedFirmware, assetNames } from "../shared/firmware-releases.js";
 const index = await publishedFirmware(boards, fetch, process.env.GH_TOKEN);
-for (const [board, { chip, preview }] of Object.entries(boards)) {
-  if (preview) continue;
+for (const [board, { chip, has_setup }] of Object.entries(boards)) {
+  if (!has_setup) continue;
   const release = index[board].setup;
   if (!release) throw Error("Missing USB kit for " + board);
   const name = assetNames(board, chip, "setup", release.version)[
@@ -17,7 +17,9 @@ for (const [board, { chip, preview }] of Object.entries(boards)) {
     m.board !== board ||
     m.chip !== chip ||
     m.version !== release.version ||
-    !(m.runtime_size > 0)
+    !/^[a-f0-9]{64}$/.test(m.sha256) ||
+    !Number.isSafeInteger(m.runtime_size) ||
+    m.runtime_size <= 0
   )
     throw Error("Invalid kit: " + name);
   console.log(board, release.tag);

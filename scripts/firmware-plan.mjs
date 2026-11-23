@@ -25,6 +25,7 @@ const sharedInputs = {
     "firmware/pyrt/upstream.json",
     "firmware/ble.defaults",
     "firmware/pyrt/apply_overlay.py",
+    "firmware/pyrt/apply_s31_overlay.py",
     "firmware/components/okou_agent/**",
     ".github/actions/build-micropython/**",
   ],

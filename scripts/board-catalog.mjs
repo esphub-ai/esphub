@@ -28,6 +28,7 @@ for (const vendor of await readdir(root, { withFileTypes: true })) {
       throw Error("Invalid metadata for " + id);
     if (!Number.isInteger(flash_mb) || flash_mb < 8)
       throw Error("EspHub requires at least 8 MiB Flash: " + id);
+    const tasks = JSON.parse(await file("ci.json"));
     boards[id] = {
       name,
       model,
@@ -35,6 +36,7 @@ for (const vendor of await readdir(root, { withFileTypes: true })) {
       flash_mb,
       bootloader,
       ...(preview ? { preview: true } : {}),
+      has_setup: Object.hasOwn(tasks, "setup"),
       directory: `firmware/board/${vendor.name}/${modelDir.name}`,
       hello: await file("main.py"),
     };
