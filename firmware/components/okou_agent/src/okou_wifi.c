@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include "sdkconfig.h"
 #include "okou_priv.h"
-#include "okou_ble.h"
 #include "okou_agent_ext.h"
 
 #if !CONFIG_OKOU_NET_OPENETH
@@ -20,6 +19,7 @@
 #include "freertos/semphr.h"
 #include "freertos/event_groups.h"
 #include "esp_log.h"
+#include "mbedtls/platform_util.h"
 #include "esp_wifi.h"
 #include "cJSON.h"
 
@@ -317,7 +317,6 @@ static bool attempt(const net_t *n)
     return false;
 }
 
-#if CONFIG_OKOU_BLE_WIFI
 // The connection task exclusively owns station transitions. Try the selected AP
 // before touching the saved list, so a mistyped password preserves prior access.
 static net_t s_join;
@@ -341,6 +340,7 @@ bool okou_wifi_join(const char *ssid, const char *pass, bool hidden)
 const char *okou_wifi_join_state(void)
 {
     static const char *states[] = {"idle", "joining", "joining", "failed", "saved"};
+    if (!s_list_mu) return "unavailable";
     lock();
     const char *state = states[s_join_state];
     unlock();
@@ -370,13 +370,18 @@ static void try_requested_network(void)
         s_online = false;
     }
     bool ok = attempt(&requested);
-    if (ok) ok = okou_wifi_add(requested.ssid, requested.pass, requested.hidden) == ESP_OK;
+    if (ok && okou_wifi_add(requested.ssid, requested.pass, requested.hidden) != ESP_OK) {
+        esp_wifi_disconnect();
+        xEventGroupWaitBits(s_ev, EV_DISC, pdTRUE, pdFALSE, pdMS_TO_TICKS(2000));
+        s_online = false;
+        ok = false;
+    }
+    mbedtls_platform_zeroize(requested.pass, sizeof(requested.pass));
     xSemaphoreGive(s_radio_mu);
     lock();
     s_join_state = ok ? JOIN_SAVED : JOIN_FAILED;
     unlock();
 }
-#endif
 
 static void wifi_task(void *arg)
 {
@@ -384,14 +389,12 @@ static void wifi_task(void *arg)
     uint32_t backoff_ms = 2000;
     okou_ap_t *seen = calloc(SCAN_MAX, sizeof(okou_ap_t));
     for (;;) {
-#if CONFIG_OKOU_BLE_WIFI
         if (join_queued()) { try_requested_network(); continue; }
-#endif
+
         if (s_online) {
             EventBits_t b = xEventGroupWaitBits(s_ev, EV_DISC | EV_RECONF, pdTRUE, pdFALSE, portMAX_DELAY);
-#if CONFIG_OKOU_BLE_WIFI
             if (join_queued()) continue;
-#endif
+
             if ((b & EV_RECONF) && !(b & EV_DISC)) {
                 bool still_saved = false;
                 lock();
@@ -440,9 +443,7 @@ static void wifi_task(void *arg)
         }
         bool ok = false;
         for (int x = 0; x < k && !ok; x++) {
-#if CONFIG_OKOU_BLE_WIFI
             if (join_queued()) break;
-#endif
             ok = attempt(&nets[order[x]]);
         }
         xSemaphoreGive(s_radio_mu);
@@ -483,16 +484,13 @@ esp_err_t okou_wifi_init(void)
         return ESP_ERR_NO_MEM;
     }
     load();
-#if CONFIG_OKOU_BLE_WIFI
-    const unsigned stack_bytes = 6144;
-#else
-    const unsigned stack_bytes = 4096;
-#endif
-    return xTaskCreate(wifi_task, "okou_wifi", stack_bytes, NULL, 3, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
+    return xTaskCreate(wifi_task, "okou_wifi", 6144, NULL, 3, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
 #else /* QEMU / OpenCores Ethernet: no Wi-Fi */
 int okou_wifi_count(void) { return 0; }
+bool okou_wifi_join(const char *ssid, const char *pass, bool hidden) { return false; }
+const char *okou_wifi_join_state(void) { return "unavailable"; }
 esp_err_t okou_wifi_add(const char *ssid, const char *pass, bool hidden) { return ESP_ERR_NOT_SUPPORTED; }
 esp_err_t okou_wifi_forget(const char *ssid) { return ESP_ERR_NOT_SUPPORTED; }
 void okou_wifi_saved_json(cJSON *arr) { (void)arr; }

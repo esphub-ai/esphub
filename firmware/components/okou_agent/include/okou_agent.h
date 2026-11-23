@@ -9,7 +9,7 @@
  */
 #pragma once
 
-#define OKOU_SDK_VERSION "4.0.0"
+#define OKOU_SDK_VERSION "4.1.0"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -43,9 +43,11 @@ typedef struct {
     bool app_validates;
     /* Static interpreter version string, set only by the MicroPython port. */
     const char *micropython_version;
+    /* BL only: scan for a BLE provisioning beacon on this boot. */
+    bool ble_setup;
 } okou_config_t;
 
-#define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .app_validates = false, .micropython_version = NULL }
+#define OKOU_CONFIG_DEFAULT() { .role = OKOU_ROLE_APP, .manage_network = true, .handlers_in_poll = false, .app_validates = false, .micropython_version = NULL, .ble_setup = false }
 
 /* One-call init: NVS, network (optional), agent task. cfg may be NULL (defaults).
  * For role=app it also implements the fail_boots safety net (may reboot into the bootloader). */
@@ -64,7 +66,14 @@ bool okou_connected(void);
  * and reboots into the bootloader, which keeps USB provisioning open and does not auto-start
  * the app until it has reached the hub again. Apps with a display call this after showing setup
  * instructions (e-paper keeps them visible). Does not return on success. */
-esp_err_t okou_enter_setup(void);
+esp_err_t okou_enter_bootloader(void);
+
+/* Queue a Wi-Fi trial on the SDK-managed station. Returns false if the input is
+ * invalid, another trial is active, or SDK-managed Wi-Fi is unavailable.
+ * The manager saves the network only after it obtains an IP address. */
+bool okou_wifi_join(const char *ssid, const char *password, bool hidden);
+/* "idle", "joining", "saved", "failed", or "unavailable". */
+const char *okou_wifi_join_state(void);
 
 /* ---- commands ---------------------------------------------------------------------- */
 typedef struct okou_out okou_out_t;

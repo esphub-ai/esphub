@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "okou_ble.h"
+#include "okou_agent.h"
 #include <stdatomic.h>
 #include "okou_agent_ext.h"
 #include "esp_random.h"
@@ -347,10 +348,9 @@ static void launch_nimble(void *arg)
     // The USB bootstrap key takes effect on the next boot.
     rx = xStreamBufferCreate(4096, 1);
     tx = xStreamBufferCreate(4096, 1);
-    if (!key_lock || !rx || !tx || psa_crypto_init() != PSA_SUCCESS || nimble_port_init() != ESP_OK) {
+    if (!rx || !tx || psa_crypto_init() != PSA_SUCCESS || nimble_port_init() != ESP_OK) {
         ESP_LOGE("ble_wifi", "BLE initialization failed");
-        vTaskDelete(NULL);
-        return;
+        goto fail;
     }
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.reset_cb = on_reset;
@@ -359,17 +359,24 @@ static void launch_nimble(void *arg)
     if (ble_gatts_count_cfg(services) || ble_gatts_add_svcs(services) ||
         xTaskCreate(radio, "ble_wifi", 10240, NULL, 3, NULL) != pdPASS) {
         ESP_LOGE("ble_wifi", "BLE provisioning unavailable");
-        vTaskDelete(NULL);
-        return;
+        nimble_port_deinit();
+        goto fail;
     }
     nimble_port_freertos_init(host_task);
     vTaskDelete(NULL);
+    return;
+
+fail:
+    if (rx) vStreamBufferDelete(rx);
+    if (tx) vStreamBufferDelete(tx);
+    atomic_store(&host_owned, false);
+    vTaskDelete(NULL);
 }
 
-void okou_ble_start(void)
+void okou_ble_init(bool start_scan)
 {
     key_lock = xSemaphoreCreateMutex();
-    if (!okou_ble_generation()) return;
+    if (!start_scan || !okou_ble_generation()) return;
     atomic_store(&host_owned, true);
     if (!key_lock || xTaskCreate(launch_nimble, "ble_init", 4096, NULL, 3, NULL) != pdPASS) {
         atomic_store(&host_owned, false);

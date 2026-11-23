@@ -34,6 +34,19 @@ After `OKL-PROVISION-OK`, start the Mac BLE tool, wait for **Beacon ready**, res
 
 On an online device, use `wifi.add` with an SSID and optional password to save a network remotely. Read `commands.get` for the result. First-time and offline setup use the [Mac BLE tool](tools/ble-wifi/README.md).
 
+On ordinary boots, applications use the saved Wi-Fi networks and can initialize their own Bluetooth stack immediately. The bootloader scans for a provisioning beacon when its Wi-Fi list is empty or when an application explicitly requests setup. For offline recovery, expose an application menu item or startup key that calls `okou_enter_bootloader()` in C or `okou.enter_bootloader()` in MicroPython. Start the Mac beacon before selecting setup.
+
+Applications with their own Wi-Fi settings screen can use the SDK-managed station to try a new network:
+
+```python
+import okou
+
+queued = okou.wifi_join(ssid, password, hidden=False)
+# If queued, poll okou.wifi_join_state() for "saved" or "failed".
+```
+
+The corresponding C APIs are `okou_wifi_join()` and `okou_wifi_join_state()`. The station saves the credentials after obtaining an IP address. A failed trial leaves the saved list available for reconnection.
+
 ## Try a virtual ESP32
 
 Sign in, open **Devices**, and select **Create virtual ESP32**, or call `devices.create_virtual` from an authorized MCP client. Each account can create one private board. Creating it again returns the same device ID.

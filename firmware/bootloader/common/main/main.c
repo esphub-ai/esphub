@@ -67,7 +67,7 @@ void app_main(void)
     if (hold) {
         okou_nvs_erase(OKOU_KEY_HOLD);
     }
-    /* okou_enter_setup() from the app: stay here with provisioning open until the hub acks,
+    /* okou_enter_bootloader() from the app: stay here with provisioning open until the hub acks,
      * then the first-ack resume below starts the app again. */
     uint8_t setup = okou_nvs_get_u8(OKOU_KEY_SETUP, 0);
     if (setup) {
@@ -89,6 +89,7 @@ void app_main(void)
     okou_set_hooks(&hooks);
     okou_config_t cfg = OKOU_CONFIG_DEFAULT();
     cfg.role = OKOU_ROLE_BOOTLOADER;
+    cfg.ble_setup = setup;
     ESP_ERROR_CHECK(okou_agent_start(&cfg));
 
     const esp_partition_t *app = app_partition_with_image();
@@ -150,7 +151,7 @@ void app_main(void)
             autostart = false;
         }
 #if CONFIG_OKOU_BLE_WIFI
-        if (okou_ble_busy()) continue;
+        if (okou_ble_host_owned()) continue;
 #endif
         if (autostart && now >= autostart_at) {
             autostart = false;

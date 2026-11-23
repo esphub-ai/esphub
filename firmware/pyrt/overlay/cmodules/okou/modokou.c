@@ -105,7 +105,53 @@ static mp_obj_t okou_wifi_rssi_py(void)
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(okou_wifi_rssi_obj, okou_wifi_rssi_py);
 
+static mp_obj_t okou_enter_bootloader_py(void)
+{
+    esp_err_t rc = okou_enter_bootloader();
+    mp_raise_OSError(rc);
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(okou_enter_bootloader_obj, okou_enter_bootloader_py);
+
+static mp_obj_t okou_wifi_join_py(size_t n_args, const mp_obj_t *args, mp_map_t *kw_args)
+{
+    enum { ARG_ssid, ARG_password, ARG_hidden };
+    static const mp_arg_t allowed[] = {
+        {MP_QSTR_ssid, MP_ARG_REQUIRED | MP_ARG_OBJ, {.u_obj = MP_OBJ_NULL}},
+        {MP_QSTR_password, MP_ARG_REQUIRED | MP_ARG_OBJ, {.u_obj = MP_OBJ_NULL}},
+        {MP_QSTR_hidden, MP_ARG_BOOL, {.u_bool = false}},
+    };
+    mp_arg_val_t values[MP_ARRAY_SIZE(allowed)];
+    mp_arg_parse_all(n_args, args, kw_args, MP_ARRAY_SIZE(allowed), allowed, values);
+    size_t ssid_len, password_len;
+    const char *ssid = mp_obj_str_get_data(values[ARG_ssid].u_obj, &ssid_len);
+    const char *password = mp_obj_str_get_data(values[ARG_password].u_obj, &password_len);
+    if (memchr(ssid, 0, ssid_len) || memchr(password, 0, password_len))
+        mp_raise_ValueError(MP_ERROR_TEXT("Wi-Fi credentials contain NUL"));
+    char network[33], secret[65];
+    if (!ssid_len || ssid_len >= sizeof(network) || password_len >= sizeof(secret))
+        return mp_const_false;
+    memcpy(network, ssid, ssid_len);
+    network[ssid_len] = '\0';
+    memcpy(secret, password, password_len);
+    secret[password_len] = '\0';
+    bool queued = okou_wifi_join(network, secret, values[ARG_hidden].u_bool);
+    volatile char *wipe = secret;
+    for (size_t i = 0; i < sizeof(secret); i++) wipe[i] = 0;
+    return mp_obj_new_bool(queued);
+}
+static MP_DEFINE_CONST_FUN_OBJ_KW(okou_wifi_join_obj, 0, okou_wifi_join_py);
+
+static mp_obj_t okou_wifi_join_state_py(void)
+{
+    const char *state = okou_wifi_join_state();
+    return mp_obj_new_str(state, strlen(state));
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(okou_wifi_join_state_obj, okou_wifi_join_state_py);
+
 static const mp_rom_map_elem_t okou_module_globals_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_enter_bootloader), MP_ROM_PTR(&okou_enter_bootloader_obj) },
+    { MP_ROM_QSTR(MP_QSTR_wifi_join), MP_ROM_PTR(&okou_wifi_join_obj) },
+    { MP_ROM_QSTR(MP_QSTR_wifi_join_state), MP_ROM_PTR(&okou_wifi_join_state_obj) },
     { MP_ROM_QSTR(MP_QSTR_wifi_rssi), MP_ROM_PTR(&okou_wifi_rssi_obj) },
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_okou) },
     { MP_ROM_QSTR(MP_QSTR_connected), MP_ROM_PTR(&okou_connected_obj) },
