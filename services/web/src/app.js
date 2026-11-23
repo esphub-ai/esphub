@@ -420,7 +420,7 @@ async function action(k) {
   if (k === "install") {
     dialog(
       "Install from URL",
-      '<label>Update target<select class="field" name="kind"><option value="python">Python Program (main.py)</option><option value="micropython">MicroPython Runtime</option><option value="bootloader">Bootloader</option></select></label>' +
+      '<label>Update target<select class="field" name="kind"><option value="python">Python Program (main.py)</option><option value="native">Native Program (.bin)</option><option value="micropython">MicroPython Runtime</option><option value="bootloader">Bootloader</option></select></label>' +
         field("url", "HTTPS artifact URL", "url", "required"),
       "Install",
       async (a) => {
