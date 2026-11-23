@@ -16,8 +16,4 @@ menu "esp-launcher"
             okl/fail_boots >= 3) the launcher waits longer before starting it again so an
             operator can catch it; any hub request cancels auto-start.
 
-    config OKL_VALIDATE_TIMEOUT_S
-        int "New launcher: roll back if the hub has not acked hello within (s)"
-        default 300
-
 endmenu

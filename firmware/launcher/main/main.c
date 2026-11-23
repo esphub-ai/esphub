@@ -3,7 +3,6 @@
  *  - auto-starts the app CONFIG_OKL_AUTOSTART_MS after boot if the app partition holds an
  *    image, unless okl/pending exists, okl/stay is set, or a hub request arrived;
  *  - resumes okl/pending after the hub acked hello;
- *  - a freshly self-updated launcher marks itself valid only after the hub acked hello.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -24,11 +23,11 @@ static const char *TAG = "launcher";
 
 static volatile bool s_acked_evt;
 static volatile bool s_req_seen;
-static bool s_need_validate;
 static bool s_stay;
 
 static void on_hello_acked(void)
 {
+    install_resume_pending();
     s_acked_evt = true;
 }
 
@@ -62,20 +61,10 @@ void app_main(void)
     ESP_ERROR_CHECK(okou_nvs_init());
     const esp_partition_t *run = esp_ota_get_running_partition();
     esp_ota_img_states_t st;
-    bool pending_verify = esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY;
-    char lslot[17] = "";
-    okou_nvs_get_str(OKOU_KEY_LSLOT, lslot, sizeof(lslot));
-    if (pending_verify) {
-        if (strcmp(lslot, run->label) == 0) {
-            /* Known-good launcher re-entered from the app (esp_ota_set_boot_partition
-             * always starts a NEW/PENDING_VERIFY cycle): nothing new to verify. */
-            esp_ota_mark_app_valid_cancel_rollback();
-        } else {
-            s_need_validate = true; /* freshly installed launcher: wait for hub ack */
-        }
-    } else if (strcmp(lslot, run->label) != 0) {
-        okou_nvs_set_str(OKOU_KEY_LSLOT, run->label);
-    }
+    if (esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY)
+        ESP_ERROR_CHECK(esp_ota_mark_app_valid_cancel_rollback());
+    if (strcmp(run->label, "bl"))
+        ESP_ERROR_CHECK(okou_nvs_set_str(OKOU_KEY_LSLOT, run->label));
 
     uint8_t hold = okou_nvs_get_u8(OKOU_KEY_HOLD, 0);
     if (hold) {
@@ -106,8 +95,8 @@ void app_main(void)
     ESP_ERROR_CHECK(okou_agent_start(&cfg));
 
     const esp_partition_t *app = app_partition_with_image();
-    ESP_LOGI(TAG, "running %s%s; app image %s; pending=%d stay=%d hold=%d fail_boots=%u app_failed=%d",
-             run->label, s_need_validate ? " (new, awaiting hub ack)" : "", app ? "present" : "absent",
+    ESP_LOGI(TAG, "running %s; app image %s; pending=%d stay=%d hold=%d fail_boots=%u app_failed=%d",
+             run->label, app ? "present" : "absent",
              has_pending, s_stay, hold, fail_boots, app_failed);
     prov_serial_start();
     if (hold) {
@@ -117,7 +106,6 @@ void app_main(void)
     int64_t t0 = esp_timer_get_time();
     int64_t autostart_at = t0 + (app_failed ? (int64_t)CONFIG_OKL_FAILSAFE_WAIT_S * 1000000
                                             : (int64_t)CONFIG_OKL_AUTOSTART_MS * 1000);
-    int64_t validate_deadline = t0 + (int64_t)CONFIG_OKL_VALIDATE_TIMEOUT_S * 1000000;
     /* An unprovisioned device must stay in the launcher: the app cannot provision over USB, so
      * leaving would close the setup window. The app starts after the first hub ack instead. */
     char *p_hub = okou_nvs_get_str_alloc("hub");
@@ -125,7 +113,7 @@ void app_main(void)
     bool provisioned = okou_hub_host_valid(p_hub) && p_tok && p_tok[0];
     free(p_tok);
     free(p_hub);
-    bool autostart = app && provisioned && !has_pending && !s_stay && !hold && !setup && !s_need_validate;
+    bool autostart = app && provisioned && !has_pending && !s_stay && !hold && !setup;
     if (setup) {
         ESP_LOGI(TAG, "setup requested by the app: provisioning open, app starts after the next hub ack");
     }
@@ -144,18 +132,6 @@ void app_main(void)
         int64_t now = esp_timer_get_time();
         if (s_acked_evt) {
             s_acked_evt = false;
-            if (s_need_validate) {
-                if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
-                    okou_nvs_set_str(OKOU_KEY_LSLOT, run->label);
-                    ESP_LOGI(TAG, "new launcher on %s marked valid", run->label);
-                    cJSON *d = cJSON_CreateObject();
-                    cJSON_AddStringToObject(d, "partition", run->label);
-                    okou_event_json("launcher.valid", d);
-                }
-                s_need_validate = false;
-            }
-            /* First hub ack of this boot: a self-updated launcher that just validated, or a device
-             * that was just provisioned, resumes the normal auto-start (same conditions as boot). */
             if (!acked_once) {
                 acked_once = true;
                 char *still_pending = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
@@ -168,12 +144,6 @@ void app_main(void)
                              (int)((autostart_at - now) / 1000));
                 }
             }
-            install_resume_pending();
-        }
-        if (s_need_validate && now > validate_deadline) {
-            ESP_LOGE(TAG, "new launcher not acknowledged by hub in time: rolling back");
-            vTaskDelay(pdMS_TO_TICKS(500));
-            esp_ota_mark_app_invalid_rollback_and_reboot();
         }
         if (autostart && (s_req_seen || s_stay)) {
             autostart = false;

@@ -5,10 +5,7 @@
 #include "esp_partition.h"
 #include "cJSON.h"
 
-esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen);
-void install_resume_pending(void); /* after the hub acked hello */
-bool install_running(void);
-const esp_partition_t *launcher_inactive_slot(void);
+#include "okou_install.h"
 
 void coredump_ops_register(void);
 

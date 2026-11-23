@@ -410,11 +410,13 @@ export async function operate(c, owner, name, a) {
       ? { mode: "launcher", process_id: d.boot_id }
       : queue("reboot", { target: "launcher" }, d.boot_id);
   if (name === "ota.install") {
-    if (
-      info?.role !== "launcher" ||
-      info.board !== d.board ||
-      info.image_profile !== "ESPHUB1/launcher/" + d.board
-    )
+    const runtimeWriter =
+      (a.kind ?? "launcher") === "launcher" &&
+      info?.role === "app" &&
+      info.single_launcher_ota === true &&
+      info.image_profile === "ESPHUB1/micropython/" + d.board;
+    const launcher = info?.role === "launcher" && info.image_profile === "ESPHUB1/launcher/" + d.board;
+    if (info?.board !== d.board || (!launcher && !runtimeWriter))
       fail(409, "Start a compatible launcher first");
     if (!a.url) {
       const manifest = await launcherManifest(d.board);
