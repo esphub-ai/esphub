@@ -3,7 +3,7 @@
 Python runtime for one board. Every edit asserts its anchor, so an upstream change fails the
 build instead of silently producing a different firmware.
 
-  apply_overlay.py <uiflow checkout> <esp-launcher firmware dir> <board> <version>
+  apply_overlay.py <uiflow checkout> <esp-launcher firmware dir> <board> <version> <board directory>
 """
 import json
 import re
@@ -12,9 +12,10 @@ import shutil
 import sys
 
 uiflow, fw, profile, version = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3], sys.argv[4]
-config = json.loads((fw / "boards" / profile / "micropython/profile.json").read_text())
+board_dir = pathlib.Path(sys.argv[5])
+config = json.loads((board_dir / "micropython/profile.json").read_text())
 board = config["target"]
-bootloader = json.loads((fw / "boards" / profile / "board.json").read_text())["bootloader"]
+bootloader = json.loads((board_dir / "board.json").read_text())["bootloader"]
 m5 = uiflow / "m5stack"
 ov = fw / "pyrt" / "overlay"
 
@@ -84,7 +85,7 @@ for source in ("mp_usbd.c", "mp_usbd_runtime.c"):
 
 # 3. Board: our sdkconfig fragment last, our frozen manifest, no Japanese/Korean 24 px fonts.
 bdir = f"boards/{board}"
-extra_manifest = fw / "boards" / profile / "micropython/manifest.py"
+extra_manifest = board_dir / "micropython/manifest.py"
 if extra_manifest.exists():
     with (m5 / "okl/manifest.py").open("a") as manifest:
         manifest.write("\n" + extra_manifest.read_text())

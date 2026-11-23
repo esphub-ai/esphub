@@ -48,9 +48,9 @@ runs:
     - name: Apply the esp-launcher overlay
       shell: bash
       run: |
-        target=$(jq -er .target "firmware/boards/$BOARD/micropython/profile.json")
+        target=$(jq -er .target "$BOARD_DIR/micropython/profile.json")
         echo "MP_TARGET=$target" >> "$GITHUB_ENV"
-        python3 firmware/pyrt/apply_overlay.py uiflow firmware "$BOARD" "$VERSION"
+        python3 firmware/pyrt/apply_overlay.py uiflow firmware "$BOARD" "$VERSION" "$BOARD_DIR"
     - name: Build
       working-directory: uiflow
       shell: bash

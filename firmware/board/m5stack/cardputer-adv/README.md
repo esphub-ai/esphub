@@ -10,6 +10,6 @@ Register this ESP32-S3 board as `cardputer-adv`. It has 8 MiB of flash, a 240 ×
 
 ## Display and keyboard check
 
-Deploy [hello.py](hello.py) using the Python OTA flow in the [repository README](../../../README.md#ota). In the new application session, check for `ESP Hub hello drawn: cardputer-adv 240 135`. Press the **A** key without Shift. The display should show `Key: a` and the application log should show `Keyboard event: 97`.
+Deploy [main.py](main.py) using the Python OTA flow in the [repository README](../../../../README.md#ota). In the new application session, check for `ESP Hub hello drawn: cardputer-adv 240 135`. Press the **A** key without Shift. The display should show `Key: a` and the application log should show `Keyboard event: 97`.
 
 The example uses M5Stack's `MatrixKeyboard` API. The [frozen module manifest](micropython/manifest.py) includes the keyboard and TCA8418 drivers. A change to that manifest selects the Cardputer-Adv MicroPython and USB setup tasks in [ci.json](ci.json).

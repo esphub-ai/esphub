@@ -34,4 +34,4 @@ runs:
           (cd components/launcher && sha256sum -c checksum)
         fi
         (cd components/micropython && sha256sum -c "$app.sha256")
-        python3 scripts/package-setup.py "$BOARD" "components/launcher/$kit" "components/micropython/$app.bin" dist
+        python3 scripts/package-setup.py "$BOARD" "$BOARD_DIR" "components/launcher/$kit" "components/micropython/$app.bin" dist
