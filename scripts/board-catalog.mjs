@@ -14,6 +14,7 @@ for (const vendor of await readdir(root, { withFileTypes: true })) {
       chip,
       flash_mb,
       bootloader,
+      preview = false,
       id = modelDir.name,
     } = JSON.parse(await file("board.json"));
     if (
@@ -33,6 +34,7 @@ for (const vendor of await readdir(root, { withFileTypes: true })) {
       chip,
       flash_mb,
       bootloader,
+      ...(preview ? { preview: true } : {}),
       directory: `firmware/board/${vendor.name}/${modelDir.name}`,
       hello: await file("main.py"),
     };
