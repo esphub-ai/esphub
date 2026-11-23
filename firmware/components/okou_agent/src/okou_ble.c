@@ -19,6 +19,7 @@
 #include "nimble/nimble_port_freertos.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
+#include "esp_idf_version.h"
 #include "mbedtls/ssl.h"
 #include "mbedtls/md.h"
 #include "mbedtls/platform_util.h"
@@ -166,11 +167,14 @@ static int tls_io(unsigned char *buf, size_t len, bool send)
 }
 static int push(void *ctx, const unsigned char *p, size_t n) { return tls_io((unsigned char *)p, n, true); }
 static int pull(void *ctx, unsigned char *p, size_t n) { return tls_io(p, n, false); }
+#if ESP_IDF_VERSION_MAJOR < 6
 static int rng(void *unused, unsigned char *out, size_t n)
 {
     esp_fill_random(out, n);
     return 0;
 }
+
+#endif
 
 static void command(cJSON *request, cJSON *reply)
 {
@@ -221,7 +225,9 @@ static void tls_session(void)
 #if defined(MBEDTLS_SSL_SESSION_TICKETS)
     mbedtls_ssl_conf_new_session_tickets(&conf, 0);
 #endif
+#if ESP_IDF_VERSION_MAJOR < 6
     mbedtls_ssl_conf_rng(&conf, rng, NULL);
+#endif
     if (mbedtls_ssl_conf_psk(&conf, session_key, 32, (const unsigned char *)"wifi", 4) ||
         mbedtls_ssl_setup(&ssl, &conf))
         goto end;
