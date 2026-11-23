@@ -350,8 +350,7 @@ const esp_partition_t *okou_launcher_partition(void)
 {
     const esp_partition_t *part = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, "bl");
     if (part) return part;
-    /* On an existing table, overwrite the launcher last booted on this device.
-     * Lookup must still work after an interrupted write erased its header. */
+    /* The runtime returns to the last bootloader that passed startup. */
     char label[17] = "";
     if (okou_nvs_get_str(OKOU_KEY_LSLOT, label, sizeof(label)) == ESP_OK &&
         (!strcmp(label, "launcher_a") || !strcmp(label, "launcher_b"))) {

@@ -61,7 +61,7 @@ runs:
       shell: bash
       run: |
         image="uiflow/m5stack/build-${MP_TARGET}/micropython.bin"
-        python3 -c 'import sys; assert open(sys.argv[1], "rb").read(400)[288:].startswith(("ESPHUB1/micropython/" + sys.argv[2] + "\0single-launcher-v1\0").encode())' "$image" "$BOARD"
+        python3 -c 'import sys; assert open(sys.argv[1], "rb").read(400)[288:].startswith(("ESPHUB1/micropython/" + sys.argv[2] + "\0dual-launcher-v1\0").encode())' "$image" "$BOARD"
         test "$(stat -c %s "$image")" -le 4194304
         grep -Fx "CONFIG_PM_ENABLE=y" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"
         grep -Fx "CONFIG_OKOU_BLE_WIFI=y" "uiflow/m5stack/build-${MP_TARGET}/sdkconfig"

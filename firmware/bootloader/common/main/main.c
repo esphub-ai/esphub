@@ -60,12 +60,6 @@ void app_main(void)
 {
     ESP_ERROR_CHECK(okou_nvs_init());
     const esp_partition_t *run = esp_ota_get_running_partition();
-    esp_ota_img_states_t st;
-    if (esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY)
-        ESP_ERROR_CHECK(esp_ota_mark_app_valid_cancel_rollback());
-    if (strcmp(run->label, "bl"))
-        ESP_ERROR_CHECK(okou_nvs_set_str(OKOU_KEY_LSLOT, run->label));
-
     uint8_t hold = okou_nvs_get_u8(OKOU_KEY_HOLD, 0);
     if (hold) {
         okou_nvs_erase(OKOU_KEY_HOLD);
@@ -99,6 +93,10 @@ void app_main(void)
              run->label, app ? "present" : "absent",
              has_pending, s_stay, hold, fail_boots, app_failed);
     prov_serial_start();
+    esp_ota_img_states_t st;
+    if (esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY)
+        ESP_ERROR_CHECK(esp_ota_mark_app_valid_cancel_rollback());
+    ESP_ERROR_CHECK(okou_nvs_set_str(OKOU_KEY_LSLOT, run->label));
     if (hold) {
         ESP_LOGI(TAG, "held in launcher; use USB setup or reboot target=app");
     }
