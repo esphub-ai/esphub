@@ -18,8 +18,10 @@
 #include "okou_install.h"
 #include "okou_agent.h"
 #include "okou_agent_ext.h"
-
 #include "sdkconfig.h"
+#if CONFIG_OKL_URL_OTA
+#include "esp_littlefs.h"
+#endif
 
 #define CHUNK 4096
 #define PROGRAM_LIMIT (32 * 1024)
@@ -35,9 +37,6 @@ typedef struct {
     char id[37];
 } inst_t;
 static volatile bool s_running;
-#if CONFIG_OKL_URL_OTA
-#include "esp_littlefs.h"
-#endif
 
 static const esp_partition_t *runtime_partition(void)
 {
@@ -161,7 +160,8 @@ static bool run_install(inst_t *in)
             emit_failed(in, "Install the matching single-slot OTA runtime first");
             return false;
         }
-        if (esp_ota_set_boot_partition(app) != ESP_OK) {
+        /* A prior user-program boot failure must not redirect maintenance back here. */
+        if (okou_nvs_set_u8(OKOU_KEY_FAIL_BOOTS, 0) != ESP_OK || esp_ota_set_boot_partition(app) != ESP_OK) {
             emit_failed(in, "Cannot boot runtime to update launcher");
             return false;
         }
