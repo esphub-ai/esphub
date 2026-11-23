@@ -1,6 +1,5 @@
-import { syncBle } from "./ble.js";
-import { enroll, publishWake } from "./iot.js";
-import { pull, retryDue } from "./commands.js";
+import { enroll, publishDownlink } from "./iot.js";
+import { retryDue } from "./commands.js";
 import { maxUploadBytes } from "./uploads.js";
 import { releaseResponse } from "./releases.js";
 import { Hono } from "hono";
@@ -103,71 +102,19 @@ async function authenticatedDevice(c) {
   if (!t) fail(401, "Device token required");
   const hash = await digest(t);
   const sql = c.get("sql"),
-    [d] =
-      await sql`SELECT id,boot_id,enrolled_boot FROM esphub.devices WHERE token_hash=${hash}`;
+    [d] = await sql`SELECT id FROM esphub.devices WHERE token_hash=${hash}`;
   if (!d) fail(401, "Invalid device token");
   return { ...d, hash, stub: c.env.DEVICE.get(c.env.DEVICE.idFromName(d.id)) };
 }
-api.put("/api/device/program/:pid", async (c) => {
-  const { stub } = await authenticatedDevice(c),
-    pid = c.req.param("pid");
-  let status = c.req.header("X-Program-Status");
-  if (
-    !/^[0-9a-f-]{8,36}$/i.test(pid) ||
-    !["available", "missing", "too_large", "unreadable"].includes(status)
-  )
-    fail(400, "Invalid program snapshot");
-  const bytes = await c.req.arrayBuffer();
-  if (bytes.byteLength > 32768) fail(413, "Program too large");
-  if (status !== "available" && bytes.byteLength)
-    fail(400, "Unexpected source");
-  let source = null;
-  if (status === "available") {
-    try {
-      source = new TextDecoder("utf-8", {
-        fatal: true,
-        ignoreBOM: true,
-      }).decode(bytes);
-    } catch {
-      status = "unreadable";
-    }
-  }
-  return stub.fetch("https://device/record-program", {
-    method: "POST",
-    body: JSON.stringify({ pid, status, source }),
-  });
-});
 function validBoot(id) {
   return typeof id === "string" && /^[a-f0-9]{32}$/.test(id);
 }
 api.post("/api/device/iot/enroll", async (c) => {
   const d = await authenticatedDevice(c),
-    db = c.get("sql"),
-    { csr, boot_id } = await c.req.json();
-  if (!validBoot(boot_id)) fail(400, "Invalid boot ID");
-  const result = await enroll(c.env, db, d.id, d.hash, csr);
-  const rows =
-    await db`UPDATE esphub.devices SET enrolled_boot=${boot_id} WHERE id=${d.id} AND token_hash=${d.hash} AND cert_ready
-      AND (enrolled_boot IS NOT DISTINCT FROM ${d.enrolled_boot}::text OR enrolled_boot=${boot_id}) RETURNING id`;
-  if (!rows.length) fail(409, "Enrollment changed");
-  return c.json(result);
-});
-api.post("/api/device/iot/pull", async (c) => {
-  const d = await authenticatedDevice(c),
-    { boot_id } = await c.req.json();
-  if (!validBoot(boot_id) || d.boot_id !== boot_id) fail(409, "Stale boot");
-  return c.json({ commands: await pull(c.get("sql"), d.id, boot_id) });
-});
-api.post("/api/device/ble/sync", async (c) => {
-  const d = await authenticatedDevice(c),
-    { generation } = await c.req.json();
-  if (
-    !Number.isSafeInteger(generation) ||
-    generation < 1 ||
-    generation >= 2147483647
-  )
-    fail(400, "Invalid BLE generation");
-  return c.json((await syncBle(c.get("sql"), d.id, d.hash, generation)) ?? {});
+    { csr, recover } = await c.req.json();
+  return c.json(
+    await enroll(c.env, c.get("sql"), d.id, d.hash, csr, recover === true),
+  );
 });
 // Only the IoT rule relay has this credential. Device identity and certificate
 // come from the broker's topic and principal, outside the device-controlled frame.
@@ -194,7 +141,7 @@ api.post("/internal/iot/uplink", async (c) => {
   if (!response.ok) return response;
   const ack = await response.json();
   if (frame.confirm === true)
-    await publishWake(c.env, device, {
+    await publishDownlink(c.env, device, {
       boot_id: frame.boot_id,
       mid: frame.mid,
       ...ack,

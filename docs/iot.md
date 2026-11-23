@@ -7,27 +7,27 @@ The bootloader and MicroPython share one device agent. Firmware keeps a single a
 | Operation | Device path | Evidence of completion |
 | --- | --- | --- |
 | Connect to a Wi-Fi network on site | BLE scan and join using an MCP-issued credential | The board reports the join result over the encrypted BLE session |
-| Save a network remotely | Cloud `wifi.add`, delivered through the command queue | MQTT receipt after the NVS write. The password is removed from the queue upon dispatch |
-| Rotate BLE credentials | HTTPS `POST /api/device/ble/sync` | The device reports its installed generation. The hub commits the pending key after confirmation and retries the same outstanding offer |
-| Enroll or reconnect to MQTT | HTTPS `POST /api/device/iot/enroll` with CSR and boot ID | Certificate and broker endpoint. The private key stays on the board |
-| Receive a command | MQTT wake followed by HTTPS `POST /api/device/iot/pull` | The pull returns one command and records its dispatch |
+| Save a network remotely | Cloud `wifi.add` via MQTT | Receipt after the NVS write. The queue erases the password on completion or timeout |
+| Rotate BLE credentials | MQTT hello includes `ble_generation`. Its ACK can include `rotate: {generation, secret}` | After committing to NVS the device sends `ble.confirm` with the installed generation. A later hello also confirms it |
+| Obtain MQTT credentials | HTTPS `POST /api/device/iot/enroll` with `{csr}` | NVS stores the certificate, broker endpoint and device ID, bound to the registration and hub. The private key stays on the board |
+| Receive a command | QoS 1 MQTT downlink `{boot_id, command: {id, seq, op, args}}` | The device executes it and returns `{t:"res", id, ok, data}` or an error |
 | Report device state and execution | QoS 1 MQTT publish to `devices/<uuid>/up` | The hub processes hello, receipts, logs, metrics and events, including drawing events and final OTA results |
-| Download an OTA artifact | Stream an HTTPS GET with board and image checks | Matching install result, then verification of the next boot |
-| Inspect resident main.py | Runtime-only authenticated HTTPS PUT of the file snapshot | `programs.get` returns the source and process ID |
+| Download an OTA artifact | The bootloader persists the job, destroys its MQTT client and streams an HTTPS GET | After HTTPS cleanup, a terminal MQTT event reports success or failure. Its receipt survives a reboot |
+| Inspect the last cloud-installed main.py | `programs.get` looks up the latest confirmed Python transfer | Transfer ID, SHA-256 of installed bytes, byte count. USB edits are outside this inventory |
 
 ## Command delivery and receipts
 
-The API commits the command before publishing a wake. The device pulls on subscription or a pending-work wake. A pull carries a flag when more commands are already queued, so finishing the last command needs only its MQTT report. Pull selects the oldest eligible command and atomically changes its state from `queued` to `dispatched`. A request ID identifies one command and payload. Concurrent pulls and retries cannot dispatch that command twice.
+The API queues commands in order, including while a device is offline. It waits for a hello on the current broker connection and dispatches one command at a time. The MQTT subscription is `devices/<uuid>/wake`. It carries complete commands, including their arguments, and application ACKs. An idle subscription sends no work requests. MQTT reconnects and cold boots reuse the cached grant. Two consecutive unsuccessful connection attempts trigger enrollment with `recover: true` before another MQTT client starts. The hub checks the broker certificate, reuses a valid certificate, and replaces a missing or expired one. A disabled registration requires reissue.
 
-`dispatched` means the server returned the command for delivery. An interrupted pull can leave the board without the command. The server reports `unknown` after the receipt deadline and never automatically replays dispatched work. Queued commands expire after five minutes. A valid late receipt can resolve an unknown result. Reboots complete when the requested next boot is observed. Install commands complete on a matching `install.done` or `install.failed` event. Check the next boot separately to verify that the program started.
+Commands carry a stable ID, a per-device sequence number and the target boot. A reconnect or missed publication can repeat a dispatch to that boot. The SDK remembers the last sequence across MQTT connections, suppresses duplicate execution and can resend an unacknowledged receipt. A new boot rejects messages addressed to the previous boot. Reboots complete when the hub observes the requested next boot. An install completes on a matching `install.done` or `install.failed` with the original transfer ID, including a receipt delivered by the next boot. Verify application startup separately.
 
-A Durable Object alarm retries queued wakes. A periodic sweep also recovers interrupted alarms and certificate revocations. Reissuing a token invalidates pending commands and the previous certificate.
+The queue expires undelivered commands after five minutes. A dispatched command with no receipt becomes `unknown` after 90 seconds, or ten minutes for an install. A matching late receipt can resolve it. A device alarm and a scheduled sweep retry outstanding work. Reissuing a registration token retires the previous certificate and clears its commands.
 
 ## MQTT reports
 
-Devices subscribe to their own `devices/<uuid>/wake` topic. A pending notification carries no command or credentials. Each uplink contains a `frame` with a per-boot message ID. The AWS rule attaches the device UUID from the topic and the certificate ID from the broker principal. A Lambda relay forwards that envelope to the Worker. The Worker verifies the relay, registered certificate and enrolled boot. The device policy scopes publish and subscribe to the attached thing.
+Each uplink contains a `frame` with a per-boot message ID. The AWS rule attaches the device UUID from the topic and the certificate ID from the broker principal. A Lambda relay forwards the envelope to the Worker. The Worker checks the registered certificate and the active boot. The device policy scopes publish and subscribe to the attached thing.
 
-Hello, command receipts, install outcomes and log batches request an application acknowledgement on the existing downlink. The ACK echoes the boot and message ID. Hello confirms the hub has recorded the boot before firmware can cancel rollback. Log acknowledgements carry the stored source sequence. Metrics and ordinary events need only MQTT QoS 1. Periodic logging captures a finite batch every ten minutes. An empty buffer produces no upload. `logs.flush` requests a batch immediately. Unacknowledged RAM logs can be lost on a power cut.
+Hello, BLE confirmations, command receipts, install outcomes and log batches request an application acknowledgement on the downlink. The ACK echoes the boot ID and message ID. Hello confirms that the hub has recorded the boot before firmware can cancel rollback. Log acknowledgements carry the stored source sequence. Metrics and ordinary events use MQTT QoS 1. Periodic logging captures a finite batch every ten minutes. An empty buffer produces no upload. `logs.flush` requests a batch immediately. Unacknowledged RAM logs can be lost on a power cut.
 
 ## Deployment
 

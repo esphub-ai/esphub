@@ -6,6 +6,6 @@ The bootloader accepts the device token and BLE bootstrap key over USB and provi
 
 The runtime accepts application data through okou.read_input() and writes print() output to USB and EspHub. Python deployments use bootloader HTTPS OTA.
 
-In the device workspace, **Firmware** shows the bootloader, interpreter and runtime build separately. On boot the runtime snapshots the selected `/flash/main.py`, then sends it over authenticated HTTPS after the Hub acknowledges the boot. The device owner can read that snapshot offline in Firmware or with `programs.get`. Source is limited to 32 KiB and kept out of boot metadata and serial logs.
+In the device workspace, **Firmware** shows the bootloader, interpreter and runtime build separately. The last confirmed cloud installation of `main.py` is available offline through Firmware or `programs.get`, with its transfer ID, SHA-256 and byte count. The runtime does not read or upload local program source during boot.
 
 The bootloader leaves the board power controller in its existing state. On StopWatch, an application that arms the M5PM1 watchdog must disarm it before handing control to the bootloader for an update.

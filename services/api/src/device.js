@@ -1,6 +1,8 @@
 import { withDatabase } from "./database.js";
-import { enqueue, receipt, retryDue, nextRetry } from "./commands.js";
+import { dispatch, enqueue, receipt, retryDue, nextRetry } from "./commands.js";
 import { DurableObject } from "cloudflare:workers";
+import { connectedSince } from "./iot.js";
+import { syncBle } from "./ble.js";
 import { Uploads } from "./uploads.js";
 import { Stream } from "./streams.js";
 import { softwareInventory } from "./software.js";
@@ -90,42 +92,6 @@ export class Device extends DurableObject {
         : new Response(null, { status: 404 });
     }
     const boot = this.current()?.pid;
-    if (path === "/record-program") {
-      const { pid, status, source } = await req.json();
-      const current = this.current()?.pid;
-      const row =
-        current === pid &&
-        this.db.exec("SELECT info FROM boots WHERE pid=?", pid).toArray()[0];
-      if (
-        !row ||
-        softwareInventory(JSON.parse(row.info)).application?.kind !==
-          "micropython"
-      )
-        return Response.json(
-          { error: "Not the current MicroPython boot" },
-          { status: 409 },
-        );
-      await this.ctx.storage.put("main.py", {
-        process_id: pid,
-        status,
-        source,
-      });
-      return Response.json({ saved: true });
-    }
-    if (path === "/program") {
-      const row =
-        boot &&
-        this.db.exec("SELECT info FROM boots WHERE pid=?", boot).toArray()[0];
-      const app = this.software(row && JSON.parse(row.info)).application;
-      if (app?.kind !== "micropython")
-        return Response.json({ status: app ? "not_applicable" : "unreported" });
-      const snapshot = await this.ctx.storage.get("main.py");
-      return Response.json(
-        snapshot?.process_id === app.process_id
-          ? snapshot
-          : { process_id: app.process_id, status: "unreported" },
-      );
-    }
     if (path === "/summary") {
       const row =
         boot &&
@@ -205,8 +171,8 @@ export class Device extends DurableObject {
     const pid = m.boot_id;
     return withDatabase(this.env, async (db) => {
       const [d] =
-        await db`SELECT board,boot_id FROM esphub.devices WHERE id=${device}
-        AND cert_ready AND cert_id=${principal} AND enrolled_boot=${pid}`;
+        await db`SELECT board,boot_id,token_hash FROM esphub.devices WHERE id=${device}
+        AND cert_ready AND cert_id=${principal}`;
       if (!d)
         return Response.json({ error: "Stale enrollment" }, { status: 409 });
       if (m.t === "hello") {
@@ -215,9 +181,21 @@ export class Device extends DurableObject {
             { error: "Board or role mismatch" },
             { status: 409 },
           );
+        if (
+          d.boot_id !== pid &&
+          this.db.exec("SELECT pid FROM boots WHERE pid=?", pid).toArray()
+            .length
+        )
+          return Response.json({ error: "Stale boot" }, { status: 409 });
+        const session = await connectedSince(this.env, device);
+        if (!session)
+          return Response.json(
+            { error: "MQTT session closed" },
+            { status: 409 },
+          );
         const rows =
-          await db`UPDATE esphub.devices SET boot_id=${pid},boot_info=${JSON.stringify(m)}::text::jsonb
-          WHERE id=${device} AND cert_id=${principal} AND enrolled_boot=${pid} RETURNING id`;
+          await db`UPDATE esphub.devices SET boot_id=${pid},mqtt_connected_since=${session},boot_info=${JSON.stringify(m)}::text::jsonb
+          WHERE id=${device} AND cert_id=${principal} RETURNING id`;
         if (!rows.length)
           return Response.json({ error: "Stale enrollment" }, { status: 409 });
         if (this.current()?.pid !== pid)
@@ -236,10 +214,26 @@ export class Device extends DurableObject {
         );
         const tx = this.stream(pid, "tx");
         await tx.init();
-        return Response.json({ seq: (await tx.head()).source });
+        await dispatch(db, this.env, device, pid, true);
+        const rotate = await syncBle(
+          db,
+          device,
+          d.token_hash,
+          m.ble_generation,
+        );
+        return Response.json({ seq: (await tx.head()).source, rotate });
       }
       if (d.boot_id !== pid || this.current()?.pid !== pid)
         return Response.json({ error: "Hello required" }, { status: 409 });
+      if (m.t === "ble.confirm") {
+        const rotate = await syncBle(
+          db,
+          device,
+          d.token_hash,
+          m.ble_generation,
+        );
+        return Response.json({ rotate });
+      }
       if (m.t === "res") {
         if (
           typeof m.ok !== "boolean" ||
@@ -248,6 +242,7 @@ export class Device extends DurableObject {
           return Response.json({ error: "Invalid receipt" }, { status: 400 });
         try {
           await receipt(db, device, pid, m);
+          await dispatch(db, this.env, device);
         } catch (e) {
           if (e.status === 409)
             return Response.json({ error: e.message }, { status: 409 });
@@ -268,6 +263,7 @@ export class Device extends DurableObject {
         await db`UPDATE esphub.device_commands SET state=${m.name === "install.done" ? "succeeded" : "failed"},
           result=${JSON.stringify(m.data)}::text::jsonb,args='{}',next_wake=NULL
           WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation='install' AND state IN ('dispatched','unknown')`;
+        await dispatch(db, this.env, device);
       }
       return Response.json((await this.recordFrame(pid, m)) ?? {});
     });
