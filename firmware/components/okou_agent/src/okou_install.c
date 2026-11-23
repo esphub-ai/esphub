@@ -226,9 +226,11 @@ static bool run_install(inst_t *in)
     const char *fail = NULL;
     if (!c || !buf || (!script && !header)) { fail = "Out of memory"; goto out; }
     if (!target || target->address == esp_ota_get_running_partition()->address) { fail = "Incompatible partition layout"; goto out; }
+#if CONFIG_OKL_URL_OTA
     if (script && !compatible_runtime(target, board, false)) {
         fail = "Install the matching URL OTA MicroPython runtime first"; goto out;
     }
+#endif
     uint32_t limit = script ? PROGRAM_LIMIT : target->size;
     okou_set_install_state("downloading");
     fail = open_download(c, private_program, &safe_redirect, &length);
