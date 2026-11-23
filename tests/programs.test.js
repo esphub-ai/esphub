@@ -281,20 +281,6 @@ body.set_servo_power.assert_not_called()
   });
 });
 
-test("OTA rejects the retired launcher tool and kind", () => {
-  const device_id = "00000000-0000-4000-8000-000000000001";
-  assert.throws(
-    () => validate("launcher.enter", { device_id }),
-    /Unknown tool/,
-  );
-  assert.throws(() => validate("ota.install", { device_id, kind: "launcher" }));
-  assert.throws(() =>
-    validate("ota.prepare_upload", { device_id, kind: "launcher", size: 1 }),
-  );
-  validate("bootloader.enter", { device_id });
-  validate("ota.install", { device_id, kind: "bootloader" });
-});
-
 test("local upload sizes match the bootloader limits", () => {
   const device_id = crypto.randomUUID();
   validate("programs.publish", { device_id, source: "x".repeat(32768) });

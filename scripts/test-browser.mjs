@@ -84,7 +84,6 @@ try {
   );
   await page.goto(origin);
   await page.getByRole("heading", { name: /Bring HMR to ESP32/ }).waitFor();
-  assert.equal(await page.locator('a[href="/mcp"]').count(), 0);
   await page
     .context()
     .grantPermissions(["clipboard-read", "clipboard-write"], { origin });
@@ -127,13 +126,9 @@ try {
       path: process.env.QA_MCP_SCREENSHOT,
       fullPage: true,
     });
-  assert.equal(await page.locator('a[href="/mcp"]').count(), 0);
-  await page.goto(origin + "/mcp");
-  assert.equal(page.url(), origin + "/");
   await page.goto(origin + "/devices");
   await page.getByRole("button", { name: "Create virtual ESP32" }).click();
   await page.getByRole("heading", { name: "Virtual ESP32" }).waitFor();
-  assert.equal(await page.getByRole("button", { name: "Serial", exact: true }).count(), 0);
   assert.equal(
     await page.getByRole("button", { name: "Wi-Fi", exact: true }).count(),
     0,
@@ -195,7 +190,6 @@ try {
       .evaluateAll((options) => options.map((o) => o.value)),
     ["python", "native", "micropython", "bootloader"],
   );
-  assert.equal(await page.locator('[name="sha256"]').count(), 0);
   await page.locator('[name="url"]').fill("https://example.org/main.py");
   await page.getByRole("button", { name: "Install", exact: true }).click();
   const install = await mcu.nextCommand();

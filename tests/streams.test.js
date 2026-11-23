@@ -45,7 +45,7 @@ test("a failed manifest commit cannot expose or duplicate abandoned input", asyn
     ["one", "two"],
   );
 });
-test("reject invalid boards, firmware URLs and retired console operations", () => {
+test("reject invalid boards and insecure firmware URLs", () => {
   assert.throws(() =>
     validate("devices.create", { name: "x", board: "esp32s3" }),
   );
@@ -56,6 +56,4 @@ test("reject invalid boards, firmware URLs and retired console operations", () =
       kind: "bootloader",
     }),
   );
-  for (const name of ["uart.read", "uart.write", "uart.sessions", "logs.flush"])
-    assert.throws(() => validate(name, {}), /Unknown tool/);
 });

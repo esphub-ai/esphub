@@ -35,7 +35,7 @@ static const ble_uuid128_t channel = BLE_UUID128_INIT(0x02, 0x21, 0x91, 0xfa, 0x
 static StreamBufferHandle_t rx, tx;
 static TaskHandle_t worker;
 static SemaphoreHandle_t key_lock;
-static uint8_t address_type, root_key[32], session_key[32];
+static uint8_t address_type, root_key[32], tls_psk[32];
 static atomic_uint connection = NO_CONN;
 static atomic_bool synced;
 static atomic_bool host_owned;
@@ -75,15 +75,6 @@ esp_err_t okou_ble_install(const char *hex)
     esp_err_t rc = okou_nvs_set_str("ble_key", hex);
     xSemaphoreGive(key_lock);
     return rc;
-}
-
-static bool derive(const char *label, const uint8_t nonce[8], uint8_t out[32])
-{
-    uint8_t buf[64];
-    int n = snprintf((char *)buf, sizeof(buf), "esphub/wifi/uuid-v1/%s", label) + 1;
-    memcpy(buf + n, nonce, 8);
-    return mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), root_key, sizeof(root_key), buf,
-                           n + 8, out) == 0;
 }
 
 static int gap_event(struct ble_gap_event *e, void *unused)
@@ -191,7 +182,7 @@ static void tls_session(void)
 #if ESP_IDF_VERSION_MAJOR < 6
     mbedtls_ssl_conf_rng(&conf, rng, NULL);
 #endif
-    if (mbedtls_ssl_conf_psk(&conf, session_key, 32, (const unsigned char *)"wifi", 4) ||
+    if (mbedtls_ssl_conf_psk(&conf, tls_psk, 32, (const unsigned char *)"wifi", 4) ||
         mbedtls_ssl_setup(&ssl, &conf))
         goto end;
     mbedtls_ssl_set_bio(&ssl, NULL, push, pull, NULL);
@@ -264,23 +255,16 @@ static void radio(void *unused)
         } while (connection == NO_CONN && ble_gap_adv_active());
         if (connection == NO_CONN) continue;
 
-        // The host sends the issued nonce and tag as the first 16 stream bytes.
-        uint8_t preface[16], tag[32];
-        bool has_key = read_key(root_key);
+        static const unsigned char label[] = "esphub/wifi/tls-psk";
         io_deadline = esp_timer_get_time() + 45000000;
-        size_t pos = 0;
-        while (pos < sizeof(preface)) {
-            int n = pull(NULL, preface + pos, sizeof(preface) - pos);
-            if (n <= 0) break;
-            pos += n;
-        }
-        if (has_key && pos == sizeof(preface) && derive("beacon", preface, tag) &&
-            memcmp(tag, preface + 8, 8) == 0 && derive("session", preface, session_key))
+        if (read_key(root_key) &&
+            mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), root_key, sizeof(root_key),
+                            label, sizeof(label) - 1, tls_psk) == 0)
             tls_session();
         if (connection != NO_CONN) ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
         while (connection != NO_CONN)
             vTaskDelay(pdMS_TO_TICKS(50));
-        mbedtls_platform_zeroize(session_key, sizeof(session_key));
+        mbedtls_platform_zeroize(tls_psk, sizeof(tls_psk));
         mbedtls_platform_zeroize(root_key, sizeof(root_key));
     }
 }

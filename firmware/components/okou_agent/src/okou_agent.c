@@ -16,7 +16,6 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
-#include "esp_check.h"
 #include "esp_timer.h"
 #include "esp_pm.h"
 #include "freertos/semphr.h"
@@ -893,14 +892,6 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     for (int i = 0; i < 4; ++i) {
         snprintf(s_boot_id + 8*i, 9, "%08" PRIx32, esp_random());
     }
-    // A launcher built before rollback was disabled can leave this image pending.
-    // Clear that legacy state on migration. Current writers never create it.
-    esp_ota_img_states_t state;
-    if (esp_ota_get_state_partition(esp_ota_get_running_partition(), &state) == ESP_OK &&
-        state == ESP_OTA_IMG_PENDING_VERIFY) {
-        ESP_RETURN_ON_ERROR(esp_ota_mark_app_valid_cancel_rollback(), TAG, "confirm legacy OTA selection");
-    }
-
     okou_registry_builtin_cmds();
     s_cfg_ok = load_config();
     e = okou_net_start(g_okou_cfg.manage_network);

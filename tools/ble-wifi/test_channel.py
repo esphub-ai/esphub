@@ -1,8 +1,6 @@
 """Host protocol test using a real TLS peer behind a 20-byte GATT transport."""
 
 import json
-import hashlib
-import hmac
 import os
 import ssl
 import unittest
@@ -10,7 +8,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from macos import CHANNEL, SERVICE, Channel, direct_session, unwrap
+from macos import SERVICE, Channel, direct_session, unwrap
 
 
 class Device:
@@ -70,26 +68,17 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(device.requests, [])
 
     async def test_direct_discovery_and_reconnect(self):
-        from bleak.exc import BleakError
-
-        nonce = bytes(range(8))
-        def issue(secret):
-            def derive(label):
-                return hmac.digest(secret, b"esphub/wifi/uuid-v1/" + label + b"\0" + nonce, hashlib.sha256)
-            return {"beacon": (nonce + derive(b"beacon")[:8]).hex(), "psk": derive(b"session").hex()}
-
-        current = issue(b"b" * 32)
+        psk = os.urandom(32)
         devices = [SimpleNamespace(address=name) for name in ("neighbor", "target")]
-        attempts, closed = [], []
+        closed = []
         async def find(predicate, *, timeout, service_uuids):
             self.assertEqual(service_uuids, [SERVICE])
             return next((d for d in devices if predicate(d, SimpleNamespace(service_uuids=[SERVICE]))), None)
 
         class Client(Device):
             def __init__(self, device):
-                super().__init__(bytes.fromhex(current["psk"]))
+                super().__init__(psk if device.address == "target" else os.urandom(32))
                 self.address = device.address
-                self.preface = None
 
             async def __aenter__(self):
                 return self
@@ -97,26 +86,14 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             async def __aexit__(self, *_):
                 closed.append(self.address)
 
-            async def write_gatt_char(self, uuid, data, response):
-                if self.preface is None:
-                    assert uuid == CHANNEL and response and len(data) == 16
-                    self.preface = data.hex()
-                    attempts.append((self.address, self.preface))
-                    if self.address != "target" or self.preface != current["beacon"]:
-                        raise BleakError("disconnected")
-                    return
-                await super().write_gatt_char(uuid, data, response)
-
         with patch("bleak.BleakClient", Client), patch("bleak.BleakScanner.find_device_by_filter", find):
             for _ in range(2):
-                async with direct_session(current) as session:
+                async with direct_session({"psk": psk.hex()}) as session:
                     self.assertEqual(await session.request("wifi.scan"), {"ssids": ["lab"]})
-        expected = [(d.address, current["beacon"]) for d in devices] * 2
-        self.assertEqual(attempts, expected)
-        self.assertEqual(closed, [address for address, _ in expected])
+        self.assertEqual(closed, ["neighbor", "target"] * 2)
 
     def test_cli_envelopes(self):
-        credential = {"psk": "example", "beacon": "example"}
+        credential = {"psk": "example"}
         self.assertEqual(
             unwrap(
                 {
