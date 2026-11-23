@@ -9,7 +9,7 @@ The launcher and MicroPython share one device agent. Firmware keeps a single aut
 | Rotate BLE credentials | HTTPS `POST /api/device/ble/sync` | The device reports its installed generation. The hub commits the pending key after confirmation and retries the same outstanding offer |
 | Enroll or reconnect to MQTT | HTTPS `POST /api/device/iot/enroll` with CSR and boot ID | Certificate and broker endpoint. The private key stays on the board |
 | Receive a command | MQTT wake followed by HTTPS `POST /api/device/iot/pull` | The pull returns one command and records its dispatch |
-| Report device state and execution | QoS 1 MQTT publish to `devices/<uuid>/up` | The hub processes hello, receipts, logs, metrics and events, including drawing and OTA progress and completion |
+| Report device state and execution | QoS 1 MQTT publish to `devices/<uuid>/up` | The hub processes hello, receipts, logs, metrics and events, including drawing events and final OTA results |
 | Download an OTA artifact | Stream an HTTPS GET with board and image checks | Matching install result, then verification of the next boot |
 | Inspect resident main.py | Runtime-only authenticated HTTPS PUT of the file snapshot | `programs.get` returns the source and process ID |
 
