@@ -205,7 +205,7 @@ export class Device extends DurableObject {
     const pid = m.boot_id;
     return withDatabase(this.env, async (db) => {
       const [d] =
-        await db`SELECT board,boot_id FROM esphub.devices WHERE id=${device}
+        await db`SELECT board,boot_id,boot_info->'proto' AS proto FROM esphub.devices WHERE id=${device}
         AND cert_ready AND cert_id=${principal} AND enrolled_boot=${pid}`;
       if (!d)
         return Response.json({ error: "Stale enrollment" }, { status: 409 });
@@ -238,7 +238,7 @@ export class Device extends DurableObject {
         await tx.init();
         return Response.json({ seq: (await tx.head()).source });
       }
-      if (d.boot_id !== pid || this.current()?.pid !== pid)
+      if (d.proto !== 2 || d.boot_id !== pid || this.current()?.pid !== pid)
         return Response.json({ error: "Hello required" }, { status: 409 });
       if (m.t === "res") {
         if (
