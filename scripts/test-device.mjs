@@ -401,6 +401,7 @@ try {
     409,
   );
   assert.equal((await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, { t: "log", lines: [] })).status, 400);
+  assert.equal((await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, { t: "metric", items: [] })).status, 400);
   const sync = async generation =>
     (await mcu.send({t:"ble.confirm", ble_generation:generation})).rotate;
   const offer = mcu.lastHello.rotate;
@@ -457,7 +458,6 @@ try {
     await sql`SELECT args,result FROM esphub.device_commands WHERE id=${save.id}`;
   assert.ok(!JSON.stringify(stored).includes(wifi.password));
   await mcu.send({ t: "event", name: "draw.done", data: { rotation: 1 } });
-  await mcu.send({ t: "metric", items: [["draw_ms", 10, 750]] });
 
   const source = 'print("café")';
   const staged = await op("programs.publish", { ...id, source });
@@ -565,7 +565,7 @@ try {
     (
       await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
         boot_id: app,
-        t: "metric", items: [],
+        t: "event", name: "draw.done",
       })
     ).status,
     409,

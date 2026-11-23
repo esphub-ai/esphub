@@ -226,10 +226,9 @@ export class Device extends DurableObject {
         }
         return Response.json({});
       }
-      if (!["event", "metric"].includes(m.t))
+      if (m.t !== "event")
         return Response.json({ error: "Unknown frame" }, { status: 400 });
       if (
-        m.t === "event" &&
         ["install.done", "install.failed"].includes(m.name) &&
         /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(
           m.data?.transfer_id,
@@ -241,44 +240,36 @@ export class Device extends DurableObject {
           WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation='install' AND state IN ('dispatched','unknown')`;
         await dispatch(db, this.env, device);
       }
-      return Response.json((await this.recordFrame(pid, m)) ?? {});
+      if (typeof m.name === "string") await this.recordEvent(pid, m);
+      return Response.json({});
     });
   }
-  async recordFrame(pid, m) {
+  async recordEvent(pid, m) {
+    const tx = this.stream(pid, "tx");
+    // QoS 1 and the relay can redeliver out of order. Repair a previous R2
+    // append if the process stopped before its SQLite dedup entry was written.
     if (
-      (m.t === "event" && typeof m.name === "string") ||
-      (m.t === "metric" && Array.isArray(m.items))
-    ) {
-      const tx = this.stream(pid, "tx");
-      // QoS 1 and the relay can redeliver out of order. Repair a previous R2
-      // append if the process stopped before its SQLite dedup entry was written.
-      if (
-        this.db
-          .exec("SELECT mid FROM uplink_events WHERE mid=?", m.mid)
-          .toArray().length
-      )
-        return {};
-      const head = await tx.head();
-      if (head.telemetryMid)
-        this.db.exec(
-          "INSERT OR IGNORE INTO uplink_events VALUES(?)",
-          head.telemetryMid,
-        );
-      if (head.telemetryMid === m.mid) return {};
-      await tx.append(
-        [
-          {
-            at: new Date().toISOString(),
-            text:
-              m.t === "metric"
-                ? "metric " + JSON.stringify(m.items)
-                : m.name + " " + JSON.stringify(m.data ?? {}),
-          },
-        ],
-        { telemetryMid: m.mid },
+      this.db
+        .exec("SELECT mid FROM uplink_events WHERE mid=?", m.mid)
+        .toArray().length
+    )
+      return;
+    const head = await tx.head();
+    if (head.telemetryMid)
+      this.db.exec(
+        "INSERT OR IGNORE INTO uplink_events VALUES(?)",
+        head.telemetryMid,
       );
-      this.db.exec("INSERT OR IGNORE INTO uplink_events VALUES(?)", m.mid);
-    }
-    return null;
+    if (head.telemetryMid === m.mid) return;
+    await tx.append(
+      [
+        {
+          at: new Date().toISOString(),
+          text: m.name + " " + JSON.stringify(m.data ?? {}),
+        },
+      ],
+      { telemetryMid: m.mid },
+    );
+    this.db.exec("INSERT OR IGNORE INTO uplink_events VALUES(?)", m.mid);
   }
 }

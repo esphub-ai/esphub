@@ -10,7 +10,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
-#include <math.h>
 #include <time.h>
 #include <stdatomic.h>
 #include "freertos/FreeRTOS.h"
@@ -36,9 +35,7 @@
 #define US_PER_MS 1000LL
 #define BACKOFF_RESET_US (60 * 1000000LL)
 #define CONNECT_TIMEOUT_US (30 * 1000000LL)
-#define FLUSH_INTERVAL_US (200 * 1000LL)
 #define BACKOFF_MAX_MS 60000
-#define METRIC_RING 32
 #define MAX_OPS 8
 
 okou_config_t g_okou_cfg = OKOU_CONFIG_DEFAULT();
@@ -48,12 +45,6 @@ typedef struct {
     char name[24];
     cJSON *argv;
 } poll_job_t;
-
-typedef struct {
-    char name[24];
-    uint32_t ms;
-    double v;
-} metric_t;
 
 typedef struct {
     char op[20];
@@ -104,12 +95,11 @@ void okou_resume_mqtt(void)
 }
 #endif
 static volatile bool s_mqtt_up, s_hello_acked, s_mqtt_broken, s_reload;
-static int64_t s_conn_start_us, s_up_since_us, s_last_flush_us, s_next_connect_us;
+static int64_t s_conn_start_us, s_up_since_us, s_next_connect_us;
 static uint32_t s_backoff_ms = 1000;
 static volatile int64_t s_reboot_at_us;
 static char s_boot_id[33];
 static bool s_rolled_back;
-static char *s_txbuf;
 static okou_hooks_t s_hooks;
 static char s_install_state[20] = "queued";
 static char s_inflight_id[37];
@@ -125,9 +115,6 @@ static op_t s_ops[MAX_OPS];
 static int s_nops;
 static uint32_t s_events_dropped;
 
-static metric_t s_metrics[METRIC_RING];
-static uint32_t s_mhead, s_mcount, s_mdropped;
-static portMUX_TYPE s_mmux = portMUX_INITIALIZER_UNLOCKED;
 static portMUX_TYPE s_rmux = portMUX_INITIALIZER_UNLOCKED;
 
 static int64_t now_us(void)
@@ -285,26 +272,6 @@ void okou_event(const char *name, const char *json)
         cJSON_AddStringToObject(data, "text", json);
     }
     okou_event_json(name, data);
-}
-
-void okou_metric(const char *name, double value)
-{
-    uint32_t ms = (uint32_t)(now_us() / 1000);
-    portENTER_CRITICAL_SAFE(&s_mmux);
-    uint32_t idx;
-    if (s_mcount == METRIC_RING) {
-        idx = s_mhead;
-        s_mhead = (s_mhead + 1) % METRIC_RING;
-        s_mdropped++;
-    } else {
-        idx = (s_mhead + s_mcount) % METRIC_RING;
-        s_mcount++;
-    }
-    strlcpy(s_metrics[idx].name, name, sizeof(s_metrics[idx].name));
-    s_metrics[idx].ms = ms;
-    s_metrics[idx].v = value;
-    portEXIT_CRITICAL_SAFE(&s_mmux);
-    okou_agent_notify();
 }
 
 /* ------------------------------------------------------------------ hello / status */
@@ -469,63 +436,6 @@ static bool send_hello(void)
         return ok;
     }
     return false;
-}
-
-/* ------------------------------------------------------------------ flushing */
-
-static void fmt_number(char *b, size_t n, double v)
-{
-    if (!isfinite(v)) {
-        strlcpy(b, "null", n);
-    } else {
-        snprintf(b, n, "%.9g", v);
-    }
-}
-
-static void flush_metrics(void)
-{
-    size_t cap = CONFIG_OKOU_TX_FRAME_MAX;
-    size_t pos = 0;
-    int count = 0;
-    for (;;) {
-        metric_t m;
-        bool have = false;
-        portENTER_CRITICAL(&s_mmux);
-        if (s_mcount) {
-            m = s_metrics[s_mhead];
-            s_mhead = (s_mhead + 1) % METRIC_RING;
-            s_mcount--;
-            have = true;
-        }
-        portEXIT_CRITICAL(&s_mmux);
-        if (have) {
-            if (count == 0) {
-                pos = (size_t)snprintf(s_txbuf, cap, "{\"t\":\"metric\",\"items\":[");
-            }
-            char num[32];
-            fmt_number(num, sizeof(num), m.v);
-            if (count) {
-                s_txbuf[pos++] = ',';
-            }
-            s_txbuf[pos++] = '[';
-            s_txbuf[pos++] = '"';
-            int e = okou_json_escape(s_txbuf + pos, cap - pos - 64, m.name, strnlen(m.name, sizeof(m.name)));
-            pos += e > 0 ? (size_t)e : 0;
-            pos += (size_t)snprintf(s_txbuf + pos, cap - pos, "\",%" PRIu32 ",%s]", m.ms, num);
-            count++;
-        }
-        if ((!have || pos + 128 > cap) && count) {
-            s_txbuf[pos++] = ']';
-            s_txbuf[pos++] = '}';
-            s_txbuf[pos] = '\0';
-            send_text(s_txbuf, pos);
-            count = 0;
-            pos = 0;
-        }
-        if (!have) {
-            break;
-        }
-    }
 }
 
 static void drain_txq(void)
@@ -1069,10 +979,6 @@ static void agent_task(void *arg)
                 service_ble_offer();
 #endif
             }
-            if (now - s_last_flush_us >= FLUSH_INTERVAL_US) {
-                s_last_flush_us = now;
-                flush_metrics();
-            }
             if (!okou_net_has_ip()) {
                 mqtt_teardown("network down");
             } else if (now - s_up_since_us >= BACKOFF_RESET_US) {
@@ -1085,17 +991,10 @@ static void agent_task(void *arg)
         if (rb && now >= rb) do_reboot();
 
         // Housekeeping is bounded to one second. Transport and producer callbacks
-        // wake us immediately. Keep shorter deadlines for batching and delayed reboot.
+        // wake us immediately. Honor an earlier reboot deadline.
         now = now_us();
         int64_t deadline = now + 1000000;
         if (rb && rb < deadline) deadline = rb;
-        if (s_mqtt_up) {
-            portENTER_CRITICAL(&s_mmux);
-            bool metrics = s_mcount != 0;
-            portEXIT_CRITICAL(&s_mmux);
-            if (metrics && s_last_flush_us + FLUSH_INTERVAL_US < deadline)
-                deadline = s_last_flush_us + FLUSH_INTERVAL_US;
-        }
         if (deadline > now)
             xSemaphoreTake(s_wake, pdMS_TO_TICKS((deadline - now) / 1000) + 1);
     }
@@ -1174,10 +1073,6 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     }
 
     okou_registry_builtin_cmds();
-    s_txbuf = okou_malloc_large(CONFIG_OKOU_TX_FRAME_MAX + 1);
-    if (!s_txbuf) {
-        return ESP_ERR_NO_MEM;
-    }
     s_cfg_ok = load_config();
     e = okou_net_start(g_okou_cfg.manage_network);
     if (e != ESP_OK) {
