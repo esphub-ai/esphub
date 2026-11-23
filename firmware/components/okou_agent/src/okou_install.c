@@ -36,8 +36,7 @@ typedef struct {
 } inst_t;
 static volatile bool s_running;
 #if CONFIG_OKL_URL_OTA
-esp_err_t install_mount_program_fs(void);
-void install_unmount_program_fs(void);
+#include "esp_littlefs.h"
 #endif
 
 static const esp_partition_t *runtime_partition(void)
@@ -209,7 +208,8 @@ static bool run_install(inst_t *in)
     if (length > limit) { fail = "Download exceeds target size"; goto out; }
 #if CONFIG_OKL_URL_OTA
     if (script) {
-        if (install_mount_program_fs() != ESP_OK) {
+        const esp_vfs_littlefs_conf_t fs = {.base_path = "/flash", .partition_label = "data"};
+        if (esp_vfs_littlefs_register(&fs) != ESP_OK) {
             fail = "Cannot mount data partition. Boot the matching runtime once on the setup layout"; goto out;
         }
         mounted = true;
@@ -280,7 +280,7 @@ out:
     if (fd >= 0) close(fd);
     if (partial_program) unlink(PROGRAM);
 #if CONFIG_OKL_URL_OTA
-    if (mounted) install_unmount_program_fs();
+    if (mounted) esp_vfs_littlefs_unregister("data");
 #endif
     if (c) esp_http_client_cleanup(c);
     free(buf);

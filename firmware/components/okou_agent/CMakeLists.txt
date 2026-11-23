@@ -1,7 +1,7 @@
 if(CONFIG_OKOU_BLE_WIFI)
     set(ble_source "src/okou_ble.c")
 endif()
-if(CONFIG_OKL_URL_OTA OR CONFIG_OKOU_MICROPYTHON_RUNTIME)
+if(CONFIG_OKOU_MICROPYTHON_RUNTIME)
     set(install_source "src/okou_install.c")
 endif()
 idf_component_register(
