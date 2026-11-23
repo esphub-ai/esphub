@@ -10,7 +10,7 @@
  */
 #pragma once
 
-#define OKOU_SDK_VERSION "2.0.0"
+#define OKOU_SDK_VERSION "3.0.0"
 
 #include <stdbool.h>
 #include <stddef.h>

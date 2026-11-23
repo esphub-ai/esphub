@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import postgres from "postgres";
 import { simulatedDevice } from "../tests/fixtures/iot/device.mjs";
 import { importPKCS8, SignJWT } from "jose";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 const base = process.env.TEST_SITE_URL;
 if (!base || !["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   throw Error("A local TEST_SITE_URL is required");
@@ -415,11 +415,13 @@ try {
     dual_bootloader_ota: true,
     image_profile: "ESPHUB2/bootloader/esp32s3-16mb",
     fw: { version: "1.2.3" },
-    log_flush: true,
+    log_flush: true, ble_generation: 1,
   });
   const session = { ...id, process_id: boot };
   assert.equal((await op("devices.get", id)).online, true);
   for (const route of [
+    "iot/pull",
+    "ble/sync",
     "iot/start",
     "iot/frame",
     "iot/capabilities",
@@ -455,8 +457,9 @@ try {
     ).status,
     409,
   );
-  const sync = (generation) => mcu.post("ble/sync", { generation });
-  const offer = await sync(1);
+  const sync = async generation =>
+    (await mcu.send({t:"ble.confirm", ble_generation:generation})).rotate;
+  const offer = mcu.lastHello.rotate;
   assert.equal(offer.generation, 2);
   assert.deepEqual(await sync(1), offer);
   const { alternate, ...previous } = await op("wifi.ble_credential", id);
@@ -464,7 +467,7 @@ try {
   assert.deepEqual(alternate, await deriveFor(offer.secret, alternate.beacon));
   const afterRecovery = await sync(2);
   assert.equal(afterRecovery.generation, 3);
-  assert.deepEqual(await sync(3), {});
+  assert.equal(await sync(3), undefined);
   const rotated = await op("wifi.ble_credential", id);
   assert.deepEqual(
     rotated,
@@ -479,14 +482,23 @@ try {
     password: "fixture passphrase",
     request_id: randomUUID(),
   };
+  await mcu.disconnect();
+  assert.equal((await op("devices.get", id)).online, false);
+  await mcu.subscribe(); // New broker session, before this boot has introduced itself.
+  assert.equal((await op("devices.get", id)).online, false);
   const added = await op("wifi.add", wifi);
+  assert.equal((await result(added.command_id)).state, "queued");
+  await mcu.reconnect();
   assert.equal((await op("wifi.add", wifi)).command_id, added.command_id);
-  const [save] = await mcu.pull();
+  const save = await mcu.nextCommand();
+  assert.ok(Number.isSafeInteger(save.seq));
   assert.deepEqual(save.args, {
     name: "wifi",
     argv: ["add", wifi.ssid, wifi.password],
   });
-  assert.deepEqual(await mcu.pull(), []);
+  assert.equal(mcu.queued, 0);
+  await mcu.reconnect();
+  assert.deepEqual(await mcu.nextCommand(), save); // Same delivery after a lost publication.
   assert.equal((await result(save.id)).state, "dispatched");
   const ack = {
     t: "res",
@@ -504,7 +516,7 @@ try {
     ...session,
     request_id: randomUUID(),
   });
-  assert.equal((await mcu.pull())[0].id, flush.command_id);
+  assert.equal((await mcu.nextCommand()).id, flush.command_id);
   const log = { t: "log", seq: 1, lines: [[10, "I", "boot log"]] };
   assert.equal((await mcu.send(log)).seq, 1);
   assert.equal((await mcu.send(log)).seq, 1);
@@ -548,6 +560,8 @@ try {
       /Upload not ready/,
     );
   }
+  let pythonInstall;
+  const sha256 = createHash("sha256").update(source).digest("hex");
   for (const [kind, url] of [
     ["python", staged.url],
     ["bootloader", localFiles.bootloader],
@@ -555,20 +569,21 @@ try {
   ]) {
     const key = randomUUID(),
       queued = await op("ota.install", { ...id, kind, url, request_id: key });
-    const [cmd] = await mcu.pull();
+    const cmd = await mcu.nextCommand();
     assert.equal(cmd.id, queued.command_id);
     assert.deepEqual(cmd.args, { url, board: d.board, kind, transfer_id: key });
     const ok = kind !== "bootloader";
+    if (kind === "python") pythonInstall = key;
     await mcu.send({
       t: "event",
       name: ok ? "install.done" : "install.failed",
-      data: { transfer_id: key, kind },
+      data: { transfer_id: key, kind, ...(kind === "python" ? {sha256, bytes:Buffer.byteLength(source)} : {}) },
     });
     assert.equal((await result(cmd.id)).state, ok ? "succeeded" : "failed");
   }
 
   const reboot = await op("devices.reboot", id);
-  assert.equal((await mcu.pull())[0].id, reboot.command_id);
+  assert.equal((await mcu.nextCommand()).id, reboot.command_id);
   const app = await mcu.hello({
     board: d.board,
     role: "app",
@@ -603,26 +618,18 @@ try {
     op("ota.install", { ...id, kind: "python", url: staged.url }),
     /bootloader/i,
   );
-  const snapshot = (pid, token) =>
-    fetch(base + "/backend/api/device/program/" + pid, {
-      method: "PUT",
-      headers: {
-        Authorization: "Bearer " + token,
-        "X-Program-Status": "available",
-      },
-      body: source,
-    });
-  assert.equal((await snapshot(boot, d.token)).status, 409);
-  assert.equal((await snapshot(app, watch.token)).status, 409);
-  assert.equal((await snapshot(app, d.token)).status, 200);
-  assert.equal((await op("programs.get", id)).source, source);
+  assert.equal((await fetch(base + "/backend/api/device/program/" + app, {method:"PUT"})).status, 404);
+  assert.deepEqual(await op("programs.get", id), {
+    status:"installed", transfer_id:pythonInstall, sha256, bytes:Buffer.byteLength(source)
+  });
+  assert.deepEqual(mcu.httpsRequests, ["iot/enroll"]);
   // A request dispatched in the bootloader is completed by a different boot.
   const installBootloader = { ...id, kind: "bootloader", url: localFiles.bootloader };
   await assert.rejects(op("ota.install", installBootloader), /bootloader/i);
   const info = { board: d.board, chip: "esp32s3", dual_bootloader_ota: true, bootloader_profile: "esp32s3-16mb" };
   await mcu.hello({ ...info, role: "bootloader", image_profile: "ESPHUB2/bootloader/esp32s3-16mb" });
   const handoff = await op("ota.install", installBootloader);
-  const [firstAttempt] = await mcu.pull();
+  const firstAttempt = await mcu.nextCommand();
   assert.equal(firstAttempt.id, handoff.command_id);
   await mcu.hello({ ...info, role: "app", image_profile: "ESPHUB2/micropython/" + d.board });
   await mcu.send({ t: "event", name: "install.failed",
@@ -631,7 +638,7 @@ try {
   await assert.rejects(op("ota.install", installBootloader), /bootloader/i);
   await mcu.hello({ ...info, role: "bootloader", image_profile: "ESPHUB2/bootloader/esp32s3-16mb" });
   const retry = await op("ota.install", installBootloader);
-  const [nextAttempt] = await mcu.pull();
+  const nextAttempt = await mcu.nextCommand();
   assert.equal(nextAttempt.id, retry.command_id);
   await mcu.send({ t: "event", name: "install.done",
     data: { transfer_id: nextAttempt.args.transfer_id, kind: "bootloader" } });

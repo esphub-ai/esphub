@@ -5,8 +5,6 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_pm.h"
-#include "esp_crt_bundle.h"
-#include "esp_timer.h"
 #include "freertos/message_buffer.h"
 
 #include "cJSON.h"
@@ -157,80 +155,6 @@ static mp_obj_t okou_read_input(void)
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(okou_read_input_obj, okou_read_input);
 
-/* Captured by the VM after staging/validation, delivered by the network task.
- * Keep source out of hello, console logs, and the VM's garbage-collected heap. */
-typedef struct {
-    const char *status;
-    size_t len;
-    char bytes[];
-} program_snapshot_t;
-
-static portMUX_TYPE program_lock = portMUX_INITIALIZER_UNLOCKED;
-static program_snapshot_t *pending_program;
-
-static mp_obj_t okou_report_program(mp_obj_t state, mp_obj_t contents)
-{
-    const char *status = mp_obj_str_get_str(state);
-    const char *const states[] = {"available", "missing", "too_large", "unreadable"};
-    for (size_t i = 0; i < sizeof(states) / sizeof(*states); i++) {
-        if (strcmp(status, states[i])) continue;
-        mp_buffer_info_t buf;
-        mp_get_buffer_raise(contents, &buf, MP_BUFFER_READ);
-        if (buf.len > 32768 || (i && buf.len)) mp_raise_ValueError(MP_ERROR_TEXT("invalid source length"));
-        program_snapshot_t *next = malloc(sizeof(*next) + buf.len);
-        if (!next) mp_raise_OSError(MP_ENOMEM);
-        next->status = states[i];
-        next->len = buf.len;
-        if (buf.len) memcpy(next->bytes, buf.buf, buf.len);
-        portENTER_CRITICAL(&program_lock);
-        program_snapshot_t *old = pending_program;
-        pending_program = next;
-        portEXIT_CRITICAL(&program_lock);
-        free(old);
-        return mp_const_none;
-    }
-    mp_raise_ValueError(MP_ERROR_TEXT("invalid source status"));
-}
-static MP_DEFINE_CONST_FUN_OBJ_2(okou_report_program_obj, okou_report_program);
-
-static void send_program(const char *boot_id)
-{
-    static int64_t retry_at;
-    if (esp_timer_get_time() < retry_at) return;
-    portENTER_CRITICAL(&program_lock);
-    program_snapshot_t *snapshot = pending_program;
-    pending_program = NULL;
-    portEXIT_CRITICAL(&program_lock);
-    if (!snapshot) return;
-
-    char base[160], url[240];
-    bool saved = false;
-    if (okou_hub_http_base(base, sizeof(base)) == ESP_OK) {
-        snprintf(url, sizeof(url), "%s/api/device/program/%s", base, boot_id);
-        esp_http_client_config_t cfg = {.url=url, .method=HTTP_METHOD_PUT, .timeout_ms=5000,
-            .crt_bundle_attach=esp_crt_bundle_attach, .disable_auto_redirect=true};
-        esp_http_client_handle_t client = esp_http_client_init(&cfg);
-        if (client) {
-            okou_http_apply_auth(client);
-            esp_http_client_set_header(client, "Content-Type", "application/octet-stream");
-            esp_http_client_set_header(client, "X-Program-Status", snapshot->status);
-            esp_http_client_set_post_field(client, snapshot->bytes, snapshot->len);
-            saved = esp_http_client_perform(client) == ESP_OK && esp_http_client_get_status_code(client) == 200;
-            esp_http_client_cleanup(client);
-        }
-    }
-    if (!saved) {
-        retry_at = esp_timer_get_time() + 60000000;
-        portENTER_CRITICAL(&program_lock);
-        if (!pending_program) {
-            pending_program = snapshot;
-            snapshot = NULL;
-        }
-        portEXIT_CRITICAL(&program_lock);
-    }
-    free(snapshot);
-}
-
 /* ------------------------------------------------------------------ start hook */
 
 // Called by the TinyUSB task for native USB-OTG boards. USB-Serial/JTAG
@@ -255,8 +179,6 @@ void okl_runtime_start(void)
     okou_op_register("term.write", op_term_write);
     okou_config_t cfg = OKOU_CONFIG_DEFAULT(); /* role app, SDK-managed Wi-Fi */
     cfg.micropython_version = MICROPY_VERSION_STRING;
-    okou_hooks_t hooks = {.on_connected_poll = send_program};
-    okou_set_hooks(&hooks);
     esp_err_t e = okou_agent_start(&cfg);
     if (e != ESP_OK) {
         ESP_LOGE(TAG, "okou_agent_start: %s", esp_err_to_name(e));
@@ -309,7 +231,6 @@ static mp_obj_t okou_wifi_rssi_py(void)
 static MP_DEFINE_CONST_FUN_OBJ_0(okou_wifi_rssi_obj, okou_wifi_rssi_py);
 
 static const mp_rom_map_elem_t okou_module_globals_table[] = {
-    { MP_ROM_QSTR(MP_QSTR_report_program), MP_ROM_PTR(&okou_report_program_obj) },
     { MP_ROM_QSTR(MP_QSTR_read_input), MP_ROM_PTR(&okou_read_input_obj) },
     { MP_ROM_QSTR(MP_QSTR_wifi_rssi), MP_ROM_PTR(&okou_wifi_rssi_obj) },
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_okou) },

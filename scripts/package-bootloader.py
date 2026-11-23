@@ -35,6 +35,8 @@ assert required <= symbols, f"Missing native transport or hostname validation: {
 lower_image = image.lower()
 for marker in (b"upgrade: websocket", b"sec-websocket-", b"esp_transport_ws_", b"ws://", b"wss://"):
     assert marker not in lower_image, f"Unexpected OTA image marker {marker!r}"
+for marker in (b"iot/pull", b"ble/sync", b"/api/device/program/"):
+    assert marker not in image, f"Retired HTTPS route in bootloader: {marker!r}"
 print(f"{variant} {build}: {len(image)} bytes, SHA-256 {sha256(image).hexdigest()}; ELF and binary transport checks passed")
 
 files = {name: offset for offset, name in parts["flash_files"].items()}

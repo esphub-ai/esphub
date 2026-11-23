@@ -12,6 +12,7 @@
 #include <inttypes.h>
 #include <math.h>
 #include <time.h>
+#include <stdatomic.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -19,6 +20,7 @@
 #include "esp_timer.h"
 #include "esp_pm.h"
 #include "freertos/semphr.h"
+#include "freertos/event_groups.h"
 #include "esp_random.h"
 #include "esp_system.h"
 #include "esp_app_desc.h"
@@ -78,8 +80,29 @@ void okou_agent_notify(void)
     }
 }
 static QueueHandle_t s_txq, s_pollq;
-#if CONFIG_OKOU_BLE_WIFI
-static bool s_ble_sync_needed = true;
+#if CONFIG_OKL_URL_OTA
+static EventGroupHandle_t ota_transport;
+static atomic_bool s_result_due;
+
+void okou_install_result_ready(void)
+{
+    atomic_store(&s_result_due, true);
+    okou_agent_notify();
+}
+enum { OTA_PAUSE = BIT0, MQTT_STOPPED = BIT1 };
+
+void okou_pause_mqtt(void)
+{
+    xEventGroupSetBits(ota_transport, OTA_PAUSE);
+    okou_agent_notify();
+    xEventGroupWaitBits(ota_transport, MQTT_STOPPED, pdFALSE, pdTRUE, portMAX_DELAY);
+}
+
+void okou_resume_mqtt(void)
+{
+    xEventGroupClearBits(ota_transport, OTA_PAUSE | MQTT_STOPPED);
+    okou_agent_notify();
+}
 #endif
 static volatile bool s_mqtt_up, s_hello_acked, s_mqtt_broken, s_reload;
 static int64_t s_conn_start_us, s_up_since_us, s_last_flush_us, s_next_connect_us;
@@ -94,8 +117,12 @@ static char *s_txbuf;
 static okou_hooks_t s_hooks;
 static char s_install_state[20] = "queued";
 static char s_inflight_id[37];
-static int64_t s_inflight_until;
-static bool s_iot_started, s_pull_due;
+static uint64_t s_last_sequence;
+static char *s_last_receipt;
+#if CONFIG_OKOU_BLE_WIFI
+static cJSON *s_ble_offer;
+#endif
+static bool s_iot_started;
 static bool s_started, s_cfg_ok;
 static char s_hub[OKOU_HUB_HOST_MAX + 1], s_tok[96];
 static op_t s_ops[MAX_OPS];
@@ -139,12 +166,19 @@ static void ensure_queues(void)
 
 static bool load_config(void)
 {
-    s_hub[0] = s_tok[0] = 0;
-    if (okou_nvs_get_str("hub", s_hub, sizeof(s_hub)) != ESP_OK || !okou_hub_host_valid(s_hub)) {
-        s_hub[0] = 0;
-        return false;
+    char hub[sizeof(s_hub)] = "", token[sizeof(s_tok)] = "";
+    bool valid = okou_nvs_get_str("hub", hub, sizeof(hub)) == ESP_OK && okou_hub_host_valid(hub) &&
+                 okou_nvs_get_str(OKOU_KEY_TOKEN, token, sizeof(token)) == ESP_OK && token[0];
+    if (!valid) hub[0] = token[0] = 0;
+    if (strcmp(s_hub, hub) || strcmp(s_tok, token)) {
+        s_last_sequence = 0;
+        s_inflight_id[0] = 0;
+        free(s_last_receipt);
+        s_last_receipt = NULL;
+        strlcpy(s_hub, hub, sizeof(s_hub));
+        strlcpy(s_tok, token, sizeof(s_tok));
     }
-    return okou_nvs_get_str(OKOU_KEY_TOKEN, s_tok, sizeof(s_tok)) == ESP_OK && s_tok[0];
+    return valid;
 }
 
 esp_err_t okou_hub_http_base(char *buf, size_t len)
@@ -300,6 +334,10 @@ static void hello_fill(cJSON *o)
     okou_mac_str(mac);
     const esp_partition_t *run = esp_ota_get_running_partition();
     cJSON_AddBoolToObject(o, "log_flush", true);
+#if CONFIG_OKOU_BLE_WIFI
+    unsigned generation = okou_ble_generation();
+    if (generation) cJSON_AddNumberToObject(o, "ble_generation", generation);
+#endif
 #ifdef OKOU_IMAGE_PROFILE
     cJSON_AddStringToObject(o, "image_profile", image_profile);
 #if CONFIG_OKL_URL_OTA
@@ -378,11 +416,17 @@ static bool send_text(const char *s, size_t len)
     bool confirm = result || final || (t && (!strcmp(t, "hello") || !strcmp(t, "log")));
     int64_t seq = -1;
     bool sent = okou_iot_publish(frame, confirm, &seq);
+    if (result && id && !strcmp(id, s_inflight_id)) {
+        if (sent) {
+            free(s_last_receipt);
+            s_last_receipt = NULL;
+        } else if (s != s_last_receipt) {
+            free(s_last_receipt);
+            s_last_receipt = strndup(s, len);
+        }
+    }
     if (sent && seq >= 0)
         okou_log_ack(seq);
-    if (sent && (final || (result && id && !strcmp(id, s_inflight_id)))) {
-        s_inflight_id[0] = 0;
-    }
     cJSON_Delete(frame);
     if (!sent)
         s_mqtt_broken = true;
@@ -391,8 +435,11 @@ static bool send_text(const char *s, size_t len)
 
 static void mqtt_teardown(const char *why)
 {
+#if CONFIG_OKOU_BLE_WIFI
+    cJSON_Delete(s_ble_offer);
+    s_ble_offer = NULL;
+#endif
     if (s_iot_started) {
-        s_inflight_id[0] = 0;
         okou_iot_stop();
         s_iot_started = false;
     }
@@ -758,7 +805,7 @@ static void handle_req(const cJSON *root)
     } else if (strcmp(op, "param.set") == 0) {
         r = okou_param_set_json(args, data, err, sizeof(err));
     } else if (strcmp(op, "provision.reset") == 0) {
-        const char *keys[] = {"mqtt_identity", "ble_key", "hub", OKOU_KEY_TOKEN};
+        const char *keys[] = {"mqtt_identity", "mqtt_grant", "ble_key", "hub", OKOU_KEY_TOKEN};
         r = okou_nvs_set_str(OKOU_KEY_WIFIS, "[]");
         for (size_t i = 0; r == ESP_OK && i < sizeof(keys)/sizeof(keys[0]); ++i) {
             r = okou_nvs_erase(keys[i]);
@@ -892,6 +939,45 @@ esp_err_t okou_app_mark_valid(void)
     return e;
 }
 
+// Called after hello in either role. A completed OTA may have switched slots
+// before the old boot had a chance to reconnect.
+static bool report_install_result(void)
+{
+    char *saved = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
+    if (!saved) return true;
+    cJSON *frame = cJSON_Parse(saved);
+    free(saved);
+    bool ok = true;
+    if (cJSON_IsString(cJSON_GetObjectItem(frame, "t"))) {
+        const char *label = cJSON_GetStringValue(cJSON_GetObjectItem(frame, "target"));
+        const esp_partition_t *run = esp_ota_get_running_partition();
+        if (label && strcmp(label, run->label)) {
+            // Power was lost between saving the verified receipt and boot selection.
+#if CONFIG_OKL_URL_OTA
+            const esp_partition_t *target = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
+                ESP_PARTITION_SUBTYPE_ANY, label);
+            const esp_partition_t *invalid = esp_ota_get_last_invalid_partition();
+            const esp_partition_t *selected = esp_ota_get_boot_partition();
+            if (target && (!invalid || invalid->address != target->address) &&
+                ((selected && selected->address == target->address) ||
+                 esp_ota_set_boot_partition(target) == ESP_OK)) {
+                okou_schedule_reboot(300);
+                cJSON_Delete(frame);
+                return false;
+            }
+#endif
+            cJSON_ReplaceItemInObject(frame, "name", cJSON_CreateString("install.failed"));
+            cJSON_AddStringToObject(cJSON_GetObjectItem(frame, "data"), "error", "Boot selection failed or rolled back");
+        }
+        cJSON_DeleteItemFromObject(frame, "target");
+        int64_t unused;
+        ok = okou_iot_publish(frame, true, &unused) && okou_nvs_erase(OKOU_KEY_PENDING) == ESP_OK;
+        if (!ok) s_mqtt_broken = true;
+    }
+    cJSON_Delete(frame);
+    return ok;
+}
+
 static void on_first_ack(void)
 {
     ESP_LOGI(TAG, "hello acknowledged by hub");
@@ -926,60 +1012,55 @@ static void do_reboot(void)
     esp_restart();
 }
 
-static void pull_commands(void)
+static void service_control(void)
 {
-    cJSON *body = cJSON_CreateObject();
-    if (!body)
-        return;
-    cJSON_AddStringToObject(body, "boot_id", s_boot_id);
-    cJSON *batch = okou_iot_post("iot/pull", body);
-    const cJSON *commands = cJSON_GetObjectItemCaseSensitive(batch, "commands");
-    if (!cJSON_IsArray(commands))
-        s_mqtt_broken = true;
-    const cJSON *command = cJSON_GetArrayItem(commands, 0);
-    const char *id = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(command, "id"));
-    if (id) {
-        if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(command, "more"))) s_pull_due = true;
-        strlcpy(s_inflight_id, id, sizeof(s_inflight_id));
-        s_inflight_until = now_us() + 90000000;
-        handle_req(command);
+    cJSON *frame = okou_iot_control();
+    if (!frame) return;
+    const cJSON *command = cJSON_GetObjectItem(frame, "command");
+    const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(command, "id"));
+    const cJSON *sequence = cJSON_GetObjectItem(command, "seq");
+    if (id && strlen(id) == 36 && cJSON_IsNumber(sequence) &&
+        sequence->valuedouble >= 1 && sequence->valuedouble <= 9007199254740991.0) {
+        uint64_t seq = (uint64_t)sequence->valuedouble;
+        if (seq > s_last_sequence) {
+            s_last_sequence = seq;
+            strlcpy(s_inflight_id, id, sizeof(s_inflight_id));
+            free(s_last_receipt);
+            s_last_receipt = NULL;
+            handle_req(command);
+        } else if (seq == s_last_sequence && !strcmp(id, s_inflight_id) && s_last_receipt) {
+            send_text(s_last_receipt, strlen(s_last_receipt));
+        }
     }
-    cJSON_Delete(batch);
-    cJSON_Delete(body);
+#if CONFIG_OKOU_BLE_WIFI
+    cJSON *rotate = cJSON_DetachItemFromObjectCaseSensitive(frame, "rotate");
+    if (rotate) {
+        cJSON_Delete(s_ble_offer);
+        s_ble_offer = rotate;
+    }
+#endif
+    cJSON_Delete(frame);
+    okou_agent_notify();
 }
 
 #if CONFIG_OKOU_BLE_WIFI
-static void sync_ble_when_online(int64_t now)
+static void service_ble_offer(void)
 {
-    static int64_t retry_at;
-    if (!s_cfg_ok || !okou_net_has_ip() || okou_ble_busy()) {
-        s_ble_sync_needed = true;
-        retry_at = 0;
-        return;
+    if (!s_ble_offer || okou_ble_busy()) return;
+    const cJSON *gen = cJSON_GetObjectItem(s_ble_offer, "generation");
+    const char *secret = cJSON_GetStringValue(cJSON_GetObjectItem(s_ble_offer, "secret"));
+    if (cJSON_IsNumber(gen) && gen->valueint >= (int)okou_ble_generation()) {
+        cJSON *confirm = cJSON_CreateObject();
+        int64_t unused;
+        if (!secret || okou_ble_install(gen->valueint, secret, false) != ESP_OK ||
+            !cJSON_AddStringToObject(confirm, "t", "ble.confirm") ||
+            !cJSON_AddNumberToObject(confirm, "ble_generation", okou_ble_generation()) ||
+            !okou_iot_publish(confirm, true, &unused))
+            s_mqtt_broken = true; // Retry the outstanding generation on the next hello.
+        cJSON_Delete(confirm);
     }
-    if (!s_ble_sync_needed || now < retry_at)
-        return;
-    unsigned generation = okou_ble_generation();
-    if (!generation) {
-        s_ble_sync_needed = false;
-        return;
-    }
-    cJSON *body = cJSON_CreateObject();
-    cJSON_AddNumberToObject(body, "generation", generation);
-    cJSON *reply = okou_iot_post("ble/sync", body);
-    cJSON_Delete(body);
-    retry_at = now + 30000000;
-    if (!reply)
-        return;
-    const cJSON *next = cJSON_GetObjectItemCaseSensitive(reply, "generation");
-    if (!next)
-        s_ble_sync_needed = false;
-    else {
-        const char *secret = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(reply, "secret"));
-        if (cJSON_IsNumber(next) && secret && okou_ble_install(next->valueint, secret, false) == ESP_OK)
-            retry_at = 0;
-    }
-    cJSON_Delete(reply);
+    cJSON_Delete(s_ble_offer);
+    s_ble_offer = NULL;
 }
 #endif
 
@@ -990,17 +1071,20 @@ static void agent_task(void *arg)
         if (s_reload) {
             s_reload = false;
             s_cfg_ok = load_config();
-#if CONFIG_OKOU_BLE_WIFI
-            s_ble_sync_needed = true;
-#endif
             if (s_iot_started) {
                 mqtt_teardown("config reload");
             }
             s_backoff_ms = 1000;
             s_next_connect_us = now;
         }
-#if CONFIG_OKOU_BLE_WIFI
-        sync_ble_when_online(now);
+#if CONFIG_OKL_URL_OTA
+        if (xEventGroupGetBits(ota_transport) & OTA_PAUSE) {
+            if (s_iot_started) mqtt_teardown("OTA download");
+            xEventGroupSetBits(ota_transport, MQTT_STOPPED);
+            xSemaphoreTake(s_wake, pdMS_TO_TICKS(1000));
+            s_next_connect_us = 0;
+            continue;
+        }
 #endif
         if (s_mqtt_broken && s_iot_started) {
             mqtt_teardown("send failed");
@@ -1010,24 +1094,24 @@ static void agent_task(void *arg)
             if (events & IOT_OFFLINE)
                 mqtt_teardown("MQTT disconnected");
             else if (events & IOT_SUBSCRIBED) {
+                okou_iot_subscribed();
                 s_up_since_us = now;
                 s_mqtt_up = true;
                 okou_log_rewind();
                 if (send_hello()) {
                     s_hello_acked = true;
-                    on_first_ack();
+                    if (report_install_result()) on_first_ack();
+                    else s_hello_acked = false;
                 } else {
                     s_mqtt_broken = true;
                 }
             }
-            if (events & IOT_WAKE)
-                s_pull_due = true;
         }
         if (!s_iot_started) {
             if (s_cfg_ok && okou_net_has_ip() && now >= s_next_connect_us) {
                 s_mqtt_broken = false;
                 s_conn_start_us = now;
-                s_iot_started = okou_iot_start(s_boot_id);
+                s_iot_started = okou_iot_start(s_boot_id, s_hub, s_tok);
                 if (!s_iot_started)
                     mqtt_teardown("MQTT setup failed");
             }
@@ -1037,12 +1121,15 @@ static void agent_task(void *arg)
             }
         } else {
             drain_txq();
-            if (s_hello_acked && s_hooks.on_connected_poll)
-                s_hooks.on_connected_poll(s_boot_id);
-            if (s_pull_due && !s_log_request_id && s_hello_acked &&
-                (!s_inflight_id[0] || now >= s_inflight_until)) {
-                s_pull_due = false;
-                pull_commands();
+#if CONFIG_OKL_URL_OTA
+            if (s_hello_acked && atomic_exchange(&s_result_due, false) && !report_install_result())
+                s_hello_acked = false;
+#endif
+            if (s_hello_acked && !s_mqtt_broken) {
+                service_control();
+#if CONFIG_OKOU_BLE_WIFI
+                service_ble_offer();
+#endif
             }
             service_mqtt_log_batch(now);
             if (now - s_last_flush_us >= FLUSH_INTERVAL_US) {
@@ -1106,6 +1193,10 @@ esp_err_t okou_agent_start(const okou_config_t *cfg)
     if (cfg) {
         g_okou_cfg = *cfg;
     }
+#if CONFIG_OKL_URL_OTA
+    ota_transport = xEventGroupCreate();
+    if (!ota_transport) return ESP_ERR_NO_MEM;
+#endif
     s_wake = xSemaphoreCreateBinary();
     if (!s_wake) return ESP_ERR_NO_MEM;
 #if CONFIG_PM_ENABLE

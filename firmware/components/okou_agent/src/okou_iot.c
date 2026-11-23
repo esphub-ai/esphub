@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "mbedtls/pk.h"
+#include "mbedtls/sha256.h"
 #include "mbedtls/x509_csr.h"
 #include "mqtt_client.h"
 #include "okou_priv.h"
@@ -25,7 +26,17 @@ typedef struct {
     uint32_t mid;
     int64_t seq;
 } ack_t;
-static QueueHandle_t acks;
+static QueueHandle_t acks, controls;
+static char *incoming;
+static size_t received, expected;
+static unsigned failed_connects;
+
+cJSON *okou_iot_control(void)
+{
+    cJSON *frame = NULL;
+    if (controls) xQueueReceive(controls, &frame, 0);
+    return frame;
+}
 static portMUX_TYPE event_lock = portMUX_INITIALIZER_UNLOCKED;
 static void signal_event(unsigned mask)
 {
@@ -60,13 +71,13 @@ static esp_err_t receive(esp_http_client_event_t *e)
     }
     return ESP_OK;
 }
-static cJSON *post(const char *operation, cJSON *body, int *status)
+static cJSON *enroll(cJSON *body)
 {
     char base[160], url[224];
     if (!body || okou_hub_http_base(base, sizeof(base)) != ESP_OK)
         return NULL;
-    snprintf(url, sizeof(url), "%s/api/device/%s", base, operation);
-    response_t r = {.limit = !strcmp(operation, "ble/sync") ? 256 : 16384};
+    snprintf(url, sizeof(url), "%s/api/device/iot/enroll", base);
+    response_t r = {.limit = 4096};
     r.data = okou_malloc_large(r.limit + 1);
     char *payload = cJSON_PrintUnformatted(body);
     cJSON *answer = NULL;
@@ -84,9 +95,9 @@ static cJSON *post(const char *operation, cJSON *body, int *status)
             esp_http_client_set_header(client, "Content-Type", "application/json");
             esp_http_client_set_post_field(client, payload, strlen(payload));
             if (esp_http_client_perform(client) == ESP_OK) {
-                *status = esp_http_client_get_status_code(client);
+                int status = esp_http_client_get_status_code(client);
                 r.data[r.len] = 0;
-                if (*status == 200 && !r.overflow)
+                if (status == 200 && !r.overflow)
                     answer = cJSON_Parse(r.data);
             }
             esp_http_client_cleanup(client);
@@ -95,11 +106,6 @@ static cJSON *post(const char *operation, cJSON *body, int *status)
     free(payload);
     free(r.data);
     return answer;
-}
-cJSON *okou_iot_post(const char *operation, cJSON *body)
-{
-    int status = 0;
-    return post(operation, body, &status);
 }
 #if ESP_IDF_VERSION_MAJOR < 6
 static int hardware_random(void *ctx, unsigned char *buf, size_t len)
@@ -196,15 +202,27 @@ static void mqtt_event(void *ctx, esp_event_base_t base, int32_t event, void *ar
             signal_event(IOT_OFFLINE);
         break;
     case MQTT_EVENT_SUBSCRIBED:
-        signal_event((e->data_len == 1 && e->data && ((unsigned char)e->data[0]) <= 1) ? IOT_SUBSCRIBED | IOT_WAKE
+        signal_event((e->data_len == 1 && e->data && ((unsigned char)e->data[0]) <= 1) ? IOT_SUBSCRIBED
                                                                                        : IOT_OFFLINE);
         break;
     case MQTT_EVENT_DATA: {
-        if (!e->data || e->data_len <= 0 || e->data_len != e->total_data_len || e->data_len > 256)
+        if (e->current_data_offset == 0) {
+            free(incoming);
+            incoming = NULL;
+            received = 0;
+            expected = e->total_data_len;
+            if (expected && expected <= 16384)
+                incoming = okou_malloc_large(expected);
+        }
+        if (!incoming || (size_t)e->current_data_offset != received ||
+            e->data_len <= 0 || (size_t)e->data_len > expected - received)
             break;
-        cJSON *m = cJSON_ParseWithLength(e->data, e->data_len);
-        if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(m, "pending")))
-            signal_event(IOT_WAKE);
+        memcpy(incoming + received, e->data, e->data_len);
+        received += e->data_len;
+        if (received < expected) break;
+        cJSON *m = cJSON_ParseWithLength(incoming, expected);
+        free(incoming);
+        incoming = NULL;
         const char *pid = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(m, "boot_id"));
         const cJSON *mid = cJSON_GetObjectItemCaseSensitive(m, "mid");
         if (pid && !strcmp(pid, boot) && cJSON_IsNumber(mid) && mid->valuedouble >= 1 &&
@@ -213,6 +231,15 @@ static void mqtt_event(void *ctx, esp_event_base_t base, int32_t event, void *ar
             ack_t ack = {.mid = (uint32_t)mid->valuedouble,
                          .seq = cJSON_IsNumber(cursor) ? (int64_t)cursor->valuedouble : -1};
             xQueueSend(acks, &ack, 0);
+        }
+        if (pid && !strcmp(pid, boot) && (cJSON_GetObjectItemCaseSensitive(m, "command") ||
+                                              cJSON_GetObjectItemCaseSensitive(m, "rotate"))) {
+            if (xQueueSend(controls, &m, 0) == pdTRUE) {
+                okou_agent_notify();
+                break;
+            }
+            // A fresh hello requests the outstanding command and generation again.
+            signal_event(IOT_OFFLINE);
         }
         cJSON_Delete(m);
         break;
@@ -230,6 +257,10 @@ void okou_iot_stop(void)
         esp_mqtt_client_destroy(mqtt);
         mqtt = NULL;
     }
+    free(incoming);
+    incoming = NULL;
+    cJSON *frame;
+    while ((frame = okou_iot_control())) cJSON_Delete(frame);
     cJSON_Delete(active_identity);
     active_identity = NULL;
     cJSON_Delete(active_certificate);
@@ -279,7 +310,12 @@ bool okou_iot_publish(cJSON *frame, bool confirm, int64_t *seq)
     return done;
 }
 
-bool okou_iot_start(const char *boot_id)
+void okou_iot_subscribed(void)
+{
+    failed_connects = 0;
+}
+
+bool okou_iot_start(const char *boot_id, const char *hub, const char *token)
 {
     cJSON *id = identity(), *req = cJSON_CreateObject(), *reply = NULL;
     const char *key = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(id, "key"));
@@ -287,18 +323,52 @@ bool okou_iot_start(const char *boot_id)
     bool started = false;
     if (!acks)
         acks = xQueueCreate(8, sizeof(ack_t));
-    if (!acks)
+    if (!controls)
+        controls = xQueueCreate(4, sizeof(cJSON *));
+    if (!acks || !controls)
         goto done;
     xQueueReset(acks);
     strlcpy(boot, boot_id, sizeof(boot));
-    if (!key || !csr || !cJSON_AddStringToObject(req, "boot_id", boot) || !cJSON_AddStringToObject(req, "csr", csr))
+    if (!key || !csr || !cJSON_AddStringToObject(req, "csr", csr))
         goto done;
-    reply = okou_iot_post("iot/enroll", req);
-    const char *device = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(reply, "device_id"));
-    const char *host = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(reply, "endpoint"));
-    const char *cert = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(reply, "certificate"));
-    if (!device || strlen(device) != 36 || !host || !cert)
+    // Bind the cached grant to the exact provisioning settings. USB reissue
+    // or a different hub must never connect using the previous registration.
+    char binding[65];
+    unsigned char hash[32];
+    mbedtls_sha256_context sha;
+    mbedtls_sha256_init(&sha);
+    int rc = mbedtls_sha256_starts(&sha, 0) ||
+             mbedtls_sha256_update(&sha, (const unsigned char *)hub, strlen(hub) + 1) ||
+             mbedtls_sha256_update(&sha, (const unsigned char *)token, strlen(token)) ||
+             mbedtls_sha256_finish(&sha, hash);
+    mbedtls_sha256_free(&sha);
+    if (rc) goto done;
+    okou_hex(hash, sizeof(hash), binding);
+    char *saved = okou_nvs_get_str_alloc("mqtt_grant");
+    if (saved) {
+        reply = cJSON_Parse(saved);
+        free(saved);
+    }
+    const char *bound = cJSON_GetStringValue(cJSON_GetObjectItem(reply, "binding"));
+    bool recover = bound && !strcmp(bound, binding) && failed_connects >= 2;
+    if (!bound || strcmp(bound, binding) || recover) {
+        if (recover && !cJSON_AddTrueToObject(req, "recover")) goto done;
+        cJSON_Delete(reply);
+        reply = enroll(req);
+        if (!reply || !cJSON_AddStringToObject(reply, "binding", binding)) goto done;
+        saved = cJSON_PrintUnformatted(reply);
+        bool stored = saved && okou_nvs_set_str("mqtt_grant", saved) == ESP_OK;
+        free(saved);
+        if (!stored) goto done;
+        failed_connects = 0;
+    }
+    const char *device = cJSON_GetStringValue(cJSON_GetObjectItem(reply, "device_id"));
+    const char *host = cJSON_GetStringValue(cJSON_GetObjectItem(reply, "endpoint"));
+    const char *cert = cJSON_GetStringValue(cJSON_GetObjectItem(reply, "certificate"));
+    if (!device || strlen(device) != 36 || !host || !*host || !cert || !*cert) {
+        okou_nvs_erase("mqtt_grant");
         goto done;
+    }
     char client_id[48];
     snprintf(client_id, sizeof(client_id), "esphub-%s", device);
     snprintf(topic, sizeof(topic), "devices/%s/wake", device);
@@ -321,6 +391,9 @@ bool okou_iot_start(const char *boot_id)
     if (!started)
         okou_iot_stop();
     else {
+        // Only connection attempts count. A local allocation failure does not
+        // invalidate a cached certificate or justify starting an HTTPS client.
+        ++failed_connects;
         active_identity = id;
         active_certificate = reply;
         id = reply = NULL;
