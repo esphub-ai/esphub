@@ -16,7 +16,7 @@ export function provisioning(board) {
       board_setup_guide_url: `https://github.com/okou-ai/esphub/blob/main/${profile.directory}/README.md#bootloader-only-registration`,
       prompt: [
         identify,
-        "Use an already prepared board with the matching EspHub Bootloader and board identity in NVS. Follow the board source guide if it is not initialized. This preview board has no full setup kit or MicroPython Runtime.",
+        "Use the matching EspHub Bootloader for this board. Follow the board source guide for USB flashing.",
         usb,
         wifi,
         reconnectGuidance,

@@ -154,9 +154,9 @@ export class Device extends DurableObject {
       if (!d)
         return Response.json({ error: "Stale enrollment" }, { status: 409 });
       if (m.t === "hello") {
-        if (d.board !== m.board || !["app", "bootloader"].includes(m.role))
+        if (!["app", "bootloader"].includes(m.role))
           return Response.json(
-            { error: "Board or role mismatch" },
+            { error: "Invalid role" },
             { status: 409 },
           );
         if (
@@ -171,8 +171,9 @@ export class Device extends DurableObject {
             { error: "MQTT session closed" },
             { status: 409 },
           );
+        const info = JSON.stringify({ ...m, board: d.board });
         const rows =
-          await db`UPDATE esphub.devices SET boot_id=${pid},mqtt_connected_since=${session},boot_info=${JSON.stringify(m)}::text::jsonb,
+          await db`UPDATE esphub.devices SET boot_id=${pid},mqtt_connected_since=${session},boot_info=${info}::text::jsonb,
           ble_address=COALESCE(${normalizeBleAddress(m.ble_address)}::macaddr,ble_address)
           WHERE id=${device} AND cert_id=${principal} RETURNING id`;
         if (!rows.length)
@@ -189,7 +190,7 @@ export class Device extends DurableObject {
           "INSERT INTO boots(pid,started,info) VALUES(?,?,?) ON CONFLICT(pid) DO UPDATE SET info=excluded.info",
           pid,
           new Date().toISOString(),
-          JSON.stringify(m),
+          info,
         );
         await dispatch(db, this.env, device, pid, true);
         return Response.json({});

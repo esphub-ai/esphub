@@ -4,8 +4,6 @@
 #include "cJSON.h"
 #include "esp_err.h"
 
-#define OKOU_BOARD_KEY "board"
-#define OKOU_BOARD_CAPACITY 32
 #define OKOU_BL_IMAGE_PREFIX "ESPHUB2/bootloader/"
 #define OKOU_OTA_CAPABILITY "bootloader-ota-v2"
 

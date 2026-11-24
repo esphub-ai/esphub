@@ -294,13 +294,6 @@ static void hello_fill(cJSON *o)
 #endif
     if (CONFIG_OKOU_BL_PROFILE[0]) cJSON_AddStringToObject(o, "bootloader_profile", CONFIG_OKOU_BL_PROFILE);
 #endif
-#if CONFIG_OKL_URL_OTA
-    char board[OKOU_BOARD_CAPACITY];
-    if (okou_nvs_get_str(OKOU_BOARD_KEY, board, sizeof(board)) == ESP_OK && board[0])
-        cJSON_AddStringToObject(o, "board", board);
-#else
-    if (CONFIG_OKOU_BOARD_PROFILE[0]) cJSON_AddStringToObject(o, "board", CONFIG_OKOU_BOARD_PROFILE);
-#endif
     cJSON_AddStringToObject(o, "boot_id", s_boot_id);
     cJSON_AddStringToObject(o, "role", okou_is_bootloader() ? "bootloader" : "app");
     cJSON *fw = cJSON_AddObjectToObject(o, "fw");

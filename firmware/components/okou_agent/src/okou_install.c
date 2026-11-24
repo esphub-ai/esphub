@@ -26,14 +26,12 @@
 #define PROGRAM_LIMIT (32 * 1024)
 #define PROGRAM "/flash/main.py"
 #define PROFILE_OFFSET (sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) + sizeof(esp_app_desc_t))
-static bool device_board(char board[OKOU_BOARD_CAPACITY])
-{
-    return okou_nvs_get_str(OKOU_BOARD_KEY, board, OKOU_BOARD_CAPACITY) == ESP_OK && board[0];
-}
+#define OKOU_BOARD_CAPACITY 32
 
 static const char *TAG = "install";
 typedef struct {
     char kind[16];
+    char board[OKOU_BOARD_CAPACITY];
     char url[1025];
     char id[37];
 } inst_t;
@@ -62,9 +60,10 @@ static bool parse_args(const cJSON *a, inst_t *in, char *err, size_t n)
     if (!kind || (strcmp(kind, "bootloader") && strcmp(kind, "micropython") && strcmp(kind, "native") && strcmp(kind, "python"))) {
         snprintf(err, n, "Expected bootloader, micropython, native or python"); return false;
     }
-    char expected[OKOU_BOARD_CAPACITY];
-    if (!device_board(expected)) { snprintf(err, n, "Device board is missing from NVS"); return false; }
-    if (!board || strcmp(board, expected)) { snprintf(err, n, "Expected board %s", expected); return false; }
+    if (!board || !*board || strlen(board) >= sizeof(in->board)) {
+        snprintf(err, n, "Invalid board"); return false;
+    }
+    strlcpy(in->board, board, sizeof(in->board));
     if (!https_url(url) || strlen(url) >= sizeof(in->url)) {
         snprintf(err, n, "Expected HTTPS URL (up to 1024 bytes)"); return false;
     }
@@ -192,11 +191,6 @@ static bool compatible_runtime(const esp_partition_t *app, const char *board)
 /* Write the firmware header last so a partial image cannot boot. */
 static bool run_install(inst_t *in)
 {
-    char board[OKOU_BOARD_CAPACITY];
-    if (!device_board(board)) {
-        emit_failed(in, "Device board is missing");
-        return false;
-    }
     bool bootloader = !strcmp(in->kind, "bootloader");
     bool script = !strcmp(in->kind, "python");
     const esp_partition_t *run = esp_ota_get_running_partition();
@@ -233,7 +227,7 @@ static bool run_install(inst_t *in)
     }
     if (!c || !buf || (!script && !header)) { fail = "Out of memory"; goto out; }
     if (!target || target->address == esp_ota_get_running_partition()->address) { fail = "Incompatible partition layout"; goto out; }
-    if (script && !compatible_runtime(target, board)) {
+    if (script && !compatible_runtime(target, in->board)) {
         fail = "Install the matching URL OTA MicroPython runtime first"; goto out;
     }
     uint32_t limit = script ? PROGRAM_LIMIT : target->size;
@@ -266,7 +260,7 @@ static bool run_install(inst_t *in)
                 off = (uint32_t)n < CHUNK - written ? (uint32_t)n : CHUNK - written;
                 memcpy(header + written, buf, off);
                 if (written + off == CHUNK) {
-                    if (!valid_header(header, in->kind, board)) { fail = "Firmware type, board, chip or flash profile mismatch"; goto out; }
+                    if (!valid_header(header, in->kind, in->board)) { fail = "Firmware type, board, chip or flash profile mismatch"; goto out; }
                     if (esp_ota_begin(target, length > 0 ? (size_t)length : OTA_SIZE_UNKNOWN, &ota) != ESP_OK) {
                         fail = "Cannot open target partition"; goto out;
                     }

@@ -16,12 +16,9 @@ of the Runtime and the complete kit.
 
 ## Bootloader-only registration
 
-After the API supports this board, register it as `esp-mosaico`. Use the
-board-specific bootloader USB archive. For an empty NVS partition, initialize
-the board identity with the archive's `board-nvs.bin` at the `nvs` offset
-from `partitions.csv`. Writing that image replaces the NVS partition, so back
-up existing NVS before any such write. The bootloader-only upgrade in
-`flash_args` preserves existing NVS.
+Register the device as `esp-mosaico` in EspHub to select its board-specific
+firmware. Use the board-specific Bootloader USB archive and its `flash_args`.
+The Bootloader update preserves the existing NVS partition.
 
 Write the registration token and BLE bootstrap key over USB CDC. Then use the
 [Mac BLE tool](../../../../tools/ble-wifi/) to configure Wi-Fi. Verify that

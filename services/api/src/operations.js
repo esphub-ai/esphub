@@ -412,7 +412,7 @@ export async function operate(c, owner, name, a) {
     const variant = boards[d.board]?.bootloader;
     const bootloader = info?.role === "bootloader" &&
       info.image_profile === "ESPHUB2/bootloader/" + variant;
-    if (info?.board !== d.board || !bootloader)
+    if (!bootloader)
       fail(409, "Enter compatible EspHub Bootloader mode first using bootloader.enter");
     if (a.kind === "bootloader" && info.dual_bootloader_ota !== true)
       fail(409, "Back up the device and install the A/B USB setup kit first");
