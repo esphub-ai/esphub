@@ -294,7 +294,7 @@ async function summary(c, d) {
         ? broker.software
         : softwareInventory(d.boot_info),
     process_id: d.boot_id,
-    info: d.boot_info,
+    info: d.boot_info ? { role: d.boot_info.role, net_mac: d.boot_info.net_mac ?? null } : null,
   };
 }
 export async function operate(c, owner, name, a) {
