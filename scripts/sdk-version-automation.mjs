@@ -168,15 +168,31 @@ async function ensureCi(request, root, pr) {
       "GET",
       `${root}/actions/workflows/${workflow}/runs?head_sha=${pr.head.sha}&per_page=100`,
     );
-    // Do not repeat an accepted dispatch, including a failed or pending CI run.
-    // Failed tests remain failed; this is not a CI-retry automation.
-    if (
-      runs.some(
-        (run) =>
-          run.head_sha === pr.head.sha && run.head_branch === pr.head.ref,
+    let covered = false;
+    for (const run of runs) {
+      if (
+        run.head_sha !== pr.head.sha ||
+        run.head_branch !== pr.head.ref ||
+        run.conclusion === "action_required"
       )
-    )
-      continue;
+        continue;
+      if (
+        run.event === "pull_request" &&
+        run.actor?.login === "github-actions[bot]"
+      ) {
+        // GitHub can create blocked/approval-only PR runs for native-token
+        // commits. Zero-job records are not CI coverage, even if marked failed.
+        const jobs = await request(
+          "GET",
+          `${root}/actions/runs/${run.id}/jobs?per_page=1`,
+        );
+        if (!jobs.total_count) continue;
+      }
+      covered = true;
+      break;
+    }
+    // Accepted dispatches and actual failed/pending CI are not retried.
+    if (covered) continue;
     await request("POST", `${root}/actions/workflows/${workflow}/dispatches`, {
       ref: pr.head.ref,
       inputs: { pr_number: String(pr.number) },
@@ -304,16 +320,30 @@ export async function reconcileSdkPullRequest({
         "Superseded by the SDK version commit.",
       );
       check = await createCheck(request, root, sha);
-      const updatedPr = await request("GET", `${root}/pulls/${number}`);
-      if (
-        updatedPr.state !== "open" ||
-        updatedPr.head.sha !== sha ||
-        updatedPr.base.sha !== pr.base.sha ||
-        releaseIntent(updatedPr) !== releaseIntent(pr)
-      )
-        throw Error(
-          "PR changed after the SDK commit; the latest head and release intent must be checked again.",
-        );
+      let updatedPr;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        updatedPr = await request("GET", `${root}/pulls/${number}`);
+        if (
+          updatedPr.state !== "open" ||
+          updatedPr.base.sha !== pr.base.sha ||
+          releaseIntent(updatedPr) !== releaseIntent(pr)
+        )
+          throw Error(
+            "PR base or release intent changed after the SDK commit; check again.",
+          );
+        if (updatedPr.head.sha === sha) break;
+        if (updatedPr.head.sha !== pr.head.sha)
+          throw Error(
+            `PR head changed after the SDK commit: expected ${sha}, observed ${updatedPr.head.sha}.`,
+          );
+        // A successful GraphQL commit can precede REST PR-cache propagation.
+        // Wait only on the inspected old head; never replay the accepted write.
+        if (attempt === 29)
+          throw Error(
+            `SDK commit ${sha} is not yet visible in the PR; rerun after it propagates.`,
+          );
+        await wait(1000);
+      }
       pr = updatedPr;
       head = await snapshot(request, root, sha);
     }
