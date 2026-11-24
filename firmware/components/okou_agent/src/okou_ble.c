@@ -68,13 +68,15 @@ static bool read_key(uint8_t *out)
     return valid;
 }
 
+static esp_err_t start_nimble(void);
+
 esp_err_t okou_ble_install(const char *hex)
 {
     if (!key_lock) return ESP_ERR_INVALID_STATE;
     xSemaphoreTake(key_lock, portMAX_DELAY);
     esp_err_t rc = okou_nvs_set_str("ble_key", hex);
     xSemaphoreGive(key_lock);
-    return rc;
+    return rc == ESP_OK ? start_nimble() : rc;
 }
 
 static int gap_event(struct ble_gap_event *e, void *unused)
@@ -311,12 +313,24 @@ fail:
     vTaskDelete(NULL);
 }
 
+static esp_err_t start_nimble(void)
+{
+    if (atomic_exchange(&host_owned, true)) return ESP_OK;
+    if (xTaskCreate(launch_nimble, "ble_init", 4096, NULL, 3, NULL) == pdPASS) return ESP_OK;
+    atomic_store(&host_owned, false);
+    ESP_LOGE("ble_wifi", "cannot start BLE initialization");
+    return ESP_ERR_NO_MEM;
+}
+
 void okou_ble_init(void)
 {
     key_lock = xSemaphoreCreateMutex();
-    atomic_store(&host_owned, true);
-    if (!key_lock || xTaskCreate(launch_nimble, "ble_init", 4096, NULL, 3, NULL) != pdPASS) {
-        atomic_store(&host_owned, false);
-        ESP_LOGE("ble_wifi", "cannot start BLE initialization");
+    if (!key_lock) {
+        ESP_LOGE("ble_wifi", "cannot allocate BLE key lock");
+        return;
     }
+    uint8_t key[32];
+    bool provisioned = read_key(key);
+    mbedtls_platform_zeroize(key, sizeof(key));
+    if (provisioned) start_nimble();
 }
