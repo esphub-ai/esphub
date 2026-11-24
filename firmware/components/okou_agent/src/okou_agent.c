@@ -312,6 +312,8 @@ static void hello_fill(cJSON *o)
     cJSON_AddStringToObject(o, "ota_state", run ? okou_ota_state_str(run) : "");
     cJSON_AddStringToObject(o, "chip", CONFIG_IDF_TARGET);
     cJSON_AddStringToObject(o, "mac", mac);
+    char ble_address[18];
+    if (okou_ble_address(ble_address)) cJSON_AddStringToObject(o, "ble_address", ble_address);
     cJSON_AddStringToObject(o, "reset_reason", okou_reset_reason_str());
     char *pending = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
     cJSON *pj = pending ? cJSON_Parse(pending) : NULL;

@@ -22,7 +22,7 @@ cd firmware/bootloader/esp32s3-16mb
 idf.py build
 ```
 
-Connect the board over USB and call `devices.create`. Download and flash the matching setup kit. Send the returned token and BLE bootstrap key to the EspHub Bootloader at 115200 baud:
+Connect the board over USB and call `devices.create`. Download and flash the matching setup kit. Pipe the private registration result into `python3 provision_usb.py PORT` from the kit (requires pyserial and an authenticated Okou CLI). This sends the token and BLE bootstrap key at 115200 baud and binds the returned Bluetooth address to the registration through MCP. The USB request is:
 
 ```text
 OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret>"}

@@ -1,6 +1,11 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { fail } from "./auth.js";
 
+export function normalizeBleAddress(value) {
+  return typeof value === "string" && value.length === 17 &&
+    /^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(value) ? value.toLowerCase() : null;
+}
+
 export const newBleSecret = () => randomBytes(32).toString("hex");
 
 export async function issueBle(sql, owner, id) {

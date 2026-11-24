@@ -6,7 +6,7 @@ Use the bootloader and MicroPython images from the latest USB kit for your board
 OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret>"}
 ```
 
-Set `hub` to the plain EspHub hostname. Wait for `OKL-PROVISION-OK`. The device can now receive its first Wi-Fi over Bluetooth.
+The setup kit includes `provision_usb.py`. Install `pyserial` and pipe the private JSON result of `devices.create` or `devices.reissue` to `python3 provision_usb.py PORT` after flashing. The helper sends the record, reads the receipt, and calls `devices.bind_ble_address` using the authorized local Okou CLI. With another MCP client, read `OKL-PROVISION-OK {"ble_address":"aa:bb:cc:dd:ee:ff"}` and pass that address and the registration’s `device_id` to the same tool. A bare `OKL-PROVISION-OK` confirms provisioning on older firmware. The device can now receive its first Wi-Fi over Bluetooth.
 
 On a Mac with Python 3.13+ (OpenSSL with PSK support), install Bleak in a virtual environment and grant Bluetooth access to the terminal. Run with a locally authorized Okou CLI:
 

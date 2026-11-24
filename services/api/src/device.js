@@ -1,3 +1,4 @@
+import { normalizeBleAddress } from "./ble.js";
 import { withDatabase } from "./database.js";
 import { dispatch, enqueue, receipt, retryDue, nextRetry } from "./commands.js";
 import { DurableObject } from "cloudflare:workers";
@@ -172,7 +173,8 @@ export class Device extends DurableObject {
           );
         const info = JSON.stringify({ ...m, board: d.board });
         const rows =
-          await db`UPDATE esphub.devices SET boot_id=${pid},mqtt_connected_since=${session},boot_info=${info}::text::jsonb
+          await db`UPDATE esphub.devices SET boot_id=${pid},mqtt_connected_since=${session},boot_info=${info}::text::jsonb,
+          ble_address=COALESCE(${normalizeBleAddress(m.ble_address)}::macaddr,ble_address)
           WHERE id=${device} AND cert_id=${principal} RETURNING id`;
         if (!rows.length)
           return Response.json({ error: "Stale enrollment" }, { status: 409 });

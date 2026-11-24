@@ -84,7 +84,12 @@ static void serial_task(void *arg)
                 printf("OKL-PROVISION-ERR line too long\n");
             } else if (prov_apply(line + strlen(PREFIX), err, sizeof(err))) {
                 ESP_LOGI(TAG, "provisioning data stored (usb serial)");
-                printf("OKL-PROVISION-OK\n");
+                char address[18];
+                if (okou_ble_address(address))
+                    printf("OKL-PROVISION-OK {\"ble_address\":\"%s\"}\n", address);
+                else
+                    puts("OKL-PROVISION-OK");
+                fflush(stdout);
                 okou_net_reconfigure();
                 okou_agent_reload_config();
             } else {
