@@ -363,7 +363,8 @@ try {
   });
   const connected = await op("devices.get", id);
   assert.equal(connected.online, true);
-  assert.equal(connected.info.board, d.board);
+  assert.equal(connected.board, d.board);
+  assert.deepEqual(connected.info, { role: "bootloader", net_mac: addresses.net_mac });
   assert.equal((await op("devices.list", {}, read))[0].ble_address, reportedAddress.toLowerCase());
   const ingress = (auth, principal, frame) =>
     fetch(base + "/backend/internal/iot/uplink", {
@@ -492,7 +493,8 @@ try {
   });
   assert.equal((await result(reboot.command_id)).state, "succeeded");
   const currentApp = await op("devices.get", id);
-  assert.equal(currentApp.info.board, d.board);
+  assert.equal(currentApp.board, d.board);
+  assert.deepEqual(currentApp.info, { role: "app", net_mac: addresses.net_mac });
   assert.equal(currentApp.ble_address, reportedAddress.toLowerCase());
   const inventory = currentApp.software;
   assert.equal(inventory.bootloader_version, "1.2.3");

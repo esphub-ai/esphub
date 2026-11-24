@@ -294,7 +294,7 @@ async function summary(c, d) {
         ? broker.software
         : softwareInventory(d.boot_info),
     process_id: d.boot_id,
-    info: d.boot_info,
+    info: d.boot_info ? { role: d.boot_info.role, net_mac: d.boot_info.net_mac ?? null } : null,
   };
 }
 export async function operate(c, owner, name, a) {
@@ -330,7 +330,6 @@ export async function operate(c, owner, name, a) {
         board: d.board,
         kind: d.kind,
         created_at: d.created_at,
-        transport: d.kind === "physical" ? "mqtt" : null,
         ...(await summary(c, d)),
       })),
     );
@@ -344,7 +343,6 @@ export async function operate(c, owner, name, a) {
       name: d.name,
       board: d.board,
       kind: d.kind,
-      transport: d.kind === "physical" ? "mqtt" : null,
       ...(await summary(c, d)),
       ...(d.kind === "physical" ? updateSources(d.board) : {}),
     };
