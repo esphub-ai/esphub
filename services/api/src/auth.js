@@ -1,4 +1,4 @@
-import { verifyToken } from "@clerk/backend";
+import { createClerkClient } from "@clerk/backend";
 import { getCookie } from "hono/cookie";
 import { browserOrigins, issuer } from "../../../shared/identity.js";
 import { HTTPException } from "hono/http-exception";
@@ -29,22 +29,25 @@ export async function identify(c) {
     ? header.match(/^Bearer (\S+)$/i)?.[1]
     : getCookie(c, "__session");
   if (!raw) fail(401, "Sign in required");
-  let claims;
-  try {
-    claims = await verifyToken(raw, {
-      secretKey: c.env.CLERK_SECRET_KEY,
+  const clerk = createClerkClient({
+    secretKey: c.env.CLERK_SECRET_KEY,
+    publishableKey: c.env.CLERK_PUBLISHABLE_KEY,
+  });
+  // Feed both existing credential carriers through Clerk's session-token verifier.
+  const state = await clerk.authenticateRequest(
+    new Request(c.req.url, { headers: { Authorization: `Bearer ${raw}` } }),
+    {
+      acceptsToken: "session_token",
       jwtKey: c.env.CLERK_JWT_KEY,
       issuer,
       authorizedParties: [...browserOrigins, c.env.APP_ORIGIN],
-    });
-  } catch (error) {
-    if (error.reason === "jwk-remote-failed-to-load")
-      fail(503, "Identity service unavailable");
-    fail(401, "Invalid or expired Clerk session");
-  }
-  if (!claims.sid || !allowedOrigin(c, claims.azp) || claims.sts === "pending")
-    fail(401, "Invalid Clerk session");
-  return accountForSubject(c.get("sql"), claims.sub);
+    },
+  );
+  if (state.reason === "jwk-remote-failed-to-load")
+    fail(503, "Identity service unavailable");
+  const auth = state.toAuth();
+  if (!auth.isAuthenticated) fail(401, "Invalid or expired Clerk session");
+  return accountForSubject(c.get("sql"), auth.userId);
 }
 export async function accountForSubject(sql, subject) {
   if (typeof subject !== "string" || !/^user_[a-zA-Z0-9]+$/.test(subject))
