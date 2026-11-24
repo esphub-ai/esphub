@@ -88,3 +88,5 @@ int okou_poll(uint32_t timeout_ms);
 #ifdef __cplusplus
 }
 #endif
+
+/* Temporary SDK version automation canary; never merge this PR. */
