@@ -11,7 +11,55 @@ import {
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import test from "node:test";
-import { boardPlans, profiles } from "../scripts/firmware-plan.mjs";
+import {
+  boardPlans,
+  profiles,
+  firmwareEventContext,
+} from "../scripts/firmware-plan.mjs";
+
+test("firmware planning uses the dispatched PR snapshots without a manual rebuild", () => {
+  const base = "a".repeat(40),
+    head = "b".repeat(40);
+  assert.deepEqual(
+    firmwareEventContext(
+      { inputs: { pr_number: "49" } },
+      {
+        GITHUB_EVENT_NAME: "workflow_dispatch",
+        PR_CI_BASE_SHA: base,
+        GITHUB_SHA: head,
+      },
+    ),
+    { manual: false, beforeRef: base, afterRef: head },
+  );
+  assert.throws(
+    () =>
+      firmwareEventContext(
+        { inputs: { pr_number: "49" } },
+        {
+          GITHUB_EVENT_NAME: "workflow_dispatch",
+          GITHUB_SHA: head,
+        },
+      ),
+    /validated base SHA/,
+  );
+  for (const [name, event, manual, before] of [
+    ["pull_request", { pull_request: { base: { sha: base } } }, false, base],
+    ["push", { before: base }, false, base],
+    ["workflow_dispatch", { inputs: { board: "stopwatch" } }, true, undefined],
+  ]) {
+    assert.deepEqual(
+      firmwareEventContext(event, {
+        GITHUB_EVENT_NAME: name,
+        GITHUB_SHA: head,
+      }),
+      {
+        manual,
+        beforeRef: before,
+        afterRef: head,
+      },
+    );
+  }
+});
 
 test("board CI discovers a new directory and selects only affected tasks", (t) => {
   const cwd = mkdtempSync(join(tmpdir(), "esphub-board-plan-"));

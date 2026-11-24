@@ -115,6 +115,18 @@ Install dependencies with npm ci. npm run build bundles browser code and generat
 
 Pushes to main run verification on an ephemeral PostgreSQL instance, migrate production Neon, deploy the Hono API then the website, and check public domains and authentication boundaries. Required repository secrets are CLERK_SECRET_KEY (EspHub production instance), MIGRATION_DATABASE_URL, RUNTIME_DB_PASSWORD (64 lowercase hex characters), and CLOUDFLARE_API_TOKEN. CLOUDFLARE_ACCOUNT_ID is a repository variable. CI ensures the esphub-production R2 bucket exists. The migration role creates a restricted runtime role; the API Worker receives the runtime database URL and the Clerk credential. Configure the production environment to suit the organization's deployment policy.
 
+### SDK version automation
+
+`OKOU_SDK_VERSION` in `firmware/components/okou_agent/include/okou_agent.h` is the SDK version source of truth. The board catalog generates the API's SDK metadata from that header. Firmware versions remain independently assigned as `1.1.<Board firmware run number>`.
+
+For a same-repository PR that changes SDK source, headers or build inputs, the SDK version worker updates the original PR to the next patch version from current main. Add `sdk:minor` for a new compatible API or `sdk:major` for an incompatible change; do not use both. Documentation, tests and version-literal-only changes do not cause an automatic bump. Retrying the worker does not increment an already correct version.
+
+The worker refreshes SDK branches from main before assigning a version. Conflicting branch updates fail for manual resolution; it never force-pushes. Forks receive version checks but no source writes or CI dispatches: update the fork from main and set the requested version yourself. These operations do not merge PRs or install anything on devices.
+
+The privileged worker checks out only trusted main code and inspects PR content through GitHub APIs. It explicitly requests the existing CI workflows for its final same-repository PR head using the native GitHub token. Dispatched PR CI validates repository identity, branch and immutable SHA before checking out PR code; it cannot publish firmware or deploy production. Compilation uses read-only tokens and does not persist checkout credentials. This assumes same-repository workflow authors are trusted maintainers; required check names are not a defense against a malicious maintainer rewriting workflows.
+
+Main must require the `SDK version`, `verify` and `Firmware` checks, require branches to include the latest main, and apply those checks to administrators. That server-side protection prevents parallel SDK PRs from merging the same provisional version: after one merges, the other must refresh, recompute and pass CI again. Repository settings and the `sdk:minor` / `sdk:major` labels are configured when enabling this workflow; a fork must configure its own settings.
+
 ### Board firmware CI
 
 Each `firmware/board/<vendor>/<model>/board.json` declares the board's chip, flash capacity, and shared bootloader variant. The directory name supplies the public board ID unless `board.json` sets a unique `id`. The board directory owns its partition layout, MicroPython hardware configuration, verification example, and MicroPython and USB setup actions.

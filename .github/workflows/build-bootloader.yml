@@ -6,7 +6,7 @@ on:
       variant: {type: string, required: true}
       fingerprint: {type: string, required: true}
       version: {type: string, required: true}
-permissions: {contents: write}
+permissions: {contents: read}
 concurrency:
   group: bl-${{ github.ref }}-${{ inputs.variant }}-${{ inputs.fingerprint }}
   cancel-in-progress: false
@@ -19,8 +19,12 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    permissions: {contents: read}
+    outputs:
+      published: ${{ steps.published.outputs.found }}
     steps:
       - uses: actions/checkout@v4
+        with: {persist-credentials: false}
       - name: Fetch the published build for these inputs
         id: published
         shell: bash
@@ -42,16 +46,25 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/work" -w /work -e VARIANT -e VERSION -e GITHUB_SHA \
             "$IDF_IMAGE" bash scripts/build-bootloader.sh
-      - name: Publish the shared build
-        if: steps.published.outputs.found != 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bl-${{ inputs.variant }}
+          path: shared-bl/
+          if-no-files-found: error
+  publish:
+    needs: build
+    if: needs.build.outputs.published != 'true' && github.repository == 'okou-ai/esphub' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: bl-${{ inputs.variant }}
+          path: shared-bl
+      - name: Publish the shared build without executing source code
         run: |
           tar -czf bootloader.tar.gz -C shared-bl .
           sha256sum bootloader.tar.gz > bootloader.tar.gz.sha256
           gh release create "$TAG" bootloader.tar.gz bootloader.tar.gz.sha256 \
             --target "$GITHUB_SHA" --latest=false --title "$VARIANT $VERSION" \
             --notes "Build inputs: ${{ inputs.fingerprint }}"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: bl-${{ inputs.variant }}
-          path: shared-bl/
-          if-no-files-found: error
