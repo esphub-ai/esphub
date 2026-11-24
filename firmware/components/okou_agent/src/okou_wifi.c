@@ -233,6 +233,8 @@ static int scan_locked(okou_ap_t *out, int max)
             if (recs[i].rssi > out[j].rssi) {
                 out[j].rssi = recs[i].rssi;
                 out[j].channel = recs[i].primary;
+                out[j].auth = recs[i].authmode;
+                memcpy(out[j].bssid, recs[i].bssid, sizeof(out[j].bssid));
             }
             continue;
         }
@@ -243,6 +245,7 @@ static int scan_locked(okou_ap_t *out, int max)
         out[m].rssi = recs[i].rssi;
         out[m].channel = recs[i].primary;
         out[m].auth = recs[i].authmode;
+        memcpy(out[m].bssid, recs[i].bssid, sizeof(out[m].bssid));
         m++;
     }
     free(recs);
@@ -288,23 +291,37 @@ void okou_wifi_reload(void)
     }
 }
 
-static bool attempt(const net_t *n)
+static TickType_t attempt_remaining(TickType_t started)
+{
+    TickType_t elapsed = xTaskGetTickCount() - started;
+    TickType_t budget = pdMS_TO_TICKS(ATTEMPT_TIMEOUT_MS);
+    return elapsed < budget ? budget - elapsed : 0;
+}
+
+static bool attempt(const net_t *n, const okou_ap_t *hint, TickType_t started)
 {
     wifi_config_t wc = {0};
     memcpy(wc.sta.ssid, n->ssid, strnlen(n->ssid, sizeof(wc.sta.ssid)));
     memcpy(wc.sta.password, n->pass, strnlen(n->pass, sizeof(wc.sta.password)));
     wc.sta.threshold.authmode = n->pass[0] ? WIFI_AUTH_WPA_PSK : WIFI_AUTH_OPEN;
-    wc.sta.scan_method = WIFI_ALL_CHANNEL_SCAN; /* also finds hidden SSIDs (directed probe) */
+    wc.sta.scan_method = hint ? WIFI_FAST_SCAN : WIFI_ALL_CHANNEL_SCAN;
+    if (hint) {
+        wc.sta.channel = hint->channel;
+        wc.sta.bssid_set = true;
+        memcpy(wc.sta.bssid, hint->bssid, sizeof(wc.sta.bssid));
+    } /* Unhinted attempts also find hidden SSIDs via directed probes. */
     wc.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
     wc.sta.pmf_cfg.capable = true;
     wc.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
-    esp_wifi_set_config(WIFI_IF_STA, &wc);
+    if (esp_wifi_set_config(WIFI_IF_STA, &wc) != ESP_OK) {
+        return false;
+    }
     xEventGroupClearBits(s_ev, EV_GOT_IP | EV_DISC);
     ESP_LOGI(OKOU_TAG, "wifi: trying %s%s", n->ssid, n->hidden ? " (hidden)" : "");
     if (esp_wifi_connect() != ESP_OK) {
         return false;
     }
-    EventBits_t b = xEventGroupWaitBits(s_ev, EV_GOT_IP | EV_DISC, pdTRUE, pdFALSE, pdMS_TO_TICKS(ATTEMPT_TIMEOUT_MS));
+    EventBits_t b = xEventGroupWaitBits(s_ev, EV_GOT_IP | EV_DISC, pdTRUE, pdFALSE, attempt_remaining(started));
     if (b & EV_GOT_IP) {
         strlcpy(s_current, n->ssid, sizeof(s_current));
         s_online = true;
@@ -369,7 +386,7 @@ static void try_requested_network(void)
         xEventGroupWaitBits(s_ev, EV_DISC, pdTRUE, pdFALSE, pdMS_TO_TICKS(2000));
         s_online = false;
     }
-    bool ok = attempt(&requested);
+    bool ok = attempt(&requested, NULL, xTaskGetTickCount());
     if (ok && okou_wifi_add(requested.ssid, requested.pass, requested.hidden) != ESP_OK) {
         esp_wifi_disconnect();
         xEventGroupWaitBits(s_ev, EV_DISC, pdTRUE, pdFALSE, pdMS_TO_TICKS(2000));
@@ -428,11 +445,13 @@ static void wifi_task(void *arg)
         /* order: visible saved networks by signal, then the rest (hidden / not seen) in saved order */
         int order[OKOU_WIFI_MAX], k = 0;
         bool used[OKOU_WIFI_MAX] = {0};
+        const okou_ap_t *hints[OKOU_WIFI_MAX] = {0};
         for (int j = 0; j < nseen; j++) {
             for (int i = 0; i < count; i++) {
                 if (!used[i] && strcmp(nets[i].ssid, seen[j].ssid) == 0) {
                     order[k++] = i;
                     used[i] = true;
+                    hints[i] = &seen[j];
                 }
             }
         }
@@ -444,7 +463,14 @@ static void wifi_task(void *arg)
         bool ok = false;
         for (int x = 0; x < k && !ok; x++) {
             if (join_queued()) break;
-            ok = attempt(&nets[order[x]]);
+            int i = order[x];
+            TickType_t started = xTaskGetTickCount();
+            ok = attempt(&nets[i], hints[i], started);
+            if (!ok && hints[i] && !join_queued() && attempt_remaining(started)) {
+                /* Drop stale AP/channel pins without excluding other APs of this
+                 * SSID. Both attempts share the original association/IP deadline. */
+                ok = attempt(&nets[i], NULL, started);
+            }
         }
         xSemaphoreGive(s_radio_mu);
 
