@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include "esp_system.h"
-#include "esp_mac.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "nvs_flash.h"
@@ -141,13 +140,6 @@ cJSON *okou_partitions_json(void)
     }
     esp_partition_iterator_release(it);
     return arr;
-}
-
-void okou_mac_str(char out[18])
-{
-    uint8_t m[6] = {0};
-    esp_efuse_mac_get_default(m);
-    snprintf(out, 18, "%02x:%02x:%02x:%02x:%02x:%02x", m[0], m[1], m[2], m[3], m[4], m[5]);
 }
 
 void okou_hex(const uint8_t *in, size_t n, char *out)

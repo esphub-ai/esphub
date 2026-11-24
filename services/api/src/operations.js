@@ -394,16 +394,10 @@ export async function operate(c, owner, name, a) {
     return queue("reboot", { target: "app" }, d.boot_id);
   }
   if (name === "ota.install") {
-    const variant = boards[d.board]?.bootloader;
-    const bootloader = info?.role === "bootloader" &&
-      info.image_profile === "ESPHUB2/bootloader/" + variant;
-    if (!bootloader)
-      fail(409, "Enter compatible EspHub Bootloader mode first using bootloader.enter");
-    if (a.kind === "bootloader" && info.dual_bootloader_ota !== true)
-      fail(409, "Back up the device and install the A/B USB setup kit first");
+    if (info?.role !== "bootloader")
+      fail(409, "Enter EspHub Bootloader mode first using bootloader.enter");
     if (!a.url) {
       const manifest = await bootloaderManifest(db, d.board);
-      if (info.chip !== manifest.chip) fail(409, "Release target mismatch");
       return queue(
         "install",
         {

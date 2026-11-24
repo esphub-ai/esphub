@@ -35,7 +35,6 @@ int okou_net_describe(char *buf, size_t len);
 void okou_utf8_sanitize(char *s);
 const char *okou_reset_reason_str(void);
 const char *okou_ota_state_str(const esp_partition_t *p);
-void okou_mac_str(char out[18]);
 void okou_hex(const uint8_t *in, size_t n, char *out);
 cJSON *okou_partitions_json(void);
 
