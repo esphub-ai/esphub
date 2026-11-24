@@ -20,13 +20,14 @@ export async function bootloaderManifest(sql, board) {
 
 export async function releaseResponse(board, asset, tag, sql) {
   if (!Object.hasOwn(boards, board)) fail(404, "Unknown board");
-  const kind =
-    asset === "micropython"
-      ? asset
-      : ["setup", "setup-manifest"].includes(asset)
-        ? "setup"
-        : "bootloader";
-  const chip = boards[board].chip;
+  const kind = ["micropython", "native"].includes(asset)
+    ? asset
+    : ["setup", "setup-manifest"].includes(asset)
+      ? "setup"
+      : "bootloader";
+  const { chip, runtime } = boards[board];
+  if (["micropython", "native"].includes(kind) && kind !== runtime)
+    fail(404, "Unknown download");
   if (!Object.hasOwn(assetNames(board, chip, kind, ""), asset))
     fail(404, "Unknown download");
   if (tag === undefined) {

@@ -6,18 +6,18 @@ runs:
     - shell: bash
       run: |
         set -euo pipefail
-        mkdir -p components/{bootloader,micropython} dist
+        mkdir -p components/{bootloader,runtime} dist
         base="esphub-$BOARD-$CHIP-$BOOTLOADER_VERSION"
         kit="$base-usb.zip"
-        app="esphub-$BOARD-micropython-$MICROPYTHON_VERSION"
+        app="esphub-$BOARD-$RUNTIME_KIND-$RUNTIME_VERSION"
         manifest="$base.json"
         if [[ "$LOCAL_BOOTLOADER" == false ]]; then
           gh release download "$BOOTLOADER_TAG" -R "$GITHUB_REPOSITORY" -p "$kit" -p "$manifest" -D components/bootloader
         fi
-        if [[ "$LOCAL_MICROPYTHON" == false ]]; then
-          gh release download "$MICROPYTHON_TAG" -R "$GITHUB_REPOSITORY" -p "$app.bin" -p "$app.sha256" -D components/micropython
+        if [[ "$LOCAL_RUNTIME" == false ]]; then
+          gh release download "$RUNTIME_TAG" -R "$GITHUB_REPOSITORY" -p "$app.bin" -p "$app.sha256" -D components/runtime
         fi
         jq -er --arg name "$kit" --arg board "$BOARD" 'select(.board == $board and .usb.file == $name) | .usb.sha256 + "  " + .usb.file' "components/bootloader/$manifest" > components/bootloader/checksum
         (cd components/bootloader && sha256sum -c checksum)
-        (cd components/micropython && sha256sum -c "$app.sha256")
-        python3 scripts/package-setup.py "$BOARD" "$BOARD_DIR" "components/bootloader/$kit" "components/micropython/$app.bin" dist
+        (cd components/runtime && sha256sum -c "$app.sha256")
+        python3 scripts/package-setup.py "$BOARD" "$BOARD_DIR" "components/bootloader/$kit" "components/runtime/$app.bin" dist

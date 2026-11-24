@@ -79,10 +79,11 @@ jobs:
       TAG: ${{ fromJSON(inputs.profile).kit.tag }}
       BOOTLOADER_VERSION: ${{ fromJSON(inputs.profile).kit.bootloader.version }}
       BOOTLOADER_TAG: ${{ fromJSON(inputs.profile).kit.bootloader.tag }}
-      MICROPYTHON_VERSION: ${{ fromJSON(inputs.profile).kit.micropython.version }}
-      MICROPYTHON_TAG: ${{ fromJSON(inputs.profile).kit.micropython.tag }}
+      RUNTIME_VERSION: ${{ fromJSON(inputs.profile).kit.runtime.version }}
+      RUNTIME_KIND: ${{ fromJSON(inputs.profile).kit.runtime_kind }}
+      RUNTIME_TAG: ${{ fromJSON(inputs.profile).kit.runtime.tag }}
       LOCAL_BOOTLOADER: ${{ toJSON(fromJSON(inputs.profile).kit.local_bootloader) }}
-      LOCAL_MICROPYTHON: ${{ toJSON(fromJSON(inputs.profile).kit.local_micropython) }}
+      LOCAL_RUNTIME: ${{ toJSON(fromJSON(inputs.profile).kit.local_runtime) }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -93,10 +94,10 @@ jobs:
           name: ${{ env.BOARD }}-bootloader
           path: components/bootloader
       - uses: actions/download-artifact@v4
-        if: fromJSON(inputs.profile).kit.local_micropython
+        if: fromJSON(inputs.profile).kit.local_runtime
         with:
-          name: ${{ env.BOARD }}-micropython
-          path: components/micropython
+          name: ${{ env.BOARD }}-${{ env.RUNTIME_KIND }}
+          path: components/runtime
       - name: Select the board's USB kit action
         shell: bash
         run: cp -R "$BOARD_DIR/setup" .board-task
@@ -122,7 +123,7 @@ jobs:
           JOBS: ${{ toJSON(fromJSON(inputs.profile).jobs) }}
         run: |
           set -euo pipefail
-          for kind in bootloader micropython setup; do
+          for kind in bootloader micropython native setup; do
             job=$(jq -c --arg kind "$kind" '.[] | select(.kind == $kind)' <<< "$JOBS")
             [[ -n "$job" ]] || continue
             tag=$(jq -r .tag <<< "$job")
