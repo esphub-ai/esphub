@@ -14,7 +14,7 @@ export default {
       const upstream = new URL(u.pathname.replace("/setup-firmware/", "/releases/"), u);
       const tag = u.searchParams.get("tag");
       if (tag !== null) upstream.searchParams.set("tag", tag);
-      const release = await env.API.fetch(upstream);
+      const release = await env.API.fetch(new Request(upstream, { redirect: "manual" }));
       if (release.status !== 302) return release;
       const url = release.headers.get("Location");
       if (!url?.startsWith("https://github.com/okou-ai/esphub/releases/download/"))
