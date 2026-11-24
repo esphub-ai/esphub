@@ -45,7 +45,7 @@ def package(table, suffix):
         assert len(image) <= min(int(bl[4], 0), int(standby[4], 0))
         assert nvs[1:3] == ["data", "nvs"] and ota_data[1:3] == ["data", "ota"]
         nvs_csv = tmp / "board.csv"
-        nvs_csv.write_text(f"key,type,encoding,value\nokl,namespace,,\nboard,data,string,{board}\nhold,data,u8,1\n")
+        nvs_csv.write_text("key,type,encoding,value\nokl,namespace,,\nhold,data,u8,1\n")
         nvs_bin = tmp / "board-nvs.bin"
         subprocess.run([sys.executable,
                         idf / "components/nvs_flash/nvs_partition_generator/nvs_partition_gen.py",

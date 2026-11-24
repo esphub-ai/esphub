@@ -23,7 +23,7 @@ EspHub has three deployment targets: the EspHub Bootloader, a Runtime, and a Pro
 
 In maintenance mode the ESP-IDF bootloader loads the EspHub Bootloader instead. Normal boots can go directly to the selected application. The active EspHub Bootloader writes and validates the other slot before selecting it for the next boot.
 
-Current ESP32-S3 boards share two EspHub Bootloader builds, `esp32s3-8mb` and `esp32s3-16mb`. USB setup writes each board's identity in NVS and installs its partition table independently. Shared bootloaders use that board identity to validate Runtime updates and read the installed partition table at runtime.
+Current ESP32-S3 boards share two EspHub Bootloader builds, `esp32s3-8mb` and `esp32s3-16mb`. The device registration selects the board-specific USB kit, including its partition table. OTA commands carry the registered board for Runtime image validation. Shared bootloaders read the installed partition table at runtime.
 
 ## Partition mapping
 

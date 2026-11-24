@@ -343,7 +343,6 @@ try {
   assert.equal((await request("tools/list", {}, d.token)).status, 401);
   mcu = simulatedDevice(base, d.token);
   const boot = await mcu.hello({
-    board: d.board,
     role: "bootloader",
     chip: "esp32s3",
     mac: "00:11:22:33:44:55",
@@ -351,7 +350,9 @@ try {
     image_profile: "ESPHUB2/bootloader/esp32s3-16mb",
     fw: { version: "1.2.3" },
   });
-  assert.equal((await op("devices.get", id)).online, true);
+  const connected = await op("devices.get", id);
+  assert.equal(connected.online, true);
+  assert.equal(connected.info.board, d.board);
   const ingress = (auth, principal, frame) =>
     fetch(base + "/backend/internal/iot/uplink", {
       method: "POST",
@@ -471,14 +472,16 @@ try {
   const reboot = await op("devices.reboot", id);
   assert.equal((await mcu.nextCommand()).id, reboot.command_id);
   const app = await mcu.hello({
-    board: d.board,
+    board: "legacy-board-report",
     role: "app",
     mac: "00:11:22:33:44:55",
     image_profile: "ESPHUB2/micropython/" + d.board,
     fw: { name: "micropython", version: "test" },
   });
   assert.equal((await result(reboot.command_id)).state, "succeeded");
-  const inventory = (await op("devices.get", id)).software;
+  const currentApp = await op("devices.get", id);
+  assert.equal(currentApp.info.board, d.board);
+  const inventory = currentApp.software;
   assert.equal(inventory.bootloader_version, "1.2.3");
   assert.equal(inventory.application.kind, "micropython");
   assert.equal(
