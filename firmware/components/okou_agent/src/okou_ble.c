@@ -351,7 +351,7 @@ fail:
 void okou_ble_init(bool enable)
 {
     key_lock = xSemaphoreCreateMutex();
-    if (!enable) return;
+    if (!enable || !okou_ble_generation()) return;
     atomic_store(&host_owned, true);
     if (!key_lock || xTaskCreate(launch_nimble, "ble_init", 4096, NULL, 3, NULL) != pdPASS) {
         atomic_store(&host_owned, false);
