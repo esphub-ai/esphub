@@ -304,16 +304,30 @@ export async function reconcileSdkPullRequest({
         "Superseded by the SDK version commit.",
       );
       check = await createCheck(request, root, sha);
-      const updatedPr = await request("GET", `${root}/pulls/${number}`);
-      if (
-        updatedPr.state !== "open" ||
-        updatedPr.head.sha !== sha ||
-        updatedPr.base.sha !== pr.base.sha ||
-        releaseIntent(updatedPr) !== releaseIntent(pr)
-      )
-        throw Error(
-          "PR changed after the SDK commit; the latest head and release intent must be checked again.",
-        );
+      let updatedPr;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        updatedPr = await request("GET", `${root}/pulls/${number}`);
+        if (
+          updatedPr.state !== "open" ||
+          updatedPr.base.sha !== pr.base.sha ||
+          releaseIntent(updatedPr) !== releaseIntent(pr)
+        )
+          throw Error(
+            "PR base or release intent changed after the SDK commit; check again.",
+          );
+        if (updatedPr.head.sha === sha) break;
+        if (updatedPr.head.sha !== pr.head.sha)
+          throw Error(
+            `PR head changed after the SDK commit: expected ${sha}, observed ${updatedPr.head.sha}.`,
+          );
+        // A successful GraphQL commit can precede REST PR-cache propagation.
+        // Wait only on the inspected old head; never replay the accepted write.
+        if (attempt === 29)
+          throw Error(
+            `SDK commit ${sha} is not yet visible in the PR; rerun after it propagates.`,
+          );
+        await wait(1000);
+      }
       pr = updatedPr;
       head = await snapshot(request, root, sha);
     }
