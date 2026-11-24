@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "esp_system.h"
 #include "esp_mac.h"
+#include "soc/soc_caps.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "nvs_flash.h"
@@ -147,7 +148,19 @@ void okou_mac_str(char out[18])
 {
     uint8_t m[6] = {0};
     esp_efuse_mac_get_default(m);
-    snprintf(out, 18, "%02x:%02x:%02x:%02x:%02x:%02x", m[0], m[1], m[2], m[3], m[4], m[5]);
+    snprintf(out, 18, MACSTR, MAC2STR(m));
+}
+
+bool okou_ble_address(char out[18])
+{
+#if SOC_BLE_SUPPORTED
+    uint8_t m[6];
+    if (esp_read_mac(m, ESP_MAC_BT) == ESP_OK) {
+        snprintf(out, 18, MACSTR, MAC2STR(m));
+        return true;
+    }
+#endif
+    return false;
 }
 
 void okou_hex(const uint8_t *in, size_t n, char *out)

@@ -44,12 +44,13 @@ with ZipFile(args.bootloader) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
             dest.writestr(name, base.read(name))
     dest.writestr("micropython.bin", image)
     dest.write(profile / "main.py", "main.py")
+    dest.write(Path(__file__).resolve().parents[1] / "tools/ble-wifi/provision_usb.py", "provision_usb.py")
     flash_args = base.read("flash_args").rstrip() + f"\n{offset:#x} micropython.bin\n".encode()
     name = "board-nvs.bin"
     assert len(base.read(name)) == int(parts["nvs"][4], 0)
     flash_args += f"{parts['nvs'][3]} {name}\n".encode()
     dest.writestr("flash_args", flash_args)
-    setup_note = ("Write the plain hub hostname, token and ble_secret from devices.create with OKL-PROVISION over USB at 115200.\n"
+    setup_note = ("With the board in the bootloader, run python3 provision_usb.py PORT with the private devices.create JSON on stdin. Install pyserial and sign in to the Okou CLI with EspHub MCP write access. The helper writes the registration at 115200 baud and binds the returned Bluetooth address to its device ID.\n"
                   "Run the macOS BLE Wi-Fi tool while the board is in the bootloader. Call bootloader.exit, type app on USB or power-cycle to start MicroPython.")
     dest.writestr("INSTALL.txt", f"""First installation for {args.board} only. Includes the bootloader and MicroPython.
 This erases flash and replaces the partition table and application. Back up existing device data first.

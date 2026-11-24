@@ -29,7 +29,7 @@ const sharedInputs = {
     "firmware/components/okou_agent/**",
     ".github/actions/build-micropython/**",
   ],
-  setup: ["scripts/package-setup.py", ".github/actions/build-kit/**"],
+  setup: ["scripts/package-setup.py", "tools/ble-wifi/provision_usb.py", ".github/actions/build-kit/**"],
 };
 const digest = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
