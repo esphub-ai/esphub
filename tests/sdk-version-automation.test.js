@@ -30,6 +30,7 @@ function fixture({
   labels = [],
   before,
   graphqlResponse,
+  staleCommitReads = 0,
 } = {}) {
   const calls = [];
   const snapshots = new Map();
@@ -56,7 +57,9 @@ function fixture({
     mergeBase: "base",
     latestBase: "base",
     runs: {},
+    runJobs: {},
     checks: [],
+    prReadQueue: [],
   };
   function snapshot(
     sha,
@@ -95,7 +98,8 @@ function fixture({
     const call = { method, path, body: clone(body) };
     calls.push(call);
     await before?.(call, state);
-    if (method === "GET" && path === `${root}/pulls/7`) return clone(state.pr);
+    if (method === "GET" && path === `${root}/pulls/7`)
+      return clone(state.prReadQueue.shift() ?? state.pr);
     const commitSha = path.match(/\/git\/commits\/([^/]+)$/)?.[1];
     if (method === "GET" && commitSha) {
       assert.ok(snapshots.has(commitSha), `Unknown commit ${commitSha}`);
@@ -171,6 +175,9 @@ function fixture({
         size: Buffer.from(contents, "base64").length,
         content: contents,
       });
+      state.prReadQueue = Array.from({ length: staleCommitReads }, () =>
+        clone(state.pr),
+      );
       state.pr.head.sha = "sdk-commit";
       return {
         data: { createCommitOnBranch: { commit: { oid: "sdk-commit" } } },
@@ -178,6 +185,9 @@ function fixture({
     }
     if (method === "GET" && path === `${root}/git/ref/heads/main`)
       return { object: { sha: state.latestBase } };
+    const runId = path.match(/\/actions\/runs\/(\d+)\/jobs\?per_page=1$/)?.[1];
+    if (method === "GET" && runId)
+      return { total_count: state.runJobs[runId] ?? 0 };
     const workflow = path.match(/\/actions\/workflows\/([^/]+)\//)?.[1];
     if (method === "GET" && workflow)
       return { workflow_runs: clone(state.runs[workflow] ?? []) };
@@ -449,6 +459,68 @@ test("same-repository SDK changes write one header on the inspected HEAD tree an
       );
     });
   }
+});
+
+test("blocked or zero-job bot PR runs do not suppress explicit CI dispatch", async (t) => {
+  for (const conclusion of ["action_required", "failure", null]) {
+    await t.test(String(conclusion), async () => {
+      const f = fixture({ version: "1.2.4" });
+      for (const workflow of ["production.yml", "firmware.yml"])
+        f.state.runs[workflow] = [
+          {
+            id: 123,
+            head_sha: "head",
+            head_branch: "feature/sdk",
+            event: "pull_request",
+            actor: { login: "github-actions[bot]" },
+            conclusion,
+          },
+        ];
+      await f.run();
+      assert.equal(f.dispatches().length, 2);
+      assert.equal(f.branchWrites().length, 0);
+    });
+  }
+});
+
+test("failed bot PR CI with real jobs is not automatically retried", async () => {
+  const f = fixture({ version: "1.2.4" });
+  f.state.runJobs[123] = 1;
+  for (const workflow of ["production.yml", "firmware.yml"])
+    f.state.runs[workflow] = [
+      {
+        id: 123,
+        head_sha: "head",
+        head_branch: "feature/sdk",
+        event: "pull_request",
+        actor: { login: "github-actions[bot]" },
+        conclusion: "failure",
+      },
+    ];
+  await f.run();
+  noBranchActivity(f);
+});
+
+test("accepted commits wait for stale REST PR snapshots without another write", async () => {
+  const f = fixture({ staleCommitReads: 2 });
+  const waits = [];
+  const result = await f.run({ wait: async (ms) => waits.push(ms) });
+  assert.equal(result.head, "sdk-commit");
+  assert.deepEqual(waits, [1000, 1000]);
+  assert.equal(f.branchWrites().length, 1);
+  assert.equal(f.dispatches().length, 2);
+  assert.equal(f.state.checks.at(-1).conclusion, "success");
+});
+
+test("a commit that remains absent from REST fails within a bounded readback", async () => {
+  const f = fixture({ staleCommitReads: 30 });
+  let waits = 0;
+  await assert.rejects(f.run({ wait: async () => waits++ }), /not yet visible/);
+  assert.equal(waits, 29);
+  assert.equal(f.state.pr.head.sha, "sdk-commit");
+  assert.equal(f.branchWrites().length, 1);
+  assert.equal(f.dispatches().length, 0);
+  failed(f);
 });
 
 test("exact tree arrays detect SDK deletion, addition, and mode changes", async (t) => {
