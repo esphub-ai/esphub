@@ -57,6 +57,7 @@ function fixture({
     mergeBase: "base",
     latestBase: "base",
     runs: {},
+    runJobs: {},
     checks: [],
     prReadQueue: [],
   };
@@ -184,6 +185,9 @@ function fixture({
     }
     if (method === "GET" && path === `${root}/git/ref/heads/main`)
       return { object: { sha: state.latestBase } };
+    const runId = path.match(/\/actions\/runs\/(\d+)\/jobs\?per_page=1$/)?.[1];
+    if (method === "GET" && runId)
+      return { total_count: state.runJobs[runId] ?? 0 };
     const workflow = path.match(/\/actions\/workflows\/([^/]+)\//)?.[1];
     if (method === "GET" && workflow)
       return { workflow_runs: clone(state.runs[workflow] ?? []) };
@@ -455,6 +459,46 @@ test("same-repository SDK changes write one header on the inspected HEAD tree an
       );
     });
   }
+});
+
+test("blocked or zero-job bot PR runs do not suppress explicit CI dispatch", async (t) => {
+  for (const conclusion of ["action_required", "failure", null]) {
+    await t.test(String(conclusion), async () => {
+      const f = fixture({ version: "1.2.4" });
+      for (const workflow of ["production.yml", "firmware.yml"])
+        f.state.runs[workflow] = [
+          {
+            id: 123,
+            head_sha: "head",
+            head_branch: "feature/sdk",
+            event: "pull_request",
+            actor: { login: "github-actions[bot]" },
+            conclusion,
+          },
+        ];
+      await f.run();
+      assert.equal(f.dispatches().length, 2);
+      assert.equal(f.branchWrites().length, 0);
+    });
+  }
+});
+
+test("failed bot PR CI with real jobs is not automatically retried", async () => {
+  const f = fixture({ version: "1.2.4" });
+  f.state.runJobs[123] = 1;
+  for (const workflow of ["production.yml", "firmware.yml"])
+    f.state.runs[workflow] = [
+      {
+        id: 123,
+        head_sha: "head",
+        head_branch: "feature/sdk",
+        event: "pull_request",
+        actor: { login: "github-actions[bot]" },
+        conclusion: "failure",
+      },
+    ];
+  await f.run();
+  noBranchActivity(f);
 });
 
 test("accepted commits wait for stale REST PR snapshots without another write", async () => {
