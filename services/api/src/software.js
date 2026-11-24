@@ -8,7 +8,8 @@ export function softwareInventory(current, previous) {
   return {
     bootloader_version:
       current?.bootloader_version ||
-      (bootloader?.role === "bootloader" && bootloader.fw?.version) ||
+      (bootloader?.role === "bootloader" &&
+        (bootloader.bootloader_version || bootloader.fw?.version)) ||
       null,
     bootloader_last_seen:
       current?.role === "app" &&
