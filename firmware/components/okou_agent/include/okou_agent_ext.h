@@ -86,6 +86,7 @@ typedef struct {
     int8_t rssi;
     uint8_t channel;
     int auth; /* wifi_auth_mode_t */
+    uint8_t bssid[6]; /* strongest AP; connection hint for this scan only */
 } okou_ap_t;
 /* Save (or move to the front) a network; up to OKOU_WIFI_MAX, oldest dropped. */
 esp_err_t okou_wifi_add(const char *ssid, const char *pass, bool hidden);

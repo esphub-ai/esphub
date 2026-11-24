@@ -396,6 +396,10 @@ static bool send_text(const char *s, size_t len)
 
 static void mqtt_teardown(const char *why)
 {
+    // Reset lazily on disconnect; a healthy idle session needs no periodic wake.
+    if (s_mqtt_up && now_us() - s_up_since_us >= BACKOFF_RESET_US) {
+        s_backoff_ms = 1000;
+    }
     if (s_iot_started) {
         okou_iot_stop();
         s_iot_started = false;
@@ -773,10 +777,38 @@ static void service_control(void)
 }
 
 
+static void agent_wait(bool transport_paused)
+{
+    int64_t deadline = INT64_MAX;
+    if (!transport_paused) {
+        if (!s_iot_started && s_cfg_ok && okou_net_has_ip()) {
+            deadline = s_next_connect_us;
+        } else if (s_iot_started && !s_mqtt_up) {
+            deadline = s_conn_start_us + CONNECT_TIMEOUT_US;
+        }
+    }
+    portENTER_CRITICAL(&s_rmux);
+    int64_t rb = s_reboot_at_us;
+    portEXIT_CRITICAL(&s_rmux);
+    int64_t now = now_us();
+    if (rb && now >= rb) do_reboot();
+    // A failed publish needs teardown on the next iteration, not another event.
+    if (!transport_paused && s_mqtt_broken && s_iot_started) return;
+    if (rb && rb < deadline) deadline = rb;
+    if (deadline <= now) return;
+    TickType_t wait = portMAX_DELAY;
+    if (deadline != INT64_MAX) {
+        // Round up so a sub-tick deadline does not spin, and reserve portMAX_DELAY
+        // for waits with no deadline (even for the largest scheduled reboot).
+        uint64_t ticks = (uint64_t)(deadline - now) * configTICK_RATE_HZ / 1000000 + 1;
+        wait = ticks < portMAX_DELAY ? (TickType_t)ticks : portMAX_DELAY - 1;
+    }
+    xSemaphoreTake(s_wake, wait);
+}
+
 static void agent_task(void *arg)
 {
     for (;;) {
-        int64_t now = now_us();
         if (s_reload) {
             s_reload = false;
             s_cfg_ok = load_config();
@@ -784,17 +816,20 @@ static void agent_task(void *arg)
                 mqtt_teardown("config reload");
             }
             s_backoff_ms = 1000;
-            s_next_connect_us = now;
+            s_next_connect_us = now_us();
         }
 #if CONFIG_OKL_URL_OTA
         if (xEventGroupGetBits(ota_transport) & OTA_PAUSE) {
             if (s_iot_started) mqtt_teardown("OTA download");
             xEventGroupSetBits(ota_transport, MQTT_STOPPED);
-            xSemaphoreTake(s_wake, pdMS_TO_TICKS(1000));
+            agent_wait(true);
             s_next_connect_us = 0;
             continue;
         }
 #endif
+        if (s_iot_started && !okou_net_has_ip()) {
+            mqtt_teardown("network down");
+        }
         if (s_mqtt_broken && s_iot_started) {
             mqtt_teardown("send failed");
         }
@@ -803,7 +838,7 @@ static void agent_task(void *arg)
             if (events & IOT_OFFLINE)
                 mqtt_teardown("MQTT disconnected");
             else if (events & IOT_SUBSCRIBED) {
-                s_up_since_us = now;
+                s_up_since_us = now_us();
                 s_mqtt_up = true;
                 if (send_hello()) {
                     s_hello_acked = report_install_result();
@@ -813,15 +848,15 @@ static void agent_task(void *arg)
             }
         }
         if (!s_iot_started) {
-            if (s_cfg_ok && okou_net_has_ip() && now >= s_next_connect_us) {
+            if (s_cfg_ok && okou_net_has_ip() && now_us() >= s_next_connect_us) {
                 s_mqtt_broken = false;
-                s_conn_start_us = now;
+                s_conn_start_us = now_us();
                 s_iot_started = okou_iot_start(s_boot_id, s_hub, s_tok);
                 if (!s_iot_started)
                     mqtt_teardown("MQTT setup failed");
             }
         } else if (!s_mqtt_up) {
-            if (now - s_conn_start_us > CONNECT_TIMEOUT_US) {
+            if (now_us() - s_conn_start_us >= CONNECT_TIMEOUT_US) {
                 mqtt_teardown("connect timeout");
             }
         } else {
@@ -835,22 +870,9 @@ static void agent_task(void *arg)
             }
             if (!okou_net_has_ip()) {
                 mqtt_teardown("network down");
-            } else if (now - s_up_since_us >= BACKOFF_RESET_US) {
-                s_backoff_ms = 1000;
             }
         }
-        portENTER_CRITICAL(&s_rmux);
-        int64_t rb = s_reboot_at_us;
-        portEXIT_CRITICAL(&s_rmux);
-        if (rb && now >= rb) do_reboot();
-
-        // Housekeeping is bounded to one second. Transport and producer callbacks
-        // wake us immediately. Honor an earlier reboot deadline.
-        now = now_us();
-        int64_t deadline = now + 1000000;
-        if (rb && rb < deadline) deadline = rb;
-        if (deadline > now)
-            xSemaphoreTake(s_wake, pdMS_TO_TICKS((deadline - now) / 1000) + 1);
+        agent_wait(false);
     }
 }
 

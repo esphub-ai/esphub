@@ -72,6 +72,7 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data)
         s_has_ip = false;
         s_ip[0] = '\0';
         okou_wifi_on_disconnected(((wifi_event_sta_disconnected_t *)data)->reason);
+        okou_agent_notify();
     }
 }
 #endif
