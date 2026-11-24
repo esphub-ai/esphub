@@ -1,5 +1,5 @@
 import { softwareInventory } from "./software.js";
-import { newBleSecret, issueBle } from "./ble.js";
+import { newBleSecret, issueBle, normalizeBleAddress } from "./ble.js";
 import { connectedSince } from "./iot.js";
 import { artifactBase } from "./uploads.js";
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
@@ -44,6 +44,12 @@ const defs = [
     readOnly,
     "Show device kind, identity and connection status. Physical boards include EspHub Bootloader, Runtime, and Program update guidance, official downloads, and SDK information, even while offline.",
     id,
+  ],
+  [
+    "devices.bind_ble_address",
+    destructive,
+    "Bind the Bluetooth address reported over USB to your physical device registration. Replaces an earlier address.",
+    { ...id, ...strings("ble_address") },
   ],
   [
     "devices.reissue",
@@ -281,6 +287,7 @@ async function summary(c, d) {
     internal(c, d.id, "summary"),
   ]);
   return {
+    ble_address: d.ble_address,
     online: !!session && session === Number(d.mqtt_connected_since),
     software:
       broker.process_id === d.boot_id
@@ -309,7 +316,7 @@ export async function operate(c, owner, name, a) {
     };
   }
   const ds =
-    await db`SELECT d.id,d.name,d.board,d.kind,d.created_at,d.cert_ready,d.mqtt_connected_since,d.boot_info,
+    await db`SELECT d.id,d.name,d.board,d.kind,d.ble_address,d.created_at,d.cert_ready,d.mqtt_connected_since,d.boot_info,
       CASE WHEN d.kind='virtual' THEN (
         SELECT process_id FROM esphub.virtual_boots WHERE device_id=d.id ORDER BY sequence DESC LIMIT 1
       ) ELSE d.boot_id END AS boot_id
@@ -357,6 +364,14 @@ export async function operate(c, owner, name, a) {
       : withSources(staged);
   }
   if (d.kind === "virtual") return operateVirtual(db, d, name, a);
+  if (name === "devices.bind_ble_address") {
+    const address = normalizeBleAddress(a.ble_address);
+    if (!address) fail(400, "Invalid ble_address. Use six colon-separated hex octets.");
+    const [bound] = await db`UPDATE esphub.devices SET ble_address=${address}::macaddr
+      WHERE id=${d.id} AND owner=${owner} AND kind='physical' RETURNING id,ble_address`;
+    if (!bound) fail(404, "Device not found");
+    return bound;
+  }
   if (name === "wifi.ble_credential") return issueBle(db, owner, d.id);
   if (name === "programs.get") {
     const [installed] = await db`SELECT request_id AS transfer_id,result->>'sha256' AS sha256,
@@ -377,7 +392,7 @@ export async function operate(c, owner, name, a) {
     await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,mqtt_connected_since=NULL,boot_id=NULL,boot_info=NULL,
       ble_secret=${bleSecret} WHERE owner=${owner} AND id=${d.id}`;
     await internal(c, d.id, "revoke", { device: d.id });
-    return { token: secret, ble_secret: bleSecret };
+    return { id: d.id, hub: "api.esphub.ai", token: secret, ble_secret: bleSecret };
   }
   if (name === "ota.prepare_upload")
     return withSources(await internal(c, d.id, "prepare-upload", a));

@@ -295,7 +295,8 @@ static void hello_fill(cJSON *o)
     bool launcher = okou_is_bootloader();
     cJSON_AddStringToObject(o, "boot_id", s_boot_id);
     cJSON_AddStringToObject(o, "role", launcher ? "bootloader" : "app");
-    report_mac(o, "ble_mac", ESP_MAC_BT);
+    char ble_address[18];
+    if (okou_ble_address(ble_address)) cJSON_AddStringToObject(o, "ble_address", ble_address);
 #if CONFIG_OKOU_NET_OPENETH
     report_mac(o, "net_mac", ESP_MAC_ETH);
 #else

@@ -3,6 +3,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include "esp_system.h"
+#include "esp_mac.h"
+#include "soc/soc_caps.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "nvs_flash.h"
@@ -140,6 +142,18 @@ cJSON *okou_partitions_json(void)
     }
     esp_partition_iterator_release(it);
     return arr;
+}
+
+bool okou_ble_address(char out[18])
+{
+#if SOC_BLE_SUPPORTED
+    uint8_t m[6];
+    if (esp_read_mac(m, ESP_MAC_BT) == ESP_OK) {
+        snprintf(out, 18, MACSTR, MAC2STR(m));
+        return true;
+    }
+#endif
+    return false;
 }
 
 void okou_hex(const uint8_t *in, size_t n, char *out)

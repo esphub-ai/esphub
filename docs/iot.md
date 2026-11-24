@@ -24,6 +24,8 @@ The queue expires undelivered commands after five minutes. A dispatched command 
 
 ## MQTT reports
 
+The shared agent reports the public Bluetooth controller address as `ble_address` in the MQTT hello on each connection. The hub uses the authenticated device ID to update the same binding as USB provisioning. An absent or malformed address leaves the stored value intact. `devices.list` and `devices.get` expose the address for physical registrations. Older firmware reports only the base chip address in `mac`.
+
 Each uplink contains a `frame` with a per-boot message ID. The AWS rule attaches the device UUID from the topic and the certificate ID from the broker principal. A Lambda relay forwards the envelope to the Worker. The Worker checks the registered certificate and the active boot. The device policy scopes publish and subscribe to the attached thing.
 
 Hello, command receipts and install outcomes request an application acknowledgement on the downlink. The ACK echoes the boot ID and message ID. The hello acknowledgement confirms that the hub has recorded the boot. A successful OTA write and boot selection completes installation locally. First boot and Hub connectivity do not affect image acceptance. ESP-IDF uses the OTA state `undefined` for images selected with rollback disabled. Ordinary events use MQTT QoS 1. Console output is available locally over USB.

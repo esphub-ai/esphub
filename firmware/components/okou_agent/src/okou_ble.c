@@ -35,7 +35,7 @@ static const ble_uuid128_t channel = BLE_UUID128_INIT(0x02, 0x21, 0x91, 0xfa, 0x
 static StreamBufferHandle_t rx, tx;
 static TaskHandle_t worker;
 static SemaphoreHandle_t key_lock;
-static uint8_t address_type, root_key[32], tls_psk[32];
+static uint8_t root_key[32], tls_psk[32];
 static atomic_uint connection = NO_CONN;
 static atomic_bool synced;
 static atomic_bool host_owned;
@@ -246,7 +246,7 @@ static void radio(void *unused)
         xStreamBufferReset(tx);
         ulTaskNotifyTake(pdTRUE, 0);
         if (ble_gap_adv_set_fields(&fields) ||
-            ble_gap_adv_start(address_type, NULL, BLE_HS_FOREVER, &adv, gap_event, NULL)) {
+            ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER, &adv, gap_event, NULL)) {
             vTaskDelay(pdMS_TO_TICKS(500));
             continue;
         }
@@ -269,7 +269,8 @@ static void radio(void *unused)
     }
 }
 
-static void on_sync(void) { synced = ble_hs_id_infer_auto(0, &address_type) == 0; }
+/* USB and MQTT report ESP_MAC_BT. Advertise the same public identity for discovery. */
+static void on_sync(void) { synced = ble_hs_id_copy_addr(BLE_ADDR_PUBLIC, NULL, NULL) == 0; }
 static void on_reset(int reason)
 {
     synced = false;

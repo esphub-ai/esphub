@@ -128,6 +128,7 @@ async function testVirtualDevice(read) {
     /^https:\/\/api\.esphub\.ai\/api\/device\/programs\//,
   );
   for (const [name, args] of [
+    ["devices.bind_ble_address", { ...vid, ble_address: "02:11:22:33:44:55" }],
     ["wifi.scan", vid],
     ["wifi.ble_credential", vid],
     ["devices.reissue", vid],
@@ -259,6 +260,17 @@ try {
     id = { device_id: d.id };
   assert.match(d.prompt, /hidden SSID/);
   assert.match(d.ble_secret, /^[0-9a-f]{64}$/);
+  const usbAddress = "02:AA:BB:CC:DD:EE";
+  const reportedAddress = "02:11:22:AA:BB:CC";
+  const bindArgs = { ...id, ble_address: usbAddress };
+  assert.equal((await op("devices.get", id)).ble_address, null);
+  for (let i = 0; i < 2; i++) {
+    assert.deepEqual(await op("devices.bind_ble_address", bindArgs), {
+      id: d.id, ble_address: usbAddress.toLowerCase(),
+    });
+  }
+  await assert.rejects(op("devices.bind_ble_address", { ...id, ble_address: "wrong" }), /Invalid ble_address/);
+  assert.equal((await op("devices.list", {}, read))[0].ble_address, usbAddress.toLowerCase());
   const firstBle = await op("wifi.ble_credential", id);
   assert.deepEqual(firstBle, {
     psk: createHmac("sha256", Buffer.from(d.ble_secret, "hex"))
@@ -330,6 +342,7 @@ try {
   const other = await issue("devices:read devices:write", {
     sub: otherSubject,
   });
+  await assert.rejects(op("devices.bind_ble_address", bindArgs, other), /not found/i);
   for (const name of ["devices.get", "devices.delete", "wifi.ble_credential"]) {
     const response = await request(
       "tools/call",
@@ -342,7 +355,7 @@ try {
   }
   assert.equal((await request("tools/list", {}, d.token)).status, 401);
   mcu = simulatedDevice(base, d.token);
-  const addresses = { ble_mac: "00:11:22:33:44:55", net_mac: "00:11:22:33:44:54" };
+  const addresses = { ble_address: reportedAddress, net_mac: "00:11:22:33:44:54" };
   const boot = await mcu.hello({
     ...addresses,
     role: "bootloader",
@@ -351,6 +364,7 @@ try {
   const connected = await op("devices.get", id);
   assert.equal(connected.online, true);
   assert.equal(connected.info.board, d.board);
+  assert.equal((await op("devices.list", {}, read))[0].ble_address, reportedAddress.toLowerCase());
   const ingress = (auth, principal, frame) =>
     fetch(base + "/backend/internal/iot/uplink", {
       method: "POST",
@@ -479,6 +493,7 @@ try {
   assert.equal((await result(reboot.command_id)).state, "succeeded");
   const currentApp = await op("devices.get", id);
   assert.equal(currentApp.info.board, d.board);
+  assert.equal(currentApp.ble_address, reportedAddress.toLowerCase());
   const inventory = currentApp.software;
   assert.equal(inventory.bootloader_version, "1.2.3");
   assert.equal(inventory.application.kind, "micropython");
@@ -487,6 +502,7 @@ try {
     (
       await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
         boot_id: boot,
+        ble_address: usbAddress,
         t: "hello",
         board: d.board,
         role: "bootloader",
@@ -494,6 +510,7 @@ try {
     ).status,
     409,
   );
+  assert.equal((await op("devices.get", id)).ble_address, reportedAddress.toLowerCase());
   await assert.rejects(
     op("ota.install", { ...id, kind: "python", url: staged.url }),
     /bootloader/i,
