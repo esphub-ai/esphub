@@ -63,7 +63,7 @@ export function updateSources(board) {
         native: {
           directory_url: tree + profile + "/native",
           build_action_url: blob + profile + "/native/action.yml",
-          artifact: "ESP-Mosaico native HMI demo (*.bin)",
+          artifact: "ESP-Mosaico native Hello World (*.bin)",
         },
       }),
       ...(!preview &&

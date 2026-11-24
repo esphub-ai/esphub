@@ -1,5 +1,5 @@
 name: ESP-Mosaico setup
-description: Assemble the ESP-Mosaico bootloader and native HMI demo USB kit.
+description: Assemble the ESP-Mosaico bootloader and native Hello World USB kit.
 runs:
   using: composite
   steps:

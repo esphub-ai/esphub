@@ -58,9 +58,9 @@ with ZipFile(args.bootloader) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
     dest.writestr("flash_args", flash_args)
     setup_note = ("With the board in the bootloader, run python3 provision_usb.py PORT with the private devices.create JSON on stdin. Install pyserial and sign in to the Okou CLI with EspHub MCP write access. The helper writes the registration at 115200 baud and binds the returned Bluetooth address to its device ID.\n"
                   "Run the macOS BLE Wi-Fi tool while the board is in the bootloader. Call bootloader.exit, type app on USB or power-cycle to start the application.")
-    app_label = "MicroPython" if kind == "micropython" else "the ESP-Mosaico native HMI demo"
+    app_label = "MicroPython" if kind == "micropython" else "the ESP-Mosaico native Hello World"
     verification = ("The included main.py is the board verification example. Install it after setup using Python OTA."
-                    if kind == "micropython" else "Check the display for Espressif’s LVGL demo and verify the native app in devices.get.")
+                    if kind == "micropython" else "Check the display for Espressif’s Hello World and verify the native app in devices.get.")
     dest.writestr("INSTALL.txt", f"""First installation for {args.board} only. Includes the bootloader and {app_label}.
 This erases flash and replaces the partition table and application. Back up existing device data first.
 From this directory, use the correct local USB port:

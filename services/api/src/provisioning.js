@@ -23,7 +23,7 @@ export function provisioning(board) {
         usb,
         wifi,
         reconnectGuidance,
-        "Once the bootloader is online after Wi-Fi setup, call bootloader.exit. Check devices.get for a new session online with role app and runtime type native. Check the screen for the Espressif HMI demo.",
+        "Once the bootloader is online after Wi-Fi setup, call bootloader.exit. Check devices.get for a new session online with role app and runtime type native. Check the screen for Espressif’s Hello World.",
       ].join("\n"),
     };
   }
