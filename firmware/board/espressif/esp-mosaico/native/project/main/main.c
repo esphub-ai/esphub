@@ -12,8 +12,10 @@ void app_main(void)
     if (err != ESP_OK) {
         ESP_LOGE("mosaico_hmi", "EspHub SDK startup failed: %s", esp_err_to_name(err));
     }
-    // The BSP's CO5300 SPI bus accepts at most eight full-width rows per transfer.
+    // TE sync in the pinned adapter renders full frames. Partial rendering
+    // keeps each flush within the BSP's eight-row SPI transfer limit.
     bsp_display_config_t display = BSP_DISPLAY_DEFAULT_CONFIG();
+    display.tear_avoid_mode = ESP_LV_ADAPTER_TEAR_AVOID_MODE_NONE;
     display.buffer_height = 8;
     if (bsp_display_start_with_config(&display)) {
         // The upstream example reuses the BSP display initialized above.
