@@ -149,13 +149,12 @@ function softwareFields(device) {
   if (device.kind === "virtual") return [["Simulated firmware", device.info.fw.version]];
   const software = device.software;
   const app = software?.application;
-  const fields = [["Bootloader", (software?.bootloader_version || "Not reported") + (software?.bootloader_last_seen ? " (last seen)" : "")]];
+  const fields = [["Launcher", (software?.bootloader_version || "Not reported") + (software?.bootloader_last_seen ? " (last seen)" : "")]];
   if (!app) return fields;
-  if (app.kind === "micropython") {
-    fields.push(["MicroPython", app.micropython_version || "Not reported"], ["Runtime build", app.version]);
-  } else {
-    fields.push(["Application", [app.name, app.version].filter(Boolean).join(" ")], ["EspHub SDK", app.sdk_version || "Not reported"], ["ESP-IDF", app.esp_idf_version]);
-  }
+  fields.push(
+    ["Runtime type", app.kind === "micropython" ? "MicroPython" : "Native program"],
+    ["Runtime version", app.runtime_version || "Not reported"],
+  );
   return fields;
 }
 function boardLabel(d) {

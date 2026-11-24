@@ -144,13 +144,6 @@ cJSON *okou_partitions_json(void)
     return arr;
 }
 
-void okou_mac_str(char out[18])
-{
-    uint8_t m[6] = {0};
-    esp_efuse_mac_get_default(m);
-    snprintf(out, 18, MACSTR, MAC2STR(m));
-}
-
 bool okou_ble_address(char out[18])
 {
 #if SOC_BLE_SUPPORTED

@@ -199,11 +199,13 @@ try {
   }});
   await page.getByText("Install completed.").waitFor();
   await mcu.hello({
-    role: "app", board:"paper-color", bootloader_version:"1.1.17",
-    micropython_version:"1.27.0", fw:{name:"micropython", version:"1.1.18"}
+    role: "app", bootloader_version: "1.1.17",
+    runtime_type: "micropython", runtime_version: "1.1.18",
   });
   await page.getByRole("button", { name: "Firmware", exact: true }).click();
-  await page.getByText("1.27.0", { exact: true }).waitFor();
+  await page.getByText("1.1.17", { exact: true }).waitFor();
+  await page.getByText("Runtime type", { exact: true }).waitFor();
+  await page.getByText("1.1.18", { exact: true }).waitFor();
   await page.locator("#program").filter({hasText:sha256}).waitFor();
   assert.match(await page.locator("#program").textContent(), new RegExp(install.args.transfer_id));
   await page.getByRole("button", { name: "Settings", exact: true }).click();

@@ -12,21 +12,20 @@ export class Device extends DurableObject {
     this.uploads = new Uploads(ctx, env.UART);
     this.db = ctx.storage.sql;
     this.db.exec(
-      "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,started TEXT,info TEXT); CREATE INDEX IF NOT EXISTS boots_software ON boots(json_extract(info,'$.role'), json_extract(info,'$.mac'), json_extract(info,'$.board')); CREATE TABLE IF NOT EXISTS current_device(id TEXT, pid TEXT); CREATE TABLE IF NOT EXISTS uplink_events(mid INTEGER PRIMARY KEY); CREATE TABLE IF NOT EXISTS programs(id TEXT PRIMARY KEY, source TEXT NOT NULL, expires INTEGER NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,started TEXT,info TEXT); CREATE INDEX IF NOT EXISTS boots_software_ble ON boots(json_extract(info,'$.role'), json_extract(info,'$.ble_address'), json_extract(info,'$.board')); CREATE INDEX IF NOT EXISTS boots_software ON boots(json_extract(info,'$.role'), json_extract(info,'$.mac'), json_extract(info,'$.board')); CREATE TABLE IF NOT EXISTS current_device(id TEXT, pid TEXT); CREATE TABLE IF NOT EXISTS uplink_events(mid INTEGER PRIMARY KEY); CREATE TABLE IF NOT EXISTS programs(id TEXT PRIMARY KEY, source TEXT NOT NULL, expires INTEGER NOT NULL)",
     );
   }
   software(info) {
     const other = info?.role === "app" ? "bootloader" : "app";
-    const row =
-      info?.mac &&
-      this.db
-        .exec(
+    const row = info?.ble_address
+      ? this.db.exec(
+          "SELECT info FROM boots WHERE json_extract(info,'$.role')=? AND json_extract(info,'$.ble_address')=? AND json_extract(info,'$.board')=? ORDER BY rowid DESC LIMIT 1",
+          other, info.ble_address, info.board ?? "",
+        ).toArray()[0]
+      : info?.mac && this.db.exec(
           "SELECT info FROM boots WHERE json_extract(info,'$.role')=? AND json_extract(info,'$.mac')=? AND json_extract(info,'$.board')=? ORDER BY rowid DESC LIMIT 1",
-          other,
-          info.mac,
-          info.board ?? "",
-        )
-        .toArray()[0];
+          other, info.mac, info.board ?? "",
+        ).toArray()[0];
     return softwareInventory(info, row && JSON.parse(row.info));
   }
   current() {

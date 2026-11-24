@@ -355,14 +355,11 @@ try {
   }
   assert.equal((await request("tools/list", {}, d.token)).status, 401);
   mcu = simulatedDevice(base, d.token);
+  const addresses = { ble_address: reportedAddress, net_mac: "00:11:22:33:44:54" };
   const boot = await mcu.hello({
+    ...addresses,
     role: "bootloader",
-    chip: "esp32s3",
-    ble_address: reportedAddress,
-    mac: "00:11:22:33:44:55",
-    dual_bootloader_ota: true,
-    image_profile: "ESPHUB2/bootloader/esp32s3-16mb",
-    fw: { version: "1.2.3" },
+    bootloader_version: "1.2.3",
   });
   const connected = await op("devices.get", id);
   assert.equal(connected.online, true);
@@ -487,11 +484,11 @@ try {
   const reboot = await op("devices.reboot", id);
   assert.equal((await mcu.nextCommand()).id, reboot.command_id);
   const app = await mcu.hello({
+    ...addresses,
     board: "legacy-board-report",
     role: "app",
-    mac: "00:11:22:33:44:55",
-    image_profile: "ESPHUB2/micropython/" + d.board,
-    fw: { name: "micropython", version: "test" },
+    runtime_type: "micropython",
+    runtime_version: "1.2.4",
   });
   assert.equal((await result(reboot.command_id)).state, "succeeded");
   const currentApp = await op("devices.get", id);
@@ -500,6 +497,7 @@ try {
   const inventory = currentApp.software;
   assert.equal(inventory.bootloader_version, "1.2.3");
   assert.equal(inventory.application.kind, "micropython");
+  assert.equal(inventory.application.runtime_version, "1.2.4");
   assert.equal(
     (
       await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {

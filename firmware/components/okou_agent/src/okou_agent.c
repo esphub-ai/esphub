@@ -22,6 +22,7 @@
 #include "freertos/event_groups.h"
 #include "esp_random.h"
 #include "esp_system.h"
+#include "esp_mac.h"
 #include "esp_app_desc.h"
 #include "esp_idf_version.h"
 #include "esp_ota_ops.h"
@@ -279,12 +280,44 @@ void okou_event(const char *name, const char *json)
 static const char image_profile[] __attribute__((section(".rodata_custom_desc"), aligned(4))) = OKOU_IMAGE_PROFILE "\0" OKOU_OTA_CAPABILITY;
 #endif
 
+static void report_mac(cJSON *o, const char *field, esp_mac_type_t type)
+{
+    uint8_t mac[6];
+    if (esp_read_mac(mac, type) != ESP_OK) return;
+    char address[18];
+    snprintf(address, sizeof(address), "%02x:%02x:%02x:%02x:%02x:%02x",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    cJSON_AddStringToObject(o, field, address);
+}
+
 static void hello_fill(cJSON *o)
 {
+    bool launcher = okou_is_bootloader();
+    cJSON_AddStringToObject(o, "boot_id", s_boot_id);
+    cJSON_AddStringToObject(o, "role", launcher ? "bootloader" : "app");
+    char ble_address[18];
+    if (okou_ble_address(ble_address)) cJSON_AddStringToObject(o, "ble_address", ble_address);
+#if CONFIG_OKOU_NET_OPENETH
+    report_mac(o, "net_mac", ESP_MAC_ETH);
+#else
+    report_mac(o, "net_mac", ESP_MAC_WIFI_STA);
+#endif
+    const esp_partition_t *bootloader = launcher ? esp_ota_get_running_partition() : okou_bootloader_partition();
+    esp_app_desc_t desc;
+    if (bootloader && esp_ota_get_partition_description(bootloader, &desc) == ESP_OK)
+        cJSON_AddStringToObject(o, "bootloader_version", desc.version);
+    if (!launcher) {
+        const char *micropython = g_okou_cfg.micropython_version;
+        cJSON_AddStringToObject(o, "runtime_type", micropython ? "micropython" : "native");
+        cJSON_AddStringToObject(o, "runtime_version", esp_app_get_description()->version);
+    }
+}
+
+static void diagnostics_fill(cJSON *o)
+{
     const esp_app_desc_t *d = esp_app_get_description();
-    char sha[65], mac[18];
+    char sha[65];
     okou_hex(d->app_elf_sha256, 32, sha);
-    okou_mac_str(mac);
     const esp_partition_t *run = esp_ota_get_running_partition();
 #ifdef OKOU_IMAGE_PROFILE
     cJSON_AddStringToObject(o, "image_profile", image_profile);
@@ -294,26 +327,15 @@ static void hello_fill(cJSON *o)
 #endif
     if (CONFIG_OKOU_BL_PROFILE[0]) cJSON_AddStringToObject(o, "bootloader_profile", CONFIG_OKOU_BL_PROFILE);
 #endif
-    cJSON_AddStringToObject(o, "boot_id", s_boot_id);
-    cJSON_AddStringToObject(o, "role", okou_is_bootloader() ? "bootloader" : "app");
     cJSON *fw = cJSON_AddObjectToObject(o, "fw");
     cJSON_AddStringToObject(fw, "name", d->project_name);
     cJSON_AddStringToObject(fw, "version", d->version);
     cJSON_AddStringToObject(fw, "idf", d->idf_ver);
     cJSON_AddStringToObject(fw, "sha256", sha);
     cJSON_AddStringToObject(o, "sdk_version", OKOU_SDK_VERSION);
-    if (g_okou_cfg.micropython_version)
-        cJSON_AddStringToObject(o, "micropython_version", g_okou_cfg.micropython_version);
-    const esp_partition_t *bootloader = okou_is_bootloader() ? run : okou_bootloader_partition();
-    esp_app_desc_t bootloader_desc;
-    if (bootloader && esp_ota_get_partition_description(bootloader, &bootloader_desc) == ESP_OK)
-        cJSON_AddStringToObject(o, "bootloader_version", bootloader_desc.version);
     cJSON_AddStringToObject(o, "partition", run ? run->label : "");
     cJSON_AddStringToObject(o, "ota_state", run ? okou_ota_state_str(run) : "");
     cJSON_AddStringToObject(o, "chip", CONFIG_IDF_TARGET);
-    cJSON_AddStringToObject(o, "mac", mac);
-    char ble_address[18];
-    if (okou_ble_address(ble_address)) cJSON_AddStringToObject(o, "ble_address", ble_address);
     cJSON_AddStringToObject(o, "reset_reason", okou_reset_reason_str());
     char *pending = okou_nvs_get_str_alloc(OKOU_KEY_PENDING);
     cJSON *pj = pending ? cJSON_Parse(pending) : NULL;
@@ -593,6 +615,7 @@ static void handle_req(const cJSON *root)
     }
     if (strcmp(op, "status") == 0) {
         hello_fill(data);
+        diagnostics_fill(data);
         okou_net_info(data);
         cJSON_AddItemToObject(data, "partitions", okou_partitions_json());
         r = ESP_OK;
