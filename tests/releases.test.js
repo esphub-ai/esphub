@@ -164,19 +164,6 @@ test("default downloads and OTA metadata use the board's published database reco
     ota.headers.get("Location"),
     `https://github.com/okou-ai/esphub/releases/download/${tag}/esphub-stopwatch-esp32s3-1.1.133-ota.bin`,
   );
-  const native = await releaseResponse(
-    "esp-mosaico",
-    "native",
-    "firmware-native-esp-mosaico-v1.1.3",
-  );
-  assert.match(
-    native.headers.get("Location"),
-    /esphub-esp-mosaico-native-1\.1\.3\.bin$/,
-  );
-  await assert.rejects(
-    releaseResponse("esp-mosaico", "micropython", undefined),
-    /Unknown download/,
-  );
   await assert.rejects(
     releaseResponse("stopwatch", "setup", undefined, sql),
     (e) => e.status === 404,

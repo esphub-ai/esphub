@@ -6,7 +6,16 @@ runs:
     - name: Read the upstream revision
       id: upstream
       shell: bash
-      run: jq -r '"repository=" + .repository, "ref=" + .ref' "$BOARD_DIR/native/upstream.json" >> "$GITHUB_OUTPUT"
+      run: |
+        python3 - "$BOARD_DIR/native/upstream.json" <<'PYTHON' >> "$GITHUB_OUTPUT"
+        import json
+        import sys
+
+        with open(sys.argv[1]) as file:
+            source = json.load(file)
+        print(f"repository={source['repository']}")
+        print(f"ref={source['ref']}")
+        PYTHON
     - uses: actions/checkout@v4
       with:
         repository: ${{ steps.upstream.outputs.repository }}
