@@ -20,7 +20,6 @@ const options = {
   resourceUrl: mcpEndpoint,
   requiredScopes: ["devices:read"],
   challengeScopes: ["devices:write", "offline_access"],
-  discoverable: false,
 };
 export const authenticateMcp = mcpAuth(options);
 const writeAccess = requireAdditionalScopes("devices:write");

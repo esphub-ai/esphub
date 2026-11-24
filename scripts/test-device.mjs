@@ -162,8 +162,17 @@ try {
   ]);
   assert.deepEqual(discovery.authorization_servers, [issuer]);
   const read = await issue("devices:read");
-  for (const invalid of [
+  const anonymousCall = await request(
+    "tools/call",
+    { name: "devices.list", arguments: {} },
     null,
+  );
+  assert.equal(anonymousCall.status, 401);
+  assert.match(
+    anonymousCall.headers.get("WWW-Authenticate"),
+    /scope="devices:read devices:write offline_access"/,
+  );
+  for (const invalid of [
     await issue("devices:read", { aud: "https://another.example/mcp" }),
     await issue("devices:read", { aud: undefined }),
     await issue("devices:read", { exp: 1 }),
@@ -171,11 +180,6 @@ try {
   ]) {
     const denied = await request("tools/list", {}, invalid);
     assert.equal(denied.status, 401);
-    if (invalid === null)
-      assert.match(
-        denied.headers.get("WWW-Authenticate"),
-        /scope="devices:read devices:write offline_access"/,
-      );
     assert.match(
       denied.headers.get("WWW-Authenticate"),
       /oauth-protected-resource/,
@@ -192,6 +196,7 @@ try {
     [],
   );
   const listed = (await call("tools/list", {})).tools;
+  assert.deepEqual((await call("tools/list", {}, null)).tools, listed);
   const readOnly = new Set([
     "commands.get",
     "devices.list",
