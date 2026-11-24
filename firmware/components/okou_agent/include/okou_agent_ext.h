@@ -98,6 +98,7 @@ void okou_wifi_saved_json(cJSON *arr);
 int okou_wifi_scan(okou_ap_t *out, int max, uint32_t timeout_ms);
 bool okou_wifi_current(char *ssid, size_t len);
 const char *okou_wifi_auth_str(int auth);
+void okou_wifi_setup_command(cJSON *request, cJSON *reply);
 bool okou_mqtt_connected(void); /* socket up (hello may not be acked yet) */
 
 /* NVS helpers (namespace okl). */

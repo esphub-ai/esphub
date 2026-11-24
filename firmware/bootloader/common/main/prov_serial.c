@@ -12,6 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "okou_agent_ext.h"
 #include "bootloader.h"
 #if CONFIG_OKL_USB_CDC
@@ -29,6 +30,7 @@
 
 static const char *TAG = "prov_serial";
 #define PREFIX "OKL-PROVISION "
+#define WIFI_PREFIX "OKL-WIFI "
 #define PROV_LINE_MAX 640
 
 /* Handle commands typed on the local USB console. */
@@ -43,7 +45,7 @@ static void console_line(char *line)
     while ((arg = strtok_r(NULL, " \t\r\n", &save))) cJSON_AddItemToArray(args, cJSON_CreateString(arg));
     const cJSON *op = cJSON_GetArrayItem(args, 0);
     if (!strcmp(name, "wifi") && cJSON_IsString(op) && !strcmp(op->valuestring, "add")) {
-        puts("Use cloud wifi.add or local BLE to save a Wi-Fi network.");
+        puts("Use OKL-WIFI JSON, cloud wifi.add, or local BLE to set up Wi-Fi.");
         cJSON_Delete(args);
         return;
     }
@@ -52,6 +54,35 @@ static void console_line(char *line)
     const char *message = output ? output : (rc == 0 ? "OK" : "Unknown command. Type help.");
     printf("%s\n", message);
     free(output); cJSON_Delete(args);
+}
+
+/* Use JSON so spaces in SSIDs and passwords survive the serial transport. */
+static void wifi_line(const char *payload, bool overflow)
+{
+    cJSON *request = overflow ? NULL : cJSON_ParseWithOpts(payload, NULL, true);
+    cJSON *reply = cJSON_CreateObject();
+    if (reply) {
+        if (cJSON_IsObject(request)) {
+            okou_wifi_setup_command(request, reply);
+            const char *op = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(request, "op"));
+            if (op) cJSON_AddStringToObject(reply, "op", op);
+            uint8_t mac[6];
+            if (op && !strcmp(op, "wifi.status") && esp_efuse_mac_get_default(mac) == ESP_OK) {
+                cJSON_AddStringToObject(reply, "protocol", "esphub-usb-wifi-v1");
+                char address[18];
+                snprintf(address, sizeof(address), "%02x:%02x:%02x:%02x:%02x:%02x",
+                         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                cJSON_AddStringToObject(reply, "mac", address);
+            }
+        } else
+            cJSON_AddStringToObject(reply, "error", "invalid Wi-Fi request");
+    }
+    char *result = cJSON_PrintUnformatted(reply);
+    printf(WIFI_PREFIX "%s\n", result ? result : "{\"error\":\"out of memory\"}");
+    fflush(stdout);
+    free(result);
+    cJSON_Delete(reply);
+    cJSON_Delete(request);
 }
 
 static void serial_task(void *arg)
@@ -95,6 +126,8 @@ static void serial_task(void *arg)
             } else {
                 printf("OKL-PROVISION-ERR %s\n", err);
             }
+        } else if (strncmp(line, WIFI_PREFIX, strlen(WIFI_PREFIX)) == 0) {
+            wifi_line(line + strlen(WIFI_PREFIX), overflow);
         } else if (!overflow) {
             console_line(line);
         }

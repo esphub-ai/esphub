@@ -32,7 +32,17 @@ The USB `hub` setting takes a plain hostname such as `api.esphub.ai`. A scheme, 
 
 After `OKL-PROVISION-OK`, run the Mac BLE tool while the board is in the bootloader and choose a network or enter a hidden SSID and password locally. Then call `bootloader.exit`, type `app` on USB, or power-cycle the board to start the application. For MicroPython boards, use the OTA procedure to install the returned verification program and check its board-specific hello. For ESP-Mosaico, check the Hello World on the display and confirm the online native runtime in `devices.get`.
 
-On an online device, use `wifi.add` with an SSID and optional password to save a network remotely. Read `commands.get` for the result. First-time and offline setup use the [Mac BLE tool](tools/ble-wifi/README.md).
+In the signed-in console, open **Devices → Set up over USB** in desktop Chrome or Edge. Pick the exact board, flash the official setup kit, restart into the bootloader, then connect its USB port to register, scan, and join a network. An already flashed bootloader with USB Wi-Fi setup can start at **Connect ESPHub Bootloader**. The page checks the registered device's MQTT session before showing it as online.
+
+The bootloader also accepts these newline-terminated JSON commands over USB at 115200 baud. Each response begins with `OKL-WIFI ` followed by JSON.
+
+```text
+OKL-WIFI {"op":"wifi.scan"}
+OKL-WIFI {"op":"wifi.join","ssid":"My network","password":"<password>","hidden":false}
+OKL-WIFI {"op":"wifi.status"}
+```
+
+For an open network, use an empty password. A join is saved after the device gets an IP address. BLE remains available for offline setup and for older bootloaders. On an online device, use `wifi.add` with an SSID and optional password to save a network remotely. Read `commands.get` for the result.
 
 The first-time kit and an explicit bootloader entry set a one-shot hold flag. The bootloader consumes it and stays available for that boot. On the next power cycle it starts a valid app, or stays available if the app is missing or invalid. A Hub hello only reports the session.
 

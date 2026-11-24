@@ -1,3 +1,4 @@
+import { setupPage } from "./setup-page.js";
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import { issuer, portal, application, mcpEndpoint } from "../../../shared/identity.js";
 let clerk;
@@ -195,7 +196,8 @@ async function fleet() {
     (ds.some((d) => d.kind === "virtual")
       ? ""
       : button("create-virtual", "Create virtual ESP32")) +
-    button("add", "+ Add device", true) +
+    button("add", "+ Add device") +
+    link("/devices/setup", "+ Set up over USB", true) +
     '</div></div><div class="board"><div class="bar"><input class="field" style="max-width:320px" id="filter" aria-label="Filter devices" placeholder="Filter devices"><span class="tag">' +
     ds.length +
     ' REGISTERED</span></div><div id="rows"></div></div>' +
@@ -597,7 +599,8 @@ async function start() {
     }
     throw e;
   }
-  if (detail) await refresh();
+  if (path[0] === "devices" && path[1] === "setup") setupPage({ main, boards, op, esc });
+  else if (detail) await refresh();
   else if (path[0] === "explorer") await explorer();
   else if (path[0] === "account")
     docs(

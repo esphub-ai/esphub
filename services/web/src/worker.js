@@ -10,6 +10,21 @@ export default {
       url.searchParams.set("redirect_url", "https://app.esphub.ai/devices");
       return Response.redirect(url.href, 302);
     }
+    if (req.method === "GET" && /^\/setup-firmware\/[a-z0-9-]+\/(setup|setup-manifest)$/.test(u.pathname)) {
+      const upstream = new URL(u.pathname.replace("/setup-firmware/", "/releases/"), u);
+      const tag = u.searchParams.get("tag");
+      if (tag !== null) upstream.searchParams.set("tag", tag);
+      const release = await env.API.fetch(upstream);
+      if (release.status !== 302) return release;
+      const url = release.headers.get("Location");
+      if (!url?.startsWith("https://github.com/okou-ai/esphub/releases/download/"))
+        return new Response("Invalid firmware release", { status: 502 });
+      const asset = await fetch(url);
+      return new Response(asset.body, {
+        status: asset.status,
+        headers: { "Content-Type": "application/octet-stream", "X-Content-Type-Options": "nosniff" },
+      });
+    }
     if (u.pathname.startsWith("/backend/")) {
       u.pathname = u.pathname.slice(8);
       return env.API.fetch(new Request(u, req));

@@ -33,8 +33,11 @@
     "@modelcontextprotocol/server": "^2.4.0",
     "@neondatabase/serverless": "^1.2.1",
     "aws4fetch": "^1.0.20",
+    "esptool-js": "^0.7.1",
+    "fflate": "^0.8.3",
     "hono": "^4.13.19",
-    "postgres": "^4.1.1"
+    "postgres": "^4.1.1",
+    "spark-md5": "^3.0.2"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

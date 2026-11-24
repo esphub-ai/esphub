@@ -73,5 +73,6 @@ repository = os.environ.get("GITHUB_REPOSITORY", "okou-ai/esphub")
 manifest = dict(board=args.board, chip=chip, version=version, **recipe, file=kit.name,
                 download_url=f"https://github.com/{repository}/releases/download/{recipe['tag']}/{kit.name}",
                 sha256=hashlib.sha256(kit.read_bytes()).hexdigest(),
+                usb_wifi_setup=b"esphub-usb-wifi-v1\0" in bootloader,
                 runtime_kind=kind, runtime_sha256=hashlib.sha256(image).hexdigest(), runtime_size=len(image))
 kit.with_suffix(".json").write_text(json.dumps(manifest, indent=2) + "\n")
