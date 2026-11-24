@@ -5,9 +5,18 @@ on:
     paths: ['services/**', 'migrations/**', 'shared/**', 'tests/**', 'package*.json', 'scripts/*.mjs', '!scripts/firmware-plan.mjs', 'firmware/board/*/*/board.json', 'firmware/board/*/*/ci.json', 'firmware/board/*/*/main.py', 'firmware/pyrt/upstream.json', 'firmware/components/okou_agent/include/okou_agent.h', '.github/workflows/production.yml']
   pull_request:
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR CI requested by SDK version automation; never deploys.
+        type: string
+        required: false
 permissions: {contents: read}
 jobs:
+  context:
+    uses: ./.github/workflows/pr-ci-context.yml
+    with: {pr_number: '${{ inputs.pr_number }}'}
   verify:
+    needs: context
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -20,6 +29,9 @@ jobs:
       TEST_DATABASE_URL: postgres://postgres:test@127.0.0.1:5432/esphub
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.context.outputs.head_sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with: {node-version: 24, cache: npm}
       - run: npm ci
@@ -28,7 +40,7 @@ jobs:
       - run: npm test && npm run build && node scripts/local-e2e.mjs
       - run: npx wrangler deploy --dry-run -c services/api/wrangler.jsonc && npx wrangler deploy --dry-run -c services/web/wrangler.jsonc
   migrate:
-    if: github.repository == 'okou-ai/esphub' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.repository == 'okou-ai/esphub' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !inputs.pr_number
     needs: verify
     runs-on: ubuntu-latest
     environment: production
@@ -46,7 +58,7 @@ jobs:
       - name: Migrate production Neon database
         run: npm run migrate
   deploy:
-    if: github.repository == 'okou-ai/esphub' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.repository == 'okou-ai/esphub' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !inputs.pr_number
     needs: migrate
     runs-on: ubuntu-latest
     concurrency: {group: esphub-production, cancel-in-progress: false}

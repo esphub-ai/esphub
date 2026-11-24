@@ -14,7 +14,7 @@ jobs:
   reserve:
     runs-on: ubuntu-latest
     permissions: {contents: write}
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.repository == 'okou-ai/esphub' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     steps:
       - name: Pin selected release tags to this source commit
         env:
@@ -44,6 +44,7 @@ jobs:
       KIND: ${{ matrix.task.kind }}
     steps:
       - uses: actions/checkout@v4
+        with: {persist-credentials: false}
       - uses: actions/download-artifact@v4
         if: matrix.task.kind == 'bootloader'
         with:
@@ -86,6 +87,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with: {persist-credentials: false}
       - uses: actions/download-artifact@v4
         if: fromJSON(inputs.profile).kit.local_bootloader
         with:

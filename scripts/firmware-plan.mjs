@@ -265,14 +265,31 @@ export function boardPlans(
   return matrix;
 }
 
+export function firmwareEventContext(event, env) {
+  const dispatchedPr =
+    env.GITHUB_EVENT_NAME === "workflow_dispatch" && !!event.inputs?.pr_number;
+  if (dispatchedPr && !/^[a-f0-9]{40}$/.test(env.PR_CI_BASE_SHA ?? ""))
+    throw Error("PR CI dispatch requires a validated base SHA");
+  return {
+    manual: env.GITHUB_EVENT_NAME === "workflow_dispatch" && !dispatchedPr,
+    beforeRef:
+      event.pull_request?.base.sha ||
+      (dispatchedPr ? env.PR_CI_BASE_SHA : event.before),
+    afterRef: env.GITHUB_SHA,
+  };
+}
+
 if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH));
-  const manual = process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
-  const after = firmwareProfiles(process.env.GITHUB_SHA),
-    before = firmwareProfiles(event.pull_request?.base.sha || event.before);
+  const { manual, beforeRef, afterRef } = firmwareEventContext(
+    event,
+    process.env,
+  );
+  const after = firmwareProfiles(afterRef),
+    before = firmwareProfiles(beforeRef);
   const options = {
     manual,
     board: event.inputs?.board ?? "",
