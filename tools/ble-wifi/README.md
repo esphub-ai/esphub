@@ -25,3 +25,33 @@ The bootloader advertises service `a2eefb31-6c36-481f-ae10-7724fa912101`. The Ma
 TLS bytes use acknowledged writes and reads on the same characteristic, up to 20 bytes at a time. TLS 1.3 uses external PSK identity `wifi`, ephemeral key exchange and AES-128-GCM/SHA-256. The TLS stream carries newline-delimited UTF-8 JSON. A command requires a completed PSK handshake.
 
 The issued credential remains valid until the device's bootstrap key is replaced or erased. Each connection performs a fresh TLS handshake.
+
+## Cardputer Zero GUI
+
+On a Debian 13 Cardputer Zero, build and install the launcher app:
+
+```sh
+tools/ble-wifi/zero/package.sh /tmp/esphub-wifi.deb
+sudo apt install /tmp/esphub-wifi.deb
+```
+
+Open **EspHub Wi-Fi** in APPLaunch. Choose **Sign in**, scan the QR on a phone
+(or visit `accounts.esphub.ai/device` and enter the code), and approve EspHub
+device access. The public Clerk client uses the device grant with
+`devices:read devices:write offline_access`. Sign out removes the local grant.
+
+1. Put the target in EspHub Bootloader and choose **Nearby devices**. Each
+   service advertisement is listed by Bluetooth address and signal strength.
+2. Select an advertisement, then choose its registration from your EspHub
+   account. Bootloaders advertise a common service UUID. The TLS-PSK handshake
+   verifies the selected registration before enabling Wi-Fi operations.
+3. Select **Scan networks** to scan on the target or **Enter SSID manually**
+   for a hidden network. Enter the network password (empty for an open network).
+4. **Wi-Fi saved** appears after the target reports that it saved and connected
+   to the selected SSID. If the link is lost after submission, check the device
+   before retrying. The app never automatically replays a join.
+
+Use the arrow keys and Enter. Esc goes back, Ctrl+Q exits. Start via APPLaunch
+so the launcher releases the physical keyboard and LCD. The Wi-Fi password
+and BLE credential are held in memory only. The OAuth grant is stored under
+`~/.local/share/esphub-wifi/` with a user-only file mode.

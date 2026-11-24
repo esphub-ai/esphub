@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=EspHub Wi-Fi
+Comment=Configure nearby EspHub devices over Bluetooth
+Exec=/usr/lib/esphub-wifi/app.py
+Icon=share/images/esphub-wifi.png
+Terminal=false
+Categories=Network;
