@@ -70,7 +70,6 @@ async function snapshot(request, root, sha) {
     throw Error("Invalid SDK header blob");
   return {
     files: tree,
-    treeSha,
     header: Buffer.from(blob.content, "base64").toString("utf8"),
     mode: header.mode,
   };
@@ -122,37 +121,45 @@ async function confirmPr(request, root, pr) {
 }
 
 async function writeVersion(request, root, pr, head, version) {
-  // Create a child of the exact inspected head. A non-forced ref update rejects
-  // a concurrent contributor push instead of overwriting or silently including it.
-  const tree = await request("POST", `${root}/git/trees`, {
-    base_tree: head.treeSha,
-    tree: [
-      {
-        path: SDK_HEADER,
-        mode: head.mode,
-        type: "blob",
-        content: replaceSdkVersion(head.header, version),
+  if (head.mode !== "100644")
+    throw Error(
+      "Automatic SDK edits require a non-executable header; set the version manually.",
+    );
+  // expectedHeadOid is an atomic head lease. A non-forced REST ref update is
+  // insufficient: it could silently restore commits after a contributor rewind.
+  const result = await request("POST", "/graphql", {
+    query: `mutation($input: CreateCommitOnBranchInput!) {
+      createCommitOnBranch(input: $input) { commit { oid } }
+    }`,
+    variables: {
+      input: {
+        branch: {
+          repositoryNameWithOwner: root.slice("/repos/".length),
+          branchName: pr.head.ref,
+        },
+        expectedHeadOid: pr.head.sha,
+        message: { headline: `chore: bump device SDK to ${version}` },
+        fileChanges: {
+          additions: [
+            {
+              path: SDK_HEADER,
+              contents: Buffer.from(
+                replaceSdkVersion(head.header, version),
+              ).toString("base64"),
+            },
+          ],
+        },
       },
-    ],
-  });
-  const commit = await request("POST", `${root}/git/commits`, {
-    message: `chore: bump device SDK to ${version}`,
-    tree: tree.sha,
-    parents: [pr.head.sha],
-    author: {
-      name: "github-actions[bot]",
-      email: "41898282+github-actions[bot]@users.noreply.github.com",
     },
   });
-  await request(
-    "PATCH",
-    `${root}/git/refs/heads/${encodeURIComponent(pr.head.ref)}`,
-    {
-      sha: commit.sha,
-      force: false,
-    },
-  );
-  return commit.sha;
+  if (result.errors?.length)
+    throw Error(
+      "GitHub SDK commit failed: " +
+        result.errors.map((error) => error.message).join("; "),
+    );
+  const sha = result.data?.createCommitOnBranch?.commit?.oid;
+  if (!sha) throw Error("GitHub SDK commit did not return a commit SHA");
+  return sha;
 }
 
 async function ensureCi(request, root, pr) {

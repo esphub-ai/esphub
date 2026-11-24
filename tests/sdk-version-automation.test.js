@@ -10,15 +10,16 @@ import { SDK_HEADER, SDK_ROOT } from "../scripts/sdk-version.mjs";
 const repository = "okou-ai/esphub";
 const root = `/repos/${repository}`;
 const treeShas = Object.fromEntries(
-  ["base", "head", "ancestor", "merged", "sdk"].map((name, i) => [
-    name,
-    String(i + 1).repeat(40),
-  ]),
+  ["base", "head", "ancestor", "merged", "sdk", "forward", "divergent"].map(
+    (name, i) => [name, String(i + 1).repeat(40)],
+  ),
 );
 const header = (version) =>
   `#pragma once\n#define OKOU_SDK_VERSION "${version}" // keep this comment\nint okou_agent_start(void);\n`;
 const clone = (value) => structuredClone(value);
 const immediate = async () => {};
+const commitMutation =
+  "mutation($input:CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{oid}}}";
 
 // These are in-memory GitHub API results, including modeled native-token writes.
 // No test invokes GitHub, git, a workflow, or a real timer.
@@ -28,6 +29,7 @@ function fixture({
   fork = false,
   labels = [],
   before,
+  graphqlResponse,
 } = {}) {
   const calls = [];
   const snapshots = new Map();
@@ -130,13 +132,31 @@ function fixture({
       state.updating = true;
       return { message: "Updating pull request branch", url: "fixture" };
     }
-    if (method === "POST" && path === `${root}/git/trees`) {
-      state.writtenTree = clone(body);
-      return { sha: treeShas.sdk };
-    }
-    if (method === "POST" && path === `${root}/git/commits`) {
-      state.commit = clone(body);
-      const old = snapshots.get(body.parents[0]);
+    if (method === "POST" && path === "/graphql") {
+      assert.equal(body.query.replace(/\s/g, ""), commitMutation);
+      const { input } = body.variables;
+      assert.deepEqual(input.branch, {
+        repositoryNameWithOwner: repository,
+        branchName: state.pr.head.ref,
+      });
+      // Unlike REST force:false, the lease rejects ancestor rewinds as well as
+      // forward/divergent moves, before creating a commit or changing the branch.
+      if (state.pr.head.sha !== input.expectedHeadOid)
+        return {
+          errors: [
+            { message: "Concurrent head changed: expectedHeadOid mismatch" },
+          ],
+        };
+      if (graphqlResponse !== undefined) return clone(graphqlResponse);
+      assert.deepEqual(Object.keys(input.fileChanges), ["additions"]);
+      assert.equal(input.fileChanges.additions.length, 1);
+      const [{ path: changedPath, contents }] = input.fileChanges.additions;
+      assert.equal(changedPath, SDK_HEADER);
+      const old = snapshots.get(input.expectedHeadOid);
+      assert.equal(
+        old.tree.find(({ path }) => path === SDK_HEADER).mode,
+        "100644",
+      );
       snapshots.set("sdk-commit", {
         ...clone(old),
         sha: treeShas.sdk,
@@ -146,19 +166,15 @@ function fixture({
             : clone(entry),
         ),
       });
-      const content = state.writtenTree.tree[0].content;
       blobs.set("sdk-header", {
         encoding: "base64",
-        size: Buffer.byteLength(content),
-        content: Buffer.from(content).toString("base64"),
+        size: Buffer.from(contents, "base64").length,
+        content: contents,
       });
-      return { sha: "sdk-commit" };
-    }
-    if (method === "PATCH" && path.startsWith(`${root}/git/refs/heads/`)) {
-      if (state.pr.head.sha !== state.commit.parents[0])
-        throw Error("GitHub 422: concurrent head, not a fast forward");
-      state.pr.head.sha = body.sha;
-      return {};
+      state.pr.head.sha = "sdk-commit";
+      return {
+        data: { createCommitOnBranch: { commit: { oid: "sdk-commit" } } },
+      };
     }
     if (method === "GET" && path === `${root}/git/ref/heads/main`)
       return { object: { sha: state.latestBase } };
@@ -180,8 +196,8 @@ function fixture({
   const branchWrites = () =>
     calls.filter(
       ({ method, path }) =>
-        method !== "GET" &&
-        /\/(?:git\/(?:trees|commits|refs)|update-branch)(?:\/|$)/.test(path),
+        (method === "POST" && path === "/graphql") ||
+        (method === "PUT" && path.endsWith("/update-branch")),
     );
   const dispatches = () =>
     calls.filter(
@@ -218,7 +234,7 @@ test("githubRequest sends API JSON and bearer headers, and accepts 204 without p
   });
   assert.deepEqual(await request("GET", "/repos/a/b"), { id: 1 });
   assert.deepEqual(
-    await request("POST", "/repos/a/b/git/trees", { tree: [] }),
+    await request("POST", "/graphql", { query: commitMutation, variables: {} }),
     { id: 2 },
   );
   assert.equal(
@@ -237,7 +253,11 @@ test("githubRequest sends API JSON and bearer headers, and accepts 204 without p
     },
   });
   assert.equal(calls[1][1].headers["Content-Type"], "application/json");
-  assert.equal(calls[1][1].body, '{"tree":[]}');
+  assert.equal(calls[1][0], "https://api.github.com/graphql");
+  assert.deepEqual(JSON.parse(calls[1][1].body), {
+    query: commitMutation,
+    variables: {},
+  });
   assert.throws(
     () => githubRequest("", () => assert.fail("missing token must not fetch")),
     /token/i,
@@ -253,10 +273,7 @@ test("githubRequest never retries HTTP, transport, or JSON errors", async (t) =>
         return { status, ok: false, json: async () => ({ message: "denied" }) };
       });
       await assert.rejects(
-        request("PATCH", "/repos/a/b/git/refs/heads/topic", {
-          sha: "new",
-          force: false,
-        }),
+        request("POST", "/graphql", { query: commitMutation, variables: {} }),
         new RegExp(`${status} denied`),
       );
       assert.equal(calls, 1);
@@ -321,6 +338,21 @@ test("same-repository SDK changes write one header on the inspected HEAD tree an
   ]) {
     await t.test(labels[0] ?? "default patch", async () => {
       const f = fixture({ labels });
+      const otherFiles = [
+        { path: "web/app.js", mode: "100644", type: "blob", sha: "web-blob" },
+        {
+          path: `${SDK_ROOT}tool.sh`,
+          mode: "100755",
+          type: "blob",
+          sha: "exec-blob",
+        },
+      ];
+      const content = header("1.2.3").replace(
+        "keep this comment",
+        "保留注释 — café",
+      );
+      f.snapshot("head", { content, files: otherFiles });
+      const inspectedTree = clone(f.snapshots.get("head").tree);
       f.state.pr.head.repo.full_name = repository.toUpperCase();
       assert.deepEqual(await f.run(), {
         number: 7,
@@ -328,32 +360,71 @@ test("same-repository SDK changes write one header on the inspected HEAD tree an
         version,
         head: "sdk-commit",
       });
+      assert.equal(f.branchWrites().length, 1);
+      const [write] = f.branchWrites();
       assert.deepEqual(
-        f.branchWrites().map(({ method }) => method),
-        ["POST", "POST", "PATCH"],
-      );
-      assert.deepEqual(f.state.writtenTree, {
-        base_tree: treeShas.head,
-        tree: [
-          {
-            path: SDK_HEADER,
-            mode: "100644",
-            type: "blob",
-            content: header(version),
+        {
+          ...write,
+          body: { ...write.body, query: write.body.query.replace(/\s/g, "") },
+        },
+        {
+          method: "POST",
+          path: "/graphql",
+          body: {
+            query: commitMutation,
+            variables: {
+              input: {
+                branch: {
+                  repositoryNameWithOwner: repository,
+                  branchName: "feature/sdk",
+                },
+                expectedHeadOid: "head",
+                message: { headline: `chore: bump device SDK to ${version}` },
+                fileChanges: {
+                  additions: [
+                    {
+                      path: SDK_HEADER,
+                      contents: Buffer.from(
+                        content.replace('"1.2.3"', `"${version}"`),
+                        "utf8",
+                      ).toString("base64"),
+                    },
+                  ],
+                },
+              },
+            },
           },
-        ],
-      });
-      assert.deepEqual(f.state.commit.parents, ["head"]);
-      assert.equal(f.state.commit.tree, treeShas.sdk);
-      assert.equal(
-        f.state.commit.message,
-        `chore: bump device SDK to ${version}`,
+        },
       );
-      assert.deepEqual(f.branchWrites().at(-1), {
-        method: "PATCH",
-        path: `${root}/git/refs/heads/feature%2Fsdk`,
-        body: { sha: "sdk-commit", force: false },
-      });
+      assert.deepEqual(
+        f.snapshots.get("sdk-commit").tree,
+        inspectedTree.map((entry) =>
+          entry.path === SDK_HEADER ? { ...entry, sha: "sdk-header" } : entry,
+        ),
+      );
+      assert.deepEqual(f.snapshots.get("head").tree, inspectedTree);
+      for (const sha of ["base", "head"]) {
+        const commitIndex = f.calls.findIndex(
+          ({ method, path }) =>
+            method === "GET" && path === `${root}/git/commits/${sha}`,
+        );
+        const treeIndex = f.calls.findIndex(
+          ({ method, path }) =>
+            method === "GET" &&
+            path === `${root}/git/trees/${treeShas[sha]}?recursive=1`,
+        );
+        assert.ok(
+          commitIndex >= 0 && treeIndex > commitIndex,
+          "resolve commit to actual tree SHA before reading snapshot",
+        );
+      }
+      assert.equal(
+        f.calls.some(
+          ({ method, path }) =>
+            method !== "GET" && /\/git\/(trees|commits|refs)/.test(path),
+        ),
+        false,
+      );
       assert.deepEqual(
         f.dispatches().map(({ path, body }) => [path, body]),
         ["production.yml", "firmware.yml"].map((workflow) => [
@@ -394,7 +465,10 @@ test("exact tree arrays detect SDK deletion, addition, and mode changes", async 
       if (kind === "addition") f.snapshots.get("head").tree.push(entry);
       if (kind === "mode") f.snapshots.get("head").tree[1].mode = "100755";
       assert.equal((await f.run()).version, "1.2.4");
-      assert.equal(f.state.writtenTree.base_tree, treeShas.head);
+      assert.equal(
+        f.branchWrites()[0].body.variables.input.expectedHeadOid,
+        "head",
+      );
     });
   }
 });
@@ -525,8 +599,11 @@ test("behind SDK PR updates once, awaits the refreshed head, and recomputes agai
     ],
   );
   assert.deepEqual(waits, [1000, 1000]);
-  assert.equal(f.state.writtenTree.base_tree, treeShas.merged);
-  assert.deepEqual(f.state.commit.parents, ["merged"]);
+  assert.equal(f.branchWrites().at(-1).path, "/graphql");
+  assert.equal(
+    f.branchWrites().at(-1).body.variables.input.expectedHeadOid,
+    "merged",
+  );
   assert.deepEqual(
     f.state.checks.map(({ head_sha, conclusion }) => [head_sha, conclusion]),
     [
@@ -552,8 +629,8 @@ test("pending update-branch is never replayed and an outdated fork is never upda
 
 test("concurrent head and main changes reject instead of recording a successful check", async (t) => {
   for (const race of [
-    "head before ref",
-    "head after ref",
+    "head before atomic commit",
+    "head after atomic commit",
     "main",
     "main during update",
   ]) {
@@ -561,13 +638,13 @@ test("concurrent head and main changes reject instead of recording a successful 
       const options = {
         before(call, state) {
           if (
-            race === "head before ref" &&
-            call.method === "PATCH" &&
-            call.path.includes("/git/refs/")
+            race === "head before atomic commit" &&
+            call.method === "POST" &&
+            call.path === "/graphql"
           )
             state.pr.head.sha = "contributor-head";
           if (
-            race === "head after ref" &&
+            race === "head after atomic commit" &&
             call.path === `${root}/pulls/7` &&
             state.pr.head.sha === "sdk-commit"
           )
@@ -590,6 +667,122 @@ test("concurrent head and main changes reject instead of recording a successful 
       if (race === "main during update")
         assert.equal(f.branchWrites().length, 1);
     });
+  }
+});
+
+test("atomic expectedHeadOid rejects ancestor rewinds, forward moves, and divergent heads without retry", async (t) => {
+  for (const [name, movedHead] of [
+    [
+      "ancestor rewind (REST force:false would accept restoring the old head)",
+      "base",
+    ],
+    ["concurrent forward commit", "forward"],
+    ["concurrent divergent commit", "divergent"],
+  ]) {
+    await t.test(name, async () => {
+      const f = fixture({
+        before(call, state) {
+          if (call.method === "POST" && call.path === "/graphql")
+            state.pr.head.sha = movedHead;
+        },
+      });
+      if (movedHead !== "base") f.snapshot(movedHead, { code: movedHead });
+      const original = clone(f.snapshots.get(movedHead));
+      await assert.rejects(
+        f.run(),
+        /expectedHeadOid|concurrent|head.*changed/i,
+      );
+      assert.equal(
+        f.state.pr.head.sha,
+        movedHead,
+        "never restore or overwrite the contributor's head",
+      );
+      assert.deepEqual(f.snapshots.get(movedHead), original);
+      assert.equal(f.snapshots.has("sdk-commit"), false);
+      assert.equal(f.branchWrites().length, 1);
+      assert.equal(
+        f.branchWrites()[0].body.variables.input.expectedHeadOid,
+        "head",
+      );
+      assert.equal(f.dispatches().length, 0);
+      failed(f);
+    });
+  }
+});
+
+test("GraphQL HTTP 200 errors and missing commit receipts fail without retry or dispatch", async (t) => {
+  for (const [name, graphqlResponse, message] of [
+    ["errors", { errors: [{ message: "lease rejected" }] }, /lease rejected/],
+    [
+      "partial data with errors",
+      {
+        data: { createCommitOnBranch: { commit: { oid: "uncertain" } } },
+        errors: [{ message: "partial mutation error" }],
+      },
+      /partial mutation error/,
+    ],
+    ["missing data", {}, /commit/i],
+    ["null mutation", { data: { createCommitOnBranch: null } }, /commit/i],
+    ["missing commit", { data: { createCommitOnBranch: {} } }, /commit/i],
+    [
+      "null commit",
+      { data: { createCommitOnBranch: { commit: null } } },
+      /commit/i,
+    ],
+    [
+      "missing oid",
+      { data: { createCommitOnBranch: { commit: {} } } },
+      /commit/i,
+    ],
+  ]) {
+    await t.test(name, async () => {
+      const f = fixture({ graphqlResponse });
+      // Exercise the actual HTTP adapter: GraphQL failures use HTTP 200, not
+      // the REST non-2xx error path, and must be checked by writeVersion.
+      const httpCalls = [];
+      const request = githubRequest("fixture-token", async (url, options) => {
+        httpCalls.push({ url, method: options.method });
+        const body = options.body ? JSON.parse(options.body) : undefined;
+        const result = await f.request(
+          options.method,
+          url.slice("https://api.github.com".length),
+          body,
+        );
+        return { status: 200, ok: true, json: async () => result };
+      });
+      await assert.rejects(f.run({ request }), message);
+      assert.equal(
+        httpCalls.filter(({ url }) => url.endsWith("/graphql")).length,
+        1,
+      );
+      assert.equal(f.branchWrites().length, 1);
+      assert.equal(f.state.pr.head.sha, "head");
+      assert.equal(f.snapshots.has("sdk-commit"), false);
+      assert.equal(f.dispatches().length, 0);
+      failed(f);
+    });
+  }
+});
+
+test("executable headers require a manual version edit rather than losing the executable bit", async (t) => {
+  for (const correct of [false, true]) {
+    await t.test(
+      correct ? "manually correct: no write" : "automatic edit refused",
+      async () => {
+        const f = fixture({ version: correct ? "1.2.4" : "1.2.3" });
+        f.snapshots.get("head").tree[0].mode = "100755";
+        if (correct) {
+          assert.equal((await f.run()).version, "1.2.4");
+          assert.equal(f.state.checks.at(-1).conclusion, "success");
+        } else {
+          await assert.rejects(f.run(), /executable|100644|mode|manual/i);
+          failed(f);
+          assert.equal(f.dispatches().length, 0);
+        }
+        assert.deepEqual(f.branchWrites(), []);
+        assert.equal(f.snapshots.get("head").tree[0].mode, "100755");
+      },
+    );
   }
 });
 
@@ -693,26 +886,23 @@ test("missing/invalid tree SHAs, truncated snapshots and non-regular headers fai
 });
 
 test("permission and uncertain mutation errors fail closed without repeating writes", async (t) => {
-  for (const [method, suffix] of [
-    ["POST", "/git/trees"],
-    ["POST", "/git/commits"],
-    ["PATCH", "/git/refs/heads/feature%2Fsdk"],
-    ["POST", "/actions/workflows/production.yml/dispatches"],
-    ["PUT", "/pulls/7/update-branch"],
+  for (const [method, path] of [
+    ["POST", "/graphql"],
+    ["POST", `${root}/actions/workflows/production.yml/dispatches`],
+    ["PUT", `${root}/pulls/7/update-branch`],
   ]) {
-    await t.test(suffix, async () => {
+    await t.test(path, async () => {
       const options = {
         before(call) {
-          if (call.method === method && call.path === root + suffix)
+          if (call.method === method && call.path === path)
             throw Error("403 or uncertain accepted write");
         },
       };
       const f = method === "PUT" ? behind(options) : fixture(options);
       await assert.rejects(f.run(), /403 or uncertain/);
       assert.equal(
-        f.calls.filter(
-          (call) => call.method === method && call.path === root + suffix,
-        ).length,
+        f.calls.filter((call) => call.method === method && call.path === path)
+          .length,
         1,
       );
       assert.equal(
