@@ -546,12 +546,12 @@ async function start() {
     const selectedBoard = new URLSearchParams(location.search).get("board");
     const profiles = Object.entries(boardName).filter(
       ([board]) =>
-        !boards[board].preview &&
+        boards[board].has_setup &&
         (!Object.hasOwn(boardName, selectedBoard) || board === selectedBoard),
     );
     docs(
       "USB provisioning",
-      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install EspHub with MicroPython. Use the matching board kit from GitHub Releases and follow INSTALL.txt. Use the kit’s provision_usb.py to write the registration over USB and bind the returned Bluetooth address. With the board in bootloader mode, run the Mac BLE provisioning tool and choose a Wi-Fi network or enter a hidden SSID.</p></div><div class="panel"><h3>3. Verify</h3><p>After Wi-Fi setup, call bootloader.exit or power-cycle the device, then check devices.get for the online MicroPython application. Stage the hello program with programs.publish. Enter Bootloader mode, install its URL with ota.install, then check the install receipt and confirm the new app boot.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","ble_secret":"&lt;ble_secret&gt;"}</pre><p class="doccopy"><a href="https://github.com/okou-ai/esphub/tree/main/tools/ble-wifi">Mac BLE provisioning tool and instructions</a></p><h2>Board packages</h2><div class="flex">' +
+      '<div class="guide"><div class="panel"><h3>1. Identify and register</h3><p>Connect by USB, confirm the board model and call devices.create. Keep the returned token private.</p></div><div class="panel"><h3>2. Flash and connect</h3><p>Flash the first-time kit once to install EspHub and the board’s example runtime. Use the matching board kit from GitHub Releases and follow INSTALL.txt. Use the kit’s provision_usb.py to write the registration over USB and bind the returned Bluetooth address. With the board in bootloader mode, run the Mac BLE provisioning tool and choose a Wi-Fi network or enter a hidden SSID.</p></div><div class="panel"><h3>3. Verify</h3><p>After Wi-Fi setup, call bootloader.exit or power-cycle the device, then check devices.get for the online application. On MicroPython boards, stage the hello program with programs.publish and install it with ota.install from Bootloader mode. On ESP-Mosaico, check the screen for the native HMI demo.</p></div></div><pre>OKL-PROVISION {"hub":"api.esphub.ai","token":"&lt;token&gt;","ble_secret":"&lt;ble_secret&gt;"}</pre><p class="doccopy"><a href="https://github.com/okou-ai/esphub/tree/main/tools/ble-wifi">Mac BLE provisioning tool and instructions</a></p><h2>Board packages</h2><div class="flex">' +
         profiles
           .map(([board, name]) => {
             const base = "https://api.esphub.ai/releases/" + board + "/";
@@ -564,7 +564,9 @@ async function start() {
               '</div><details><summary>Firmware downloads</summary><div class="flex">' +
               link(base + "usb", "Bootloader-only USB kit") +
               link(base + "ota", "Bootloader OTA image") +
-              link(base + "micropython", "MicroPython OTA image") +
+              (boards[board].runtime === "native"
+                ? link(base + "native", "Native HMI demo OTA image")
+                : link(base + "micropython", "MicroPython OTA image")) +
               link(base + "manifest", "Bootloader manifest") +
               "</div></details></div>"
             );

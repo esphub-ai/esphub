@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.22)
+set(IDF_TARGET esp32s31)
+set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../../../../components/okou_agent")
+set(SDKCONFIG_DEFAULTS "$ENV{MOSAICO_BSP}/examples/hmi_demo/sdkconfig.defaults;sdkconfig.defaults")
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(mosaico_hmi)

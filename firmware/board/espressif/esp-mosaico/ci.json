@@ -1,5 +1,5 @@
 {
-  "micropython": {
+  "native": {
     "container": "espressif/idf:v6.1.1"
   },
   "setup": {}

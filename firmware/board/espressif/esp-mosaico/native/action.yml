@@ -1,0 +1,29 @@
+name: ESP-Mosaico native example
+description: Build Espressif's HMI demo with the EspHub SDK.
+runs:
+  using: composite
+  steps:
+    - name: Read the upstream revision
+      id: upstream
+      shell: bash
+      run: jq -r '"repository=" + .repository, "ref=" + .ref' "$BOARD_DIR/native/upstream.json" >> "$GITHUB_OUTPUT"
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ steps.upstream.outputs.repository }}
+        ref: ${{ steps.upstream.outputs.ref }}
+        path: mosaico-bsp
+    - name: Build Espressif's HMI demo
+      shell: bash
+      run: |
+        set -eo pipefail
+        source "$IDF_PATH/export.sh"
+        export MOSAICO_BSP="$GITHUB_WORKSPACE/mosaico-bsp"
+        project="$BOARD_DIR/native/project"
+        idf.py -C "$project" -DPROJECT_VER="$VERSION" app
+        image="$project/build/mosaico_hmi.bin"
+        esptool --chip esp32s31 image-info "$image"
+        test "$(stat -c %s "$image")" -le 4194304
+        mkdir -p dist
+        asset="esphub-$BOARD-native-$VERSION"
+        cp "$image" "dist/$asset.bin"
+        (cd dist && sha256sum "$asset.bin" > "$asset.sha256")

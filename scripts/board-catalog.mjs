@@ -29,6 +29,7 @@ for (const vendor of await readdir(root, { withFileTypes: true })) {
     if (!Number.isInteger(flash_mb) || flash_mb < 8)
       throw Error("EspHub requires at least 8 MiB Flash: " + id);
     const tasks = JSON.parse(await file("ci.json"));
+    const runtime = Object.hasOwn(tasks, "native") ? "native" : "micropython";
     boards[id] = {
       name,
       model,
@@ -38,7 +39,8 @@ for (const vendor of await readdir(root, { withFileTypes: true })) {
       ...(preview ? { preview: true } : {}),
       has_setup: Object.hasOwn(tasks, "setup"),
       directory: `firmware/board/${vendor.name}/${modelDir.name}`,
-      hello: await file("main.py"),
+      runtime,
+      ...(runtime === "micropython" && { hello: await file("main.py") }),
     };
   }
 }

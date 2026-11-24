@@ -1,0 +1,3 @@
+dependencies:
+  esp-mosaico-bsp:
+    path: ${MOSAICO_BSP}/components/esp-mosaico-bsp

@@ -3,7 +3,7 @@ import boards from "../shared/boards.generated.json" with { type: "json" };
 import { publishedFirmware, assetNames } from "../shared/firmware-releases.js";
 
 async function readManifest(board, kind, release) {
-  const { chip, bootloader, flash_mb } = boards[board];
+  const { chip, bootloader, flash_mb, runtime } = boards[board];
   const names = assetNames(board, chip, kind, release.version);
   const name = kind === "setup" ? names["setup-manifest"] : names.manifest;
   const response = await fetch(
@@ -17,6 +17,7 @@ async function readManifest(board, kind, release) {
     m.board !== board ||
     m.chip !== chip ||
     m.version !== release.version ||
+    (kind === "setup" && runtime === "native" && m.runtime_kind !== runtime) ||
     (kind === "bootloader" &&
       (m.bootloader !== bootloader || m.flash_mb !== flash_mb)) ||
     !/^[a-f0-9]{64}$/.test(hash) ||
@@ -30,13 +31,16 @@ async function readManifest(board, kind, release) {
 const index = await publishedFirmware(boards, fetch, process.env.GH_TOKEN);
 const rows = [];
 for (const [board, releases] of Object.entries(index)) {
+  if (boards[board].runtime === "native" && !releases.native)
+    throw Error("Missing native example for " + board);
   if (boards[board].has_setup && !releases.setup)
     throw Error("Missing USB kit for " + board);
   if (boards[board].has_setup && !releases.bootloader)
     throw Error("Missing bootloader for " + board);
   for (const [kind, release] of Object.entries(releases)) {
-    const manifest =
-      kind === "micropython" ? null : await readManifest(board, kind, release);
+    const manifest = ["bootloader", "setup"].includes(kind)
+      ? await readManifest(board, kind, release)
+      : null;
     rows.push({
       board,
       kind,

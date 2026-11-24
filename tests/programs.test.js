@@ -68,7 +68,7 @@ test("each board links to the actual source, build recipes and provisioning exam
   }
 });
 
-test("ESP-Mosaico can register for bootloader-only provisioning", async () => {
+test("ESP-Mosaico registers with a native example and no MicroPython download", async () => {
   const board = "esp-mosaico";
   const sql = async (strings, ...args) => {
     assert.match(strings.join("?"), /INSERT INTO esphub.devices/);
@@ -85,13 +85,25 @@ test("ESP-Mosaico can register for bootloader-only provisioning", async () => {
   assert.equal(result.board, board);
   assert.match(result.token, /^okl_dev_/);
   assert.match(result.ble_secret, /^[a-f0-9]{64}$/);
-  assert.match(result.prompt, /online in EspHub Bootloader mode/);
+  assert.match(result.prompt, /runtime type native/);
   assert.match(
     result.sources.bootloader.variant_directory_url,
     /esp32s31-16mb-usb-cdc$/,
   );
-  assert.equal(result.setup_manifest, undefined);
-  assert.equal(result.firmware_update.bootloader.setup_manifest_url, undefined);
+  assert.match(result.setup_manifest, /esp-mosaico\/setup-manifest$/);
+  assert.equal(
+    result.firmware_update.bootloader.setup_manifest_url,
+    result.setup_manifest,
+  );
+  assert.equal(result.verification_source, undefined);
+  assert.match(
+    result.firmware_update.program.download_url,
+    /esp-mosaico\/native$/,
+  );
+  assert.match(
+    result.sources.native.build_action_url,
+    /esp-mosaico\/native\/action.yml$/,
+  );
   assert.equal(result.firmware_update.runtime, undefined);
   assert.equal(result.sources.micropython, undefined);
 });
