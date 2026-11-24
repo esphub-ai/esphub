@@ -196,7 +196,7 @@ async function fleet() {
     (ds.some((d) => d.kind === "virtual")
       ? ""
       : button("create-virtual", "Create virtual ESP32")) +
-    button("add", "Register manually") +
+    button("add", "+ Add device") +
     link("/devices/setup", "+ Set up over USB", true) +
     '</div></div><div class="board"><div class="bar"><input class="field" style="max-width:320px" id="filter" aria-label="Filter devices" placeholder="Filter devices"><span class="tag">' +
     ds.length +
