@@ -18,6 +18,9 @@
 extern "C" {
 #endif
 
+/* Public Bluetooth controller address used for provisioning discovery. */
+bool okou_ble_address(char out[18]);
+
 /* Signal strength of the current station connection, in dBm. */
 bool okou_wifi_rssi(int *rssi);
 
