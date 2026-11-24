@@ -7,13 +7,13 @@ Use the onboard USB-C port for bootloader provisioning over USB OTG CDC and UART
 
 ## Native example
 
-The example runtime is Espressif's [HMI demo](https://github.com/esp-mosaico/esp-mosaico-bsp/tree/61fc99e0d1f73ccca6e33a7f71c2ac9d5fe35f39/examples/hmi_demo), pinned to the BSP revision compatible with ESP-IDF 6.1.1. The demo runs the LVGL benchmark on the built-in display with touch enabled. EspHub's SDK starts before the demo and uses the registration and Wi-Fi configuration saved by the bootloader to connect to EspHub over MQTT. ESP-Mosaico currently ships as a preview with a native example runtime.
+The example runtime is Espressif's [HMI demo](https://github.com/esp-mosaico/esp-mosaico-bsp/tree/d1eef04db4c96f027891cdb05aa6c1c5f2cbc5e8/examples/hmi_demo), with the BSP pinned to a revision that detects v1.0, v1.1 and v1.2 hardware. The demo runs the LVGL benchmark on the built-in display with touch enabled. EspHub's SDK starts before the demo and uses the registration and Wi-Fi configuration saved by the bootloader to connect to EspHub over MQTT. ESP-Mosaico currently ships as a preview with a native example runtime.
 
 On a registered board, call `bootloader.enter` and wait for the bootloader to come online. Use `ota.install` with kind `native` and `https://api.esphub.ai/releases/esp-mosaico/native`. Check the install receipt and confirm that `devices.get` reports an online native app with the expected version.
 
 ### Build locally
 
-Use ESP-IDF 6.1.1 and an ESP-Mosaico BSP checkout at the revision in [native/upstream.json](native/upstream.json). From this board directory, with the IDF environment active:
+Use the ESP-IDF 6.2 release branch image pinned in [ci.json](ci.json) and an ESP-Mosaico BSP checkout at the revision in [native/upstream.json](native/upstream.json). From this board directory, with the IDF environment active:
 
 ```sh
 export MOSAICO_BSP=/absolute/path/to/esp-mosaico-bsp
