@@ -31,6 +31,8 @@ shutil.copy(overlay / "partitions_okl_build.csv", port)
 target = port / "boards" / "ESPHUB_MOSAICO"
 shutil.copytree(port / "boards" / "ESP32_GENERIC_S31", target)
 replace(target / "mpconfigboard.h", "Generic ESP32S31 module", "Espressif ESP-Mosaico")
+replace(target / "mpconfigboard.h", "#define MICROPY_HW_ENABLE_USBDEV              (1)",
+        "#define MICROPY_HW_ENABLE_USBDEV              (0)")
 with (target / "mpconfigboard.cmake").open("a") as config:
     config.write(
         "\nlist(APPEND SDKCONFIG_DEFAULTS boards/ESPHUB_MOSAICO/sdkconfig.esphub)\n"
@@ -44,7 +46,7 @@ with (target / "mpconfigboard.cmake").open("a") as config:
     + f'CONFIG_OKOU_BOARD_PROFILE="{board}"\n'
     + f'CONFIG_OKOU_BL_PROFILE="{profile["bootloader"]}"\n'
     + "CONFIG_SPIRAM=y\nCONFIG_SPIRAM_SPEED_250M=y\n"
-    + "CONFIG_ESP_CONSOLE_SECONDARY_NONE=y\n"
+    + "CONFIG_ESP_CONSOLE_UART_DEFAULT=y\nCONFIG_ESP_CONSOLE_SECONDARY_NONE=y\n"
     + "CONFIG_MBEDTLS_X509_CREATE_C=y\nCONFIG_MBEDTLS_X509_CSR_WRITE_C=y\n"
 )
 replace(port / "esp32_common.cmake", "list(APPEND IDF_COMPONENTS\n    app_update",
@@ -74,11 +76,6 @@ main.write_text(source[:start] + """    for (;;) {
         MP_THREAD_GIL_ENTER();
     }
 """ + source[end:])
-for name in ("mp_usbd.c", "mp_usbd_runtime.c"):
-    replace(upstream / "shared" / "tinyusb" / name, "    tud_task_ext(0, false);",
-            "    tud_task_ext(0, false);\n"
-            "    extern void okl_usb_bus_active(bool active);\n"
-            "    okl_usb_bus_active(tud_connected() && !tud_suspended());")
 replace(upstream / "extmod" / "nimble" / "modbluetooth_nimble.c",
         "int mp_bluetooth_init(void) {",
         "extern bool okou_ble_host_owned(void);\nint mp_bluetooth_init(void) {\n"
