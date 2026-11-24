@@ -21,6 +21,8 @@ void app_main(void)
     esp_gsp_esp_lcd_config_t display;
     err = app_display_init(&display);
     if (err == ESP_OK) {
+        // Match the BSP's CO5300 SPI transfer limit of eight full-width rows.
+        display.display.drawbuf.lines = 8;
         err = esp_gsp_esp_lcd_start(&bundle, &display, &ui);
     }
     if (err == ESP_OK) {
