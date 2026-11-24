@@ -11,6 +11,22 @@ export function provisioning(board) {
     'Use python3 provision_usb.py PORT from the setup kit (also at tools/ble-wifi/provision_usb.py) with pyserial, an authenticated Okou CLI and the private registration JSON on stdin. For another MCP client, send OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret>"} with a newline over USB at 115200. Use the plain hostname and credentials returned at registration. On OKL-PROVISION-OK, pass the returned ble_address and this registration ID to devices.bind_ble_address. Older firmware may return a bare OKL-PROVISION-OK. Keep credentials private.';
   const wifi =
     "On the Mac, pass wifi.ble_credential to tools/ble-wifi/macos.py as private JSON on stdin. Keep the board in EspHub Bootloader mode for the BLE connection. Select a listed network or enter a hidden SSID, then enter its password locally.";
+  const flashKit =
+    "Read setup_manifest and match its board to the device. Download the ZIP over HTTPS from its GitHub Releases download_url, then flash over USB using INSTALL.txt and flash_args. First-time installation erases flash. Back up any device data before flashing.";
+  if (profile.runtime === "native") {
+    return {
+      setup_manifest: base + "setup-manifest",
+      board_setup_guide_url: `https://github.com/okou-ai/esphub/blob/main/${profile.directory}/README.md`,
+      prompt: [
+        identify,
+        flashKit,
+        usb,
+        wifi,
+        reconnectGuidance,
+        "Once the bootloader is online after Wi-Fi setup, call bootloader.exit. Check devices.get for a new session online with role app and runtime type native. Check the screen for Espressif’s Hello World.",
+      ].join("\n"),
+    };
+  }
   if (profile.preview) {
     return {
       board_setup_guide_url: `https://github.com/okou-ai/esphub/blob/main/${profile.directory}/README.md#bootloader-only-registration`,
@@ -27,7 +43,7 @@ export function provisioning(board) {
   return {
     prompt: [
       identify,
-      "Read setup_manifest and match its board to the device. Download the ZIP over HTTPS from its GitHub Releases download_url, then flash over USB using INSTALL.txt and flash_args. First-time installation erases flash. Back up any device data before flashing.",
+      flashKit,
       usb,
       wifi,
       reconnectGuidance,

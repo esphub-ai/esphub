@@ -120,6 +120,19 @@ test("only current board-scoped downloads resolve to immutable GitHub artifacts"
     ),
     /Unknown bootloader/,
   );
+  const native = await releaseResponse(
+    "esp-mosaico",
+    "native",
+    "firmware-native-esp-mosaico-v1.1.3",
+  );
+  assert.match(
+    native.headers.get("Location"),
+    /esphub-esp-mosaico-native-1\.1\.3\.bin$/,
+  );
+  await assert.rejects(
+    releaseResponse("esp-mosaico", "micropython", undefined),
+    /Unknown download/,
+  );
   await assert.rejects(
     releaseResponse("stopwatch", "setup", "setup-stopwatch-v1.1.72"),
     /Unknown setup/,

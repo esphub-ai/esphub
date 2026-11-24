@@ -13,7 +13,7 @@ See the [firmware glossary and partition mapping](docs/firmware-terminology.md) 
 
 ## Devices and releases
 
-The M5Stack board catalog covers ESP32, ESP32-S3, ESP32-C5, ESP32-C6 and ESP32-C61 models with Wi-Fi, Bluetooth and 8–32 MiB of flash. The [board matrix](docs/m5stack-boards.md) lists hardware revisions, bundled controllers, flash, SRAM, runtime port and manufacturer firmware. Cardputer-Adv includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for its TCA8418 keyboard controller. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the shared EspHub Bootloader, MicroPython runtime, partition table, board identity, example main.py, flash arguments and a SHA-256 manifest. This kit erases flash and replaces the partition table and app. Back up device data before installing it.
+The M5Stack board catalog covers ESP32, ESP32-S3, ESP32-C5, ESP32-C6 and ESP32-C61 models with Wi-Fi, Bluetooth and 8–32 MiB of flash. The [board matrix](docs/m5stack-boards.md) lists hardware revisions, bundled controllers, flash, SRAM, runtime port and manufacturer firmware. Cardputer-Adv includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for its TCA8418 keyboard controller. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the shared EspHub Bootloader, application image, partition table, flash arguments and a SHA-256 manifest. MicroPython boards also include an example main.py. [ESP-Mosaico](firmware/board/espressif/esp-mosaico/README.md) uses Espressif’s Hello World with the EspHub SDK. This kit erases flash and replaces the partition table and app. Back up device data before installing it.
 
 To build the shared bootloader locally, use ESP-IDF 5.4.1 from the selected `firmware/bootloader/<target>-<size>mb/` directory. Use ESP-IDF 5.5.4 for `esp32c5-16mb` and `esp32c61-16mb`. Select the `bootloader` identifier from the board’s `firmware/board/m5stack/<board>/board.json`. For example, build the 16 MiB ESP32-S3 variant with the following command.
 
@@ -30,7 +30,7 @@ OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret
 
 The USB `hub` setting takes a plain hostname such as `api.esphub.ai`. A scheme, port or path is rejected. An existing URL-valued setting requires writing the hostname over USB. OTA artifacts still use full HTTPS URLs.
 
-After `OKL-PROVISION-OK`, run the Mac BLE tool while the board is in the bootloader and choose a network or enter a hidden SSID and password locally. Then call `bootloader.exit`, type `app` on USB, or power-cycle the board to start MicroPython. Wait for the online app and use the OTA procedure to install the returned verification program. Check the new boot for its board-specific hello message.
+After `OKL-PROVISION-OK`, run the Mac BLE tool while the board is in the bootloader and choose a network or enter a hidden SSID and password locally. Then call `bootloader.exit`, type `app` on USB, or power-cycle the board to start the application. For MicroPython boards, use the OTA procedure to install the returned verification program and check its board-specific hello. For ESP-Mosaico, check the Hello World on the display and confirm the online native runtime in `devices.get`.
 
 In the signed-in console, open **Devices → Set up over USB** in desktop Chrome or Edge. Pick the exact board, flash the official setup kit, restart into the bootloader, then connect its USB port to register, scan, and join a network. An already flashed bootloader with USB Wi-Fi setup can start at **Connect ESPHub Bootloader**. The page checks the registered device's MQTT session before showing it as online.
 
@@ -84,7 +84,7 @@ Runtime and Native Program updates write the application slot, so an interrupted
 
 ### Build your own update
 
-Call `devices.get` to get `sources.bootloader`, `sources.micropython` and `sources.python` for the registered board, including when it is offline. These are starting points in the official repository. The Python link opens the board's starter program. Keep your own modified source in your repository.
+Call `devices.get` to get `sources.bootloader` and the available application source links for the registered board, including when it is offline. These are starting points in the official repository. The Python link opens the board's starter program. Keep your own modified source in your repository.
 
 | OTA kind | What to edit | What to send |
 | --- | --- | --- |
@@ -139,11 +139,11 @@ Main must require the `SDK version`, `verify` and `Firmware` checks, require bra
 
 ### Board firmware CI
 
-Each `firmware/board/<vendor>/<model>/board.json` declares the board's chip, flash capacity, and shared bootloader variant. The directory name supplies the public board ID unless `board.json` sets a unique `id`. The board directory owns its partition layout, MicroPython hardware configuration, verification example, and MicroPython and USB setup actions.
+Each `firmware/board/<vendor>/<model>/board.json` declares the board's chip, flash capacity, and shared bootloader variant. The directory name supplies the public board ID unless `board.json` sets a unique `id`. The board directory owns its partition layout, application configuration, verification example and USB setup action.
 
 The firmware workflow builds each selected variant once from `firmware/bootloader/<target>-<size>mb/`. On main it publishes the bootloader binaries under an input-fingerprinted `bl-*` tag. Later runs reuse the published binaries when preparing a board with the same variant and build inputs. The shared builds use internal RAM.
 
-The board workflow combines the shared binaries with each board's partition table, and publishes board-facing assets under `firmware-<component>-<board>-v<version>`. USB setup includes the board's MicroPython image and verification example. Its manifest pins both component tags.
+The board workflow combines the shared binaries with each board's partition table, and publishes board-facing assets under `firmware-<component>-<board>-v<version>`. USB setup includes the board's bootloader and application image. Its manifest pins both component tags.
 
 ## Origin
 

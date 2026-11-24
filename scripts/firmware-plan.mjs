@@ -25,11 +25,15 @@ const sharedInputs = {
     "firmware/pyrt/upstream.json",
     "firmware/ble.defaults",
     "firmware/pyrt/apply_overlay.py",
-    "firmware/pyrt/apply_s31_overlay.py",
     "firmware/components/okou_agent/**",
     ".github/actions/build-micropython/**",
   ],
-  setup: ["scripts/package-setup.py", "tools/ble-wifi/provision_usb.py", ".github/actions/build-kit/**"],
+  native: ["firmware/components/okou_agent/**"],
+  setup: [
+    "scripts/package-setup.py",
+    "tools/ble-wifi/provision_usb.py",
+    ".github/actions/build-kit/**",
+  ],
 };
 const digest = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -66,10 +70,13 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
   const variants = new Map();
   for (const path of files.keys()) {
     const match =
-      /^firmware\/bootloader\/([a-z0-9]+)-(\d+)mb(-usb-cdc)?\/sdkconfig\.defaults$/.exec(path);
+      /^firmware\/bootloader\/([a-z0-9]+)-(\d+)mb(-usb-cdc)?\/sdkconfig\.defaults$/.exec(
+        path,
+      );
     if (!match) continue;
     const [, target, flash, transport = ""] = match;
-    if (Number(flash) < 8) throw Error("EspHub requires at least 8 MiB Flash: " + path);
+    if (Number(flash) < 8)
+      throw Error("EspHub requires at least 8 MiB Flash: " + path);
     const variant = `${target}-${flash}mb${transport}`;
     const container =
       target === "esp32s31"
@@ -110,7 +117,10 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
       tasks = {};
     const sharedBootloader = variants.get(bootloader);
     {
-      if (sharedBootloader?.target !== chip || sharedBootloader?.flashMb !== flash_mb)
+      if (
+        sharedBootloader?.target !== chip ||
+        sharedBootloader?.flashMb !== flash_mb
+      )
         throw Error("Invalid bootloader for " + board);
       const layouts = matching([`${dir}/layout/*.csv`]);
       if (!files.has(`${dir}/layout/partitions.csv`))
@@ -138,6 +148,7 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
         ]),
       };
     }
+    const runtime = jobs.native ? "native" : "micropython";
     for (const [kind, job] of Object.entries(jobs)) {
       if (
         !Object.hasOwn(sharedInputs, kind) ||
@@ -149,7 +160,12 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
         ...sharedInputs[kind],
         `${dir}/${kind}/**`,
         ...(job.inputs ?? []),
-        ...(kind === "setup" ? [`${dir}/main.py`] : []),
+        ...(kind === "setup" && runtime === "micropython"
+          ? [`${dir}/main.py`]
+          : []),
+        ...(kind === "native"
+          ? [`${dir}/layout/*.csv`, `firmware/partitions/${flash_mb}mb.csv`]
+          : []),
       ];
       const sources = matching(patterns);
       tasks[kind] = {
@@ -166,16 +182,17 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
       };
     }
     if (tasks.setup) {
-      if (!tasks.bootloader || !tasks.micropython)
+      if (!tasks[runtime])
         throw Error("USB setup requires both component tasks: " + board);
       tasks.setup.fingerprint = digest([
         tasks.setup.fingerprint,
         tasks.bootloader.fingerprint,
-        tasks.micropython.fingerprint,
+        tasks[runtime].fingerprint,
       ]);
     }
     boards[board] = {
       boardDir: dir,
+      runtime,
       chip,
       tasks,
       bootloader,
@@ -196,7 +213,7 @@ export function boardPlans(
   const matrix = [];
   for (const [
     board,
-    { chip, tasks, bootloader, blFingerprint, boardDir },
+    { chip, tasks, bootloader, blFingerprint, boardDir, runtime },
   ] of Object.entries(after)) {
     if (selected && selected !== board) continue;
     const published = releases[board] ?? {},
@@ -209,7 +226,7 @@ export function boardPlans(
     }
     if (!Object.values(changed).some(Boolean)) continue;
     if (changed.setup) {
-      for (const kind of ["bootloader", "micropython"]) {
+      for (const kind of ["bootloader", runtime]) {
         if (published[kind]?.fingerprint !== tasks[kind].fingerprint)
           changed[kind] = true;
       }
@@ -237,9 +254,10 @@ export function boardPlans(
         ? {
             ...kit,
             bootloader: input("bootloader"),
-            micropython: input("micropython"),
+            runtime: input(runtime),
+            runtime_kind: runtime,
             local_bootloader: !!changed.bootloader,
-            local_micropython: !!changed.micropython,
+            local_runtime: !!changed[runtime],
           }
         : null,
     });
@@ -294,7 +312,9 @@ if (
   }
   const boardBootloaders = new Set(
     plans
-      .filter((plan) => plan.components.some((task) => task.kind === "bootloader"))
+      .filter((plan) =>
+        plan.components.some((task) => task.kind === "bootloader"),
+      )
       .map((plan) => plan.bootloader),
   );
   const bootloaders = [...after.variants.values()]
@@ -302,7 +322,8 @@ if (
       ({ variant, fingerprint }) =>
         boardBootloaders.has(variant) ||
         (!options.board &&
-          (manual || before.variants.get(variant)?.fingerprint !== fingerprint)),
+          (manual ||
+            before.variants.get(variant)?.fingerprint !== fingerprint)),
     )
     .map((build) => ({ ...build, version: options.version }));
   appendFileSync(

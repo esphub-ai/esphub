@@ -2,25 +2,29 @@
 
 ESP-Mosaico uses the `esp32s31-16mb-usb-cdc` EspHub bootloader and boots from 16 MiB SPI NOR.
 Its 16 MiB PSRAM and 128 MiB SPI NAND are separate from the boot flash.
+Use the onboard USB-C port for bootloader provisioning over USB OTG CDC and UART0 for early boot logs.
 [Official board guide](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s31/esp-mosaico/user_guide.html)
 
-The bootloader uses USB OTG CDC for provisioning through the onboard USB-C port.
-Early ESP-IDF boot messages use UART0.
+## Native example
 
-The preview MicroPython Runtime uses a pinned [upstream ESP32-S31 port](https://github.com/micropython/micropython/pull/19726)
-and ESP-IDF 6.1.1. It runs from the `app` partition and reads [main.py](main.py)
-from the LittleFS `data` partition. The example prints the board name to the console.
-CI also assembles a first-time USB kit with both images and the matching
-`setup-manifest`. ESP-Mosaico remains a preview board pending hardware testing
-of the Runtime and the complete kit.
+The example runtime uses Espressif's [Hello World template](https://github.com/esp-mosaico/esp-mosaico-utils/tree/f58f4f9e5363f908b17a8e1ea8fdf4dd77561ef1/mosaico-tools/templates/hello_world). It compiles the upstream GSP scene, assets, touch counter and display driver. The GSP bundle is embedded in the application image so the same binary works for native OTA and the first-time kit. EspHub's SDK uses the registration and Wi-Fi configuration saved by the bootloader and connects to EspHub over MQTT.
 
-## Bootloader-only registration
+On a registered board, call `bootloader.enter` and wait for the bootloader to come online. Use `ota.install` with kind `native` and `https://api.esphub.ai/releases/esp-mosaico/native`. Check the install receipt and confirm that `devices.get` reports an online native app with the expected version.
 
-Register the device as `esp-mosaico` in EspHub to select its board-specific
-firmware. Use the board-specific Bootloader USB archive and its `flash_args`.
-The Bootloader update preserves the existing NVS partition.
+### Build locally
 
-Write the registration token and BLE bootstrap key over USB CDC. Then use the
-[Mac BLE tool](../../../../tools/ble-wifi/) to configure Wi-Fi. Verify that
-`devices.get` reports the registered board online with role `bootloader`.
-The full setup catalog lists boards that have a first-time kit and Runtime.
+Use the ESP-IDF 6.2 release branch image pinned in [ci.json](ci.json) and checkouts of ESP-Mosaico BSP and ESP-Mosaico Utils at the revisions in [native/upstream.json](native/upstream.json). From this board directory, with the IDF environment active:
+
+```sh
+export MOSAICO_BSP=/absolute/path/to/esp-mosaico-bsp
+export MOSAICO_UTILS=/absolute/path/to/esp-mosaico-utils
+idf.py -C native/project -DPROJECT_VER=1.0.0 app
+```
+
+The OTA image is `native/project/build/mosaico_hello.bin`. Use the EspHub partition layout for installation.
+
+## First-time registration
+
+Register the device as `esp-mosaico` in EspHub. Follow `INSTALL.txt` in the setup ZIP linked by the [setup manifest](https://api.esphub.ai/releases/esp-mosaico/setup-manifest). The kit contains the EspHub Bootloader and native Hello World app. The first-time flash replaces the partition table and application.
+
+Write the private registration over USB CDC, then configure Wi-Fi using the [Mac BLE tool](../../../../tools/ble-wifi/) while the board is in bootloader mode. Check that `devices.get` shows the device online, then call `bootloader.exit`. Verify Hello World and its touch counter on the display and the native runtime version in `devices.get`.

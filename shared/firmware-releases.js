@@ -27,7 +27,7 @@ export function assetNames(board, chip, kind, version) {
       setup: base + "-setup.zip",
       "setup-manifest": base + "-setup.json",
     };
-  return { micropython: `esphub-${board}-micropython-${version}.bin` };
+  return { [kind]: `esphub-${board}-${kind}-${version}.bin` };
 }
 
 export async function publishedFirmware(
@@ -55,11 +55,18 @@ export async function publishedFirmware(
       const tag = release.tag_name,
         [namespace, kind] = tag.split("-");
       if (namespace !== "firmware") continue;
-      if (!["bootloader", "micropython", "setup"].includes(kind)) continue;
+      if (!["bootloader", "micropython", "native", "setup"].includes(kind))
+        continue;
       const assets = new Set(
         release.assets.filter((a) => a.state === "uploaded").map((a) => a.name),
       );
-      for (const [board, { chip }] of Object.entries(boards)) {
+      for (const [board, { chip, runtime }] of Object.entries(boards)) {
+        if (
+          runtime &&
+          ["micropython", "native"].includes(kind) &&
+          kind !== runtime
+        )
+          continue;
         const version = releaseVersion(tag, kind, board),
           current = index[board][kind];
         if (!version || (current && !newer(version, current.version))) continue;
