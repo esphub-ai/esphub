@@ -25,6 +25,7 @@ export const authenticateMcp = mcpAuth(options);
 const writeAccess = requireAdditionalScopes("devices:write");
 const readTools = new Set([
   "commands.get",
+  "logs.read",
   "devices.list",
   "programs.get",
   "devices.get",

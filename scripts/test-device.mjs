@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import postgres from "postgres";
+import { setTimeout as delay } from "node:timers/promises";
 import { simulatedDevice } from "../tests/fixtures/iot/device.mjs";
 import { importPKCS8, SignJWT } from "jose";
 import { createHash, createHmac, randomUUID } from "node:crypto";
@@ -206,6 +207,7 @@ try {
     "wifi.list",
     "firmware.get",
     "programs.get",
+    "logs.read",
   ]);
   const additiveTools = new Set([
     "wifi.ble_credential",
@@ -213,6 +215,7 @@ try {
     "devices.create_virtual",
     "ota.prepare_upload",
     "programs.publish",
+    "logs.set",
   ]);
   const openWorldTools = new Set([
     "wifi.scan",
@@ -403,6 +406,23 @@ try {
 
   const result = (idValue) =>
     op("commands.get", { ...id, command_id: idValue }, read);
+  await assert.rejects(op("logs.read", id, other), /not found/i);
+  assert.equal((await op("logs.read", id, read)).last, 0);
+  const toggled = await op("logs.set", { ...id, enabled: true });
+  const toggle = await mcu.nextCommand();
+  assert.equal(toggle.op, "logs.set");
+  assert.deepEqual(toggle.args, { enabled: true });
+  await mcu.send({ t: "res", id: toggle.id, ok: true, data: { enabled: true } });
+  assert.deepEqual((await result(toggled.command_id)).result, toggle.args);
+  const text = "C: 42\n打印 🎉\n";
+  const log = { t: "log", bytes: Buffer.from(text).toString("base64"), dropped: 17 };
+  await mcu.sendLog(log);
+  // The simulated device sends no application ACK request for QoS 0. Wait for
+  // the relay/Worker commit before disconnecting and checking offline reads.
+  for (let i = 0; i < 100; i++) {
+    if ((await op("logs.read", id, read)).last) break;
+    await delay(20);
+  }
   const wifi = {
     ...id,
     ssid: "field network",
@@ -410,6 +430,19 @@ try {
     request_id: randomUUID(),
   };
   await mcu.disconnect();
+  const page = await op("logs.read", { ...id, process_id: boot, limit: 1 }, read);
+  assert.equal(page.process_id, boot);
+  assert.equal(page.records.length, 1);
+  assert.equal(page.records[0].text, text);
+  assert.equal(page.records[0].dropped_bytes, 17);
+  // The AWS relay may redeliver an already committed frame.
+  assert.equal((await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
+    ...log, mid: page.records[0].mid,
+  })).status, 200);
+  assert.equal((await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
+    ...log, bytes: "!".repeat(512),
+  })).status, 400);
+  assert.deepEqual((await op("logs.read", { ...id, process_id: boot, after: page.cursor }, read)).records, []);
   assert.equal((await op("devices.get", id)).online, false);
   await mcu.subscribe(); // New broker session, before this boot has introduced itself.
   assert.equal((await op("devices.get", id)).online, false);
