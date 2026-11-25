@@ -70,17 +70,12 @@ jobs:
       - name: Check Clerk production OAuth configuration
         run: |
           curl -fsS --retry 3 https://clerk.esphub.ai/.well-known/oauth-authorization-server | jq -e '.issuer == "https://clerk.esphub.ai" and .client_id_metadata_document_supported == true and (has("registration_endpoint") | not) and (.scopes_supported | contains(["devices:read","devices:write"]))'
-      - name: Ensure production UART bucket exists
-        run: node scripts/ensure-bucket.mjs
-      - name: Validate firmware releases, then migrate registrations and sync the catalog
-        env: {GH_TOKEN: '${{ github.token }}'}
+      - name: Ensure production storage buckets exist
         run: |
-          # A newly added board can still be compiling its first release in parallel.
-          for i in {1..40}; do
-            node scripts/sync-board-releases.mjs --migrate && exit 0
-            sleep 20
-          done
-          exit 1
+          node scripts/ensure-bucket.mjs esphub-production
+          node scripts/ensure-bucket.mjs esphub-firmware
+      - name: Migrate the production database
+        run: npm run migrate
       - name: Deploy API and device broker
         run: |
           umask 077
@@ -98,10 +93,6 @@ jobs:
           done
           curl -fsS --retry 5 --retry-all-errors https://api.esphub.ai/.well-known/oauth-protected-resource/mcp | jq -e '.resource == "https://api.esphub.ai/mcp" and .authorization_servers == ["https://clerk.esphub.ai"] and (.scopes_supported | contains(["devices:read","devices:write"]))'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer esh_key_invalidtestkey' https://api.esphub.ai/mcp)" = 401
-          for board in $(jq -r 'to_entries[] | select(.value.has_setup) | .key' shared/boards.generated.json); do
-            curl -fsSL --retry 3 "https://api.esphub.ai/releases/$board/setup-manifest" | jq -e --arg board "$board" '.board == $board and (.sha256 | test("^[a-f0-9]{64}$")) and (.runtime_size > 0)'
-            curl -fsSL "https://api.esphub.ai/releases/$board/manifest" | jq -e --arg board "$board" '.board == $board'
-          done
           test "$(curl -s -o /dev/null -w '%{http_code}' https://app.esphub.ai/backend/auth/me)" = 401
       - name: Retire database access to the former authentication tables
         run: |

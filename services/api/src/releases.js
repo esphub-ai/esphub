@@ -13,7 +13,7 @@ export async function latestReleaseTag(sql, board, kind) {
   return releaseTag(kind, board, row.version);
 }
 
-export async function releaseResponse(board, asset, tag, sql) {
+export async function releaseResponse(board, asset, tag, sql, bucket) {
   if (!Object.hasOwn(boards, board)) fail(404, "Unknown board");
   const kind = ["micropython", "native"].includes(asset)
     ? asset
@@ -29,6 +29,18 @@ export async function releaseResponse(board, asset, tag, sql) {
   const version = releaseVersion(tag, kind, board);
   if (!version) fail(404, "Unknown " + kind + " release");
   const filename = assetNames(board, chip, kind, version)[asset];
+  const prefix = `releases/${tag}/`;
+  if (bucket && (await bucket.head(prefix + "published.json"))) {
+    const object = await bucket.get(prefix + filename);
+    if (!object) fail(503, "Published firmware asset unavailable");
+    const headers = new Headers();
+    object.writeHttpMetadata(headers);
+    headers.set("Content-Length", String(object.size));
+    headers.set("ETag", object.httpEtag);
+    headers.set("Cache-Control", "public, max-age=31536000, immutable");
+    if (sql) headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+    return new Response(object.body, { headers });
+  }
   return Response.redirect(
     `https://github.com/okou-ai/esphub/releases/download/${tag}/${filename}`,
     302,

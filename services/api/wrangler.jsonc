@@ -12,5 +12,5 @@
     "bindings": [{ "name": "DEVICE", "class_name": "Device" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Device"] }],
-  "r2_buckets": [{ "binding": "UART", "bucket_name": "esphub-production" }]
+  "r2_buckets": [{ "binding": "UART", "bucket_name": "esphub-production" }, { "binding": "FIRMWARE", "bucket_name": "esphub-firmware" }]
 }

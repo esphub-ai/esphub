@@ -29,8 +29,11 @@ api.get("/releases/:group/:project/:asset", (c) => {
   const { group, project, asset } = c.req.param();
   const board = `${group}/${project}`;
   const tag = c.req.query("tag");
-  if (tag !== undefined) return releaseResponse(board, asset, tag);
-  return withDatabase(c.env, (sql) => releaseResponse(board, asset, tag, sql));
+  if (tag !== undefined)
+    return releaseResponse(board, asset, tag, undefined, c.env.FIRMWARE);
+  return withDatabase(c.env, (sql) =>
+    releaseResponse(board, asset, tag, sql, c.env.FIRMWARE),
+  );
 });
 api.use(
   "*",
