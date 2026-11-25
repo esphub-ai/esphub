@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import postgres from "postgres";
+import { fixtureVersion, setupRelease, jsonBucket } from "./fixtures/setup-release.mjs";
 import { operate } from "../services/api/src/operations.js";
 import { digest } from "../services/api/src/auth.js";
 test(
@@ -12,9 +13,15 @@ test(
       await sql.begin(async (tx) => {
         const users =
           await tx`INSERT INTO esphub.accounts(handle) VALUES(${crypto.randomUUID()}),(${crypto.randomUUID()}) RETURNING id`;
+        const board = "m5stack/cardputer-adv";
+        const [profile] = await tx`SELECT * FROM esphub.board_profiles WHERE id = ${board}`;
+        await tx`INSERT INTO esphub.firmware_releases(board, kind, version) VALUES (${board}, 'setup', ${fixtureVersion})
+          ON CONFLICT (board, kind) DO UPDATE SET version = excluded.version`;
+        const { files } = setupRelease(board, profile, profile.source_revision);
         const c = {
           sql: tx,
           env: {
+            FIRMWARE: jsonBucket(files),
             DEVICE: {
               idFromName: (id) => id,
               get: () => ({ fetch: () => Response.json({}) }),

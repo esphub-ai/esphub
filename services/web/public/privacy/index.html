@@ -23,13 +23,13 @@
     <h2>Device data and why we use it</h2>
     <ul>
       <li><strong>Registration and connection.</strong> We use the device name, model, identifiers, and authentication records to register boards, authenticate connections, and route commands to the intended device.</li>
-      <li><strong>Hardware and software reports.</strong> Physical boards can report firmware versions, connection status, boot identifiers, and device events. For cloud-installed Python programs, the board reports the transfer ID, byte count, and hash of the installed file. We make these records available for device management and troubleshooting.</li>
-      <li><strong>Network configuration.</strong> A Wi-Fi operation can involve nearby or saved network names and the password you supply to configure a board. Command arguments, and source code can contain personal information or credentials that you or your software include.</li>
+      <li><strong>Hardware and software reports.</strong> Physical boards can report firmware versions, connection status, boot identifiers, and device events. For firmware updates, the board reports the transfer ID and installation outcome. We make these records available for device management and troubleshooting.</li>
+      <li><strong>Network configuration.</strong> A Wi-Fi operation can involve nearby or saved network names and the password you supply to configure a board. Command arguments and firmware uploads can contain personal information or credentials that you or your software include.</li>
       <li><strong>Virtual devices.</strong> If you create a Virtual ESP32, we store its account association, simulated firmware information, boot IDs, and timestamps so you can return to the same board.</li>
     </ul>
     <p>We also use access and diagnostic information to maintain the service, investigate failures, and protect accounts and devices.</p>
     <h2>Information shared with a connected client</h2>
-    <p>EspHub receives the tool name and arguments your client sends. After checking access, it returns the result to that client. A request to inspect a cloud-installed program can return its installation record. With write permission, a client can also request changes to a device.</p>
+    <p>EspHub receives the tool name and arguments your client sends. After checking access, it returns the result to that client. A request to inspect a firmware update can return its installation record. With write permission, a client can also request changes to a device.</p>
     <p>The client provider handles the information it receives under its own privacy policy. You can disconnect the client to stop future authorized access. Copies of results it already received are subject to that provider’s retention and deletion controls.</p>
     <h2>Providers and international processing</h2>
     <p>Clerk provides identity services. Neon stores account, device, and virtual boot records. Cloudflare hosts EspHub, coordinates connections, and stores device records and staged files. For devices using the MQTT connection, AWS IoT handles device certificates, commands, and device reports. GitHub hosts public firmware releases. When you supply a download URL, the board contacts the host you selected. These providers may process information outside your country.</p>

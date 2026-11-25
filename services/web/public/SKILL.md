@@ -32,11 +32,11 @@ First-time setup requires a physical USB connection. If you are running remotely
 
 - **Inspect.** Use `devices.list` and `devices.get` for identity and state. Use `firmware.get` for board-specific downloads and install guidance.
 - **Manage Wi-Fi.** Start with `wifi.list`. Use `wifi.scan`, `wifi.add`, or `wifi.remove` as needed. For an offline board, follow its local provisioning instructions.
-- **Install a program.** Confirm the target and firmware kind. Stage Python with `programs.publish` or upload a supported binary using `ota.prepare_upload`. Enter Bootloader mode with `bootloader.enter`, wait for the board to report that role, then call `ota.install` with the matching kind and URL. For queued work, read `commands.get` until terminal. Verify the installed program or firmware and the next session with `programs.get` or `devices.get` as appropriate.
+- **Develop a board application.** Choose an example by its capability description in `boards.search`. For a newly registered board, use the exact `setup_example` returned by `devices.create`. Check out its pinned source, open the entrypoint and run the build command. Upload custom binaries with `ota.prepare_upload`. Enter Bootloader mode, install with `ota.install` (kind `app` or `bootloader`), follow `commands.get` and confirm the firmware version after reboot.
 - **Reset, rotate, or delete.** Confirm the target and effect with the user before `devices.reset`, `devices.reissue`, or `devices.delete`. A reset can require USB setup again, and deletion revokes device access.
 
 A queued command is an acknowledgement. Report success only after checking the result and any expected device state.
 
 ## Remote console
 
-For a physical device running SDK 7, call `logs.set` with `device_id` and `enabled: true`, then check the receipt with `commands.get`. Ordinary ESP-IDF logs and MicroPython stdout are redirected for this boot. Read `logs.read` and continue with the returned `process_id` and `cursor` (as `after`). Set `enabled: false` to release the capture buffer and restore the local console. Previously uploaded records remain readable while the device is offline.
+For a physical device running the EspHub SDK, call `logs.set` with `device_id` and `enabled: true`, then check the receipt with `commands.get`. Ordinary ESP-IDF logs are redirected for this boot. Read `logs.read` and continue with the returned `process_id` and `cursor` (as `after`). Set `enabled: false` to release the capture buffer and restore the local console. Previously uploaded records remain readable while the device is offline.

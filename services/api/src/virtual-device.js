@@ -36,6 +36,6 @@ export async function operateVirtual(db, device, name, args) {
   }
   fail(
     409,
-    `${name} requires a physical device. Virtual ESP32 supports firmware inspection, reboot and program staging.`,
+    `${name} requires a physical device. Virtual ESP32 supports firmware inspection and reboot.`,
   );
 }

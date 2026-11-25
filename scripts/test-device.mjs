@@ -3,7 +3,7 @@ import postgres from "postgres";
 import { setTimeout as delay } from "node:timers/promises";
 import { simulatedDevice } from "../tests/fixtures/iot/device.mjs";
 import { importPKCS8, SignJWT } from "jose";
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 const base = process.env.TEST_SITE_URL;
 if (!base || !["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   throw Error("A local TEST_SITE_URL is required");
@@ -108,27 +108,15 @@ async function testVirtualDevice(read) {
     "devices.get",
     "devices.reboot",
     "devices.delete",
-    "programs.publish",
   ]) {
-    const args = name === "programs.publish" ? { ...vid, source: "pass" } : vid;
     const result = await call(
       "tools/call",
-      { name, arguments: args },
+      { name, arguments: vid },
       secondAccount,
     );
     assert.equal(result.isError, true, name);
     assert.match(result.content[0].text, /Device not found/, name);
   }
-  const staged = await op("programs.publish", {
-    ...vid,
-    source: 'print("staged")',
-  });
-  assert.equal(staged.status, "staged");
-  assert.equal(staged.executable, false);
-  assert.match(
-    staged.url,
-    /^https:\/\/api\.esphub\.ai\/api\/device\/programs\//,
-  );
   for (const [name, args] of [
     ["devices.bind_ble_address", { ...vid, ble_address: "02:11:22:33:44:55" }],
     ["wifi.scan", vid],
@@ -136,7 +124,7 @@ async function testVirtualDevice(read) {
     ["devices.reissue", vid],
     ["bootloader.enter", vid],
     ["bootloader.exit", vid],
-    ["ota.install", { ...vid, kind: "python", url: staged.url }],
+    ["ota.install", { ...vid, kind: "app" }],
   ]) {
     const result = await call("tools/call", { name, arguments: args });
     assert.equal(result.isError, true, name);
@@ -207,7 +195,6 @@ try {
     "devices.get",
     "wifi.list",
     "firmware.get",
-    "programs.get",
     "logs.read",
   ]);
   const matches = await op("boards.search", { query: "CaRdPuTeR" }, read);
@@ -220,7 +207,6 @@ try {
     "devices.create_virtual",
     "devices.send",
     "ota.prepare_upload",
-    "programs.publish",
     "logs.set",
   ]);
   const openWorldTools = new Set([
@@ -262,13 +248,6 @@ try {
     ).serverInfo.name,
     "esphub",
   );
-  const tag = "firmware-setup-m5stack_cardputer-adv-v1.2.3";
-  const kit = await fetch(base + "/backend/releases/m5stack/cardputer-adv/setup?tag=" + tag, {
-    redirect: "manual",
-  });
-  assert.equal(kit.status, 302);
-  assert.equal(kit.headers.get("Location"),
-    `https://github.com/okou-ai/esphub/releases/download/${tag}/esphub-m5stack_cardputer-adv-esp32s3-1.2.3-setup.zip`);
   await testVirtualDevice(read);
   const d = await op("devices.create", {
       board: "m5stack/paper-color",
@@ -293,16 +272,13 @@ try {
     psk: createHmac("sha256", Buffer.from(d.ble_secret, "hex"))
       .update("esphub/wifi/tls-psk").digest("hex"),
   });
-  assert.match(d.verification_source, /Hello, M5Stack Paper Color/);
-  assert.equal(
-    d.setup_manifest,
-    "https://api.esphub.ai/releases/m5stack/paper-color/setup-manifest",
-  );
-  assert.deepEqual(Object.keys(d.sources).sort(), [
-    "bootloader",
-    "micropython",
-    "python",
-  ]);
+  assert.equal(d.setup_example.id, "color-bands");
+  const manifestUrl = new URL(d.setup_manifest);
+  assert.ok(manifestUrl.searchParams.has("tag"));
+  const manifest = await (await fetch(base + "/backend" + manifestUrl.pathname + manifestUrl.search)).json();
+  assert.deepEqual(d.setup_example, manifest.example);
+  assert.ok(d.setup_example.build_command.includes(d.board));
+  assert.deepEqual(Object.keys(d.sources).sort(), ["bootloader", "sdk"]);
   const offline = await op("devices.get", id, read);
   assert.equal(offline.online, false);
   assert.equal(offline.kind, "physical");
@@ -311,13 +287,13 @@ try {
     board: "m5stack/stopwatch",
     name: "Watch",
   });
-  assert.match(watch.verification_source, /Hello, M5Stack Stopwatch/);
-  assert.match(watch.verification_source, /setBrightness/);
+  assert.equal(watch.setup_example.id, "bar-graph");
+  assert.ok(watch.examples.some(e => e.id === "buttons"));
   assert.match(watch.ble_secret, /^[0-9a-f]{64}$/);
   assert.match(watch.prompt, /Bootloader mode for the BLE connection/);
   const local = (url) => base + "/backend" + new URL(url).pathname;
   const localFiles = {};
-  for (const kind of ["bootloader", "micropython", "native"]) {
+  for (const kind of ["bootloader", "app"]) {
     const file = Buffer.alloc(200000, 0xe9);
     const grant = await op("ota.prepare_upload", {
       ...id,
@@ -506,54 +482,19 @@ try {
   assert.ok(!JSON.stringify(stored).includes(wifi.password));
   await mcu.send({ t: "event", name: "draw.done", data: { rotation: 1 } });
 
-  const source = 'print("café")';
-  const staged = await op("programs.publish", { ...id, source });
-  assert.equal((await fetch(local(staged.url))).status, 401);
-  assert.equal(
-    (
-      await fetch(local(staged.url), {
-        headers: { authorization: "Bearer " + watch.token },
-      })
-    ).status,
-    404,
-  );
-  assert.equal(
-    await (
-      await fetch(local(staged.url), {
-        headers: { authorization: "Bearer " + d.token },
-      })
-    ).text(),
-    source,
-  );
   assert.equal((await op("bootloader.enter", id)).mode, "bootloader");
-  for (const url of [staged.url, pending.url]) {
-    await assert.rejects(
-      op("ota.install", { ...id, kind: "bootloader", url }),
-      /Upload not ready/,
-    );
+  for (const url of [localFiles.app, pending.url]) {
+    await assert.rejects(op("ota.install", { ...id, kind: "bootloader", url }), /Upload not ready/);
   }
-  let pythonInstall;
-  const sha256 = createHash("sha256").update(source).digest("hex");
-  for (const [kind, url] of [
-    ["python", staged.url],
-    ["bootloader", localFiles.bootloader],
-    ["micropython", localFiles.micropython],
-    ["native", localFiles.native],
-  ]) {
-    const key = randomUUID(),
-      queued = await op("ota.install", { ...id, kind, url, request_id: key });
+  for (const [kind, url] of Object.entries(localFiles)) {
+    const key = randomUUID();
+    const queued = await op("ota.install", { ...id, kind, url, request_id: key });
     const cmd = await mcu.nextCommand();
     assert.equal(cmd.id, queued.command_id);
-    const expected = { url, kind, transfer_id: key };
-    if (kind === "python" || kind === "micropython") expected.board = d.board;
-    assert.deepEqual(cmd.args, expected);
-    const ok = kind !== "bootloader";
-    if (kind === "python") pythonInstall = key;
-    await mcu.send({
-      t: "event",
-      name: ok ? "install.done" : "install.failed",
-      data: { transfer_id: key, kind, ...(kind === "python" ? {sha256, bytes:Buffer.byteLength(source)} : {}) },
-    });
+    assert.deepEqual(cmd.args, { url, kind, transfer_id: key });
+    const ok = kind === "app";
+    await mcu.send({ t: "event", name: ok ? "install.done" : "install.failed",
+      data: { transfer_id: key, kind } });
     assert.equal((await result(cmd.id)).state, ok ? "succeeded" : "failed");
   }
 
@@ -562,8 +503,8 @@ try {
   const app = await mcu.hello({
     ...addresses,
     role: "app",
-    runtime_type: "micropython",
-    runtime_version: "1.2.4",
+    fw: { name: "color-bands", version: "2.0.4" },
+    sdk_version: "8.0.0",
   });
   assert.equal((await result(reboot.command_id)).state, "succeeded");
   const currentApp = await op("devices.get", id);
@@ -572,8 +513,7 @@ try {
   assert.equal(currentApp.ble_address, reportedAddress.toLowerCase());
   const inventory = currentApp.software;
   assert.equal(inventory.bootloader_version, "1.2.3");
-  assert.equal(inventory.application.kind, "micropython");
-  assert.equal(inventory.application.runtime_version, "1.2.4");
+  assert.deepEqual(inventory.application, { name: "color-bands", version: "2.0.4", sdk_version: "8.0.0", last_seen: false });
   assert.equal(
     (
       await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
@@ -587,12 +527,9 @@ try {
   );
   assert.equal((await op("devices.get", id)).ble_address, reportedAddress.toLowerCase());
   await assert.rejects(
-    op("ota.install", { ...id, kind: "python", url: staged.url }),
+    op("ota.install", { ...id, kind: "app" }),
     /bootloader/i,
   );
-  assert.deepEqual(await op("programs.get", id), {
-    status:"installed", transfer_id:pythonInstall, sha256, bytes:Buffer.byteLength(source)
-  });
   assert.deepEqual(mcu.httpsRequests, ["iot/enroll"]);
   // A request dispatched in the bootloader is completed by a different boot.
   const installBootloader = { ...id, kind: "bootloader", url: localFiles.bootloader };
@@ -601,7 +538,7 @@ try {
   const handoff = await op("ota.install", installBootloader);
   const firstAttempt = await mcu.nextCommand();
   assert.equal(firstAttempt.id, handoff.command_id);
-  await mcu.hello({ role: "app", runtime_type: "micropython" });
+  await mcu.hello({ role: "app", fw: { name: "sample", version: "2.0.4" } });
   await mcu.send({ t: "event", name: "install.failed",
     data: { transfer_id: firstAttempt.args.transfer_id, error: "HTTPS read failed" } });
   assert.equal((await result(firstAttempt.id)).state, "failed");
@@ -617,7 +554,7 @@ try {
   const exitCommand = await mcu.nextCommand();
   assert.equal(exitCommand.id, exit.command_id);
   assert.deepEqual(exitCommand.args, { target: "app" });
-  await mcu.hello({ role: "app", runtime_type: "micropython" });
+  await mcu.hello({ role: "app", fw: { name: "sample", version: "2.0.4" } });
   assert.equal((await result(exit.command_id)).state, "succeeded");
   await assert.rejects(op("bootloader.exit", id), /bootloader mode/);
   await op("devices.reissue", id);

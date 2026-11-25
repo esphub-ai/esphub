@@ -12,7 +12,7 @@ export class Device extends DurableObject {
     this.uploads = new Uploads(ctx, env.UART);
     this.db = ctx.storage.sql;
     this.db.exec(
-      "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,started TEXT,info TEXT); CREATE INDEX IF NOT EXISTS boots_software_ble ON boots(json_extract(info,'$.role'), json_extract(info,'$.ble_address')); CREATE TABLE IF NOT EXISTS current_device(id TEXT, pid TEXT); CREATE TABLE IF NOT EXISTS uplink_events(mid INTEGER PRIMARY KEY); CREATE TABLE IF NOT EXISTS programs(id TEXT PRIMARY KEY, source TEXT NOT NULL, expires INTEGER NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,started TEXT,info TEXT); CREATE INDEX IF NOT EXISTS boots_software_ble ON boots(json_extract(info,'$.role'), json_extract(info,'$.ble_address')); CREATE TABLE IF NOT EXISTS current_device(id TEXT, pid TEXT); CREATE TABLE IF NOT EXISTS uplink_events(mid INTEGER PRIMARY KEY)",
     );
   }
   software(info) {
@@ -44,11 +44,10 @@ export class Device extends DurableObject {
     return this.ctx.blockConcurrencyWhile(() => this.processAlarm());
   }
   async processAlarm() {
-    this.db.exec("DELETE FROM programs WHERE expires<=?", Date.now());
     await this.uploads.expire();
     const next = this.db
       .exec(
-        "SELECT min(expires) AS expires FROM (SELECT min(expires) AS expires FROM programs UNION ALL SELECT min(expires) FROM uploads)",
+        "SELECT min(expires) AS expires FROM uploads",
       )
       .one().expires;
     let retry;
@@ -68,25 +67,8 @@ export class Device extends DurableObject {
       path = url.pathname;
     if (path.startsWith("/uploads/") && req.method === "PUT")
       return this.uploads.put(path.slice("/uploads/".length), req);
-    if (path.startsWith("/artifacts/r2-"))
-      return this.uploads.download(path.slice("/artifacts/r2-".length));
-    if (path.startsWith("/artifacts/")) {
-      const row = this.db
-        .exec(
-          "SELECT source FROM programs WHERE id=? AND expires>?",
-          path.slice(11),
-          Date.now(),
-        )
-        .toArray()[0];
-      return row
-        ? new Response(row.source, {
-            headers: {
-              "Content-Type": "text/plain; charset=utf-8",
-              "Cache-Control": "no-store",
-            },
-          })
-        : new Response(null, { status: 404 });
-    }
+    if (path.startsWith("/artifacts/"))
+      return this.uploads.download(path.slice("/artifacts/".length));
     const boot = this.current()?.pid;
     if (path === "/summary") {
       const row =
@@ -101,7 +83,6 @@ export class Device extends DurableObject {
     }
     if (path === "/revoke") {
       const { device } = await req.json();
-      await this.ctx.storage.delete("main.py");
       await this.armCommands(device);
       this.db.exec("UPDATE uploads SET write_until=0 WHERE write_until>0");
       this.db.exec("DELETE FROM current_device");
@@ -150,7 +131,6 @@ export class Device extends DurableObject {
       return this.ctx.blockConcurrencyWhile(() => this.uplink(args));
     }
     if (path === "/prepare-upload") return this.uploads.prepare(args);
-    if (path === "/publish") return this.uploads.publish(args);
     return new Response(null, { status: 404 });
   }
   async uplink({ device, principal, frame: m }) {
@@ -186,8 +166,8 @@ export class Device extends DurableObject {
           ble_address: bleAddress,
           net_mac: m.net_mac,
           bootloader_version: m.bootloader_version,
-          runtime_type: m.runtime_type,
-          runtime_version: m.runtime_version,
+          fw: m.fw,
+          sdk_version: m.sdk_version,
         });
         const rows =
           await db`UPDATE esphub.devices SET boot_id=${pid},mqtt_connected_since=${session},boot_info=${info}::text::jsonb,

@@ -1,6 +1,6 @@
 // Device-private R2 staging. The download prefix is understood by the EspHub Bootloader.
 import { digest, token } from "./auth.js";
-export const artifactBase = "https://api.esphub.ai/api/device/programs/r2-";
+export const artifactBase = "https://api.esphub.ai/api/device/artifacts/";
 export const maxUploadBytes = 4 * 1024 * 1024;
 const error = (status, message) =>
   Response.json({ error: message }, { status });
@@ -36,7 +36,7 @@ export class Uploads {
   }
 
   async prepare({ device_id, kind, size }) {
-    const credential = token("esh_upload_"),
+    const credential = token("eh_upload_"),
       writeUntil = Date.now() + 15 * 60000;
     const row = await this.allocate(
       device_id,
@@ -55,17 +55,6 @@ export class Uploads {
     });
   }
 
-  async publish({ device_id, source }) {
-    const bytes = new TextEncoder().encode(source);
-    const row = await this.allocate(device_id, "python", bytes.length, "", 0);
-    const saved = await this.save(row, bytes);
-    if (!saved.ok) return saved;
-    return Response.json({
-      url: artifactBase + row.id,
-      expires_at: new Date(row.expires).toISOString(),
-    });
-  }
-
   row(id) {
     return this.db
       .exec("SELECT * FROM uploads WHERE id=? AND expires>?", id, Date.now())
@@ -76,7 +65,7 @@ export class Uploads {
     const row = this.row(id);
     const secret = request.headers
       .get("Authorization")
-      ?.match(/^Bearer (esh_upload_[A-Za-z0-9_-]{43})$/)?.[1];
+      ?.match(/^Bearer (eh_upload_[A-Za-z0-9_-]{43})$/)?.[1];
     if (
       !row ||
       !secret ||
@@ -117,10 +106,7 @@ export class Uploads {
     return new Response(stream.readable, {
       headers: {
         "Cache-Control": "no-store",
-        "Content-Type":
-          row.kind === "python"
-            ? "text/plain; charset=utf-8"
-            : "application/octet-stream",
+        "Content-Type": "application/octet-stream",
       },
     });
   }
