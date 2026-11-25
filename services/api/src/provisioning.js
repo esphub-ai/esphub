@@ -16,7 +16,7 @@ export function provisioning(board) {
   if (profile.runtime === "native") {
     return {
       setup_manifest: base + "setup-manifest",
-      board_setup_guide_url: `https://github.com/okou-ai/esphub/blob/main/${profile.directory}/README.md`,
+      board_setup_guide_url: `https://github.com/okou-ai/esphub-firmware/blob/main/${profile.directory}/README.md`,
       prompt: [
         identify,
         flashKit,
@@ -29,7 +29,7 @@ export function provisioning(board) {
   }
   if (profile.preview) {
     return {
-      board_setup_guide_url: `https://github.com/okou-ai/esphub/blob/main/${profile.directory}/README.md#bootloader-only-registration`,
+      board_setup_guide_url: `https://github.com/okou-ai/esphub-firmware/blob/main/${profile.directory}/README.md#bootloader-only-registration`,
       prompt: [
         identify,
         "Use the matching EspHub Bootloader for this board. Follow the board source guide for USB flashing.",
