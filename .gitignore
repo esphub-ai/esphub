@@ -7,8 +7,7 @@ build/
 sdkconfig
 managed_components/
 __pycache__/
-services/web/public/app.js
-services/web/public/tools.json
+services/web/public/ui/
 
 wrangler.local.json
 wrangler.e2e.json

@@ -32,6 +32,7 @@ try {
   const page = await browser.newPage({
     viewport: { width: 1280, height: 800 },
   });
+  page.setDefaultTimeout(10000);
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   // Run the production origin policy against locally signed fixture sessions.
@@ -76,183 +77,148 @@ try {
         (signedIn
           ? "{getToken:async()=>" + JSON.stringify(jwt) + "}"
           : "null") +
-        ",signOut:async()=>location.assign('/signed-out')}",
+        ",signOut:async(options)=>{if(options.redirectUrl!=='https://esphub.ai/')throw Error('Unexpected redirect');location.assign('/signed-out')}}",
     }),
   );
   await page.route("https://accounts.esphub.ai/**", (route) =>
     route.fulfill({ contentType: "text/html", body: "Hosted sign-in" }),
   );
+  await page.route(origin + "/signed-out", (route) =>
+    route.fulfill({ contentType: "text/html", body: "Signed out" }),
+  );
   await page.goto(origin);
-  await page.getByRole("heading", { name: /Bring HMR to ESP32/ }).waitFor();
+  await page.getByRole("heading", { name: "EspHub" }).waitFor();
   await page
     .context()
     .grantPermissions(["clipboard-read", "clipboard-write"], { origin });
-  await page.getByRole("button", { name: "Copy prompt" }).click();
-  const setupPrompt = await page.evaluate(() => navigator.clipboard.readText());
-  assert.equal(setupPrompt, await page.locator("#prompt").innerText());
-  assert.ok(setupPrompt.includes("https://api.esphub.ai/mcp"));
+  for (const [path, accountPath] of [
+    ["/sign-in", "/sign-in"],
+    ["/sign-up", "/sign-up"],
+  ]) {
+    const response = await fetch(origin + path, { redirect: "manual" });
+    assert.equal(response.status, 302);
+    assert.equal(
+      new URL(response.headers.get("location")).pathname,
+      accountPath,
+    );
+  }
+
   await page.getByRole("link", { name: "Open workspace" }).click();
   await page.waitForURL("https://accounts.esphub.ai/sign-in?**");
   assert.equal(
     new URL(page.url()).searchParams.get("redirect_url"),
     origin + "/devices",
   );
+
   signedIn = true;
   await page.goto(origin + "/devices");
-  const copyPrompt = page.getByRole("button", {
-    name: "Copy prompt",
-    exact: true,
-  });
-  await page
-    .getByRole("region", { name: "Use EspHub with your assistant" })
-    .waitFor();
-  assert.equal(await copyPrompt.count(), 1);
-  await copyPrompt.click();
-  const prompt = await page.evaluate(() => navigator.clipboard.readText());
-  assert.equal(prompt, await page.locator("#mcp-prompt").textContent());
-  for (const required of [
-    "https://api.esphub.ai/mcp",
-    "CIMD OAuth",
-    "devices:read",
-    "devices:write",
-    "devices.create",
-    "programs.publish",
-    "bootloader.enter",
-    "ota.install",
-  ])
-    assert.ok(prompt.includes(required));
-  if (process.env.QA_MCP_SCREENSHOT)
-    await page.screenshot({
-      path: process.env.QA_MCP_SCREENSHOT,
-      fullPage: true,
+  await page.getByText("No devices yet.").waitFor();
+
+  const operate = async (name, args = {}) => {
+    const response = await fetch(origin + "/backend/operations/" + name, {
+      method: "POST",
+      headers: {
+        Origin: origin,
+        Authorization: "Bearer " + jwt,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(args),
     });
-  await page.goto(origin + "/devices");
-  await page.getByRole("button", { name: "Create virtual ESP32" }).click();
-  await page.getByRole("heading", { name: "Virtual ESP32" }).waitFor();
-  assert.equal(
-    await page.getByRole("button", { name: "Wi-Fi", exact: true }).count(),
-    0,
-  );
-  await page.getByRole("button", { name: "Firmware", exact: true }).click();
-  await page.getByRole("definition").filter({ hasText: "1.0.0" }).waitFor();
-  await page.getByRole("button", { name: "Inspect device" }).click();
-  await page
-    .locator("#out")
-    .filter({ hasText: /EspHub virtual firmware/ })
-    .waitFor();
-  assert.equal(
-    await page.getByRole("button", { name: "Install from URL" }).count(),
-    0,
-  );
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Reboot", exact: true }).click();
-  await page.getByRole("button", { name: "Confirm", exact: true }).click();
-  await page.getByRole("link", { name: "← Devices" }).click();
-  await page
-    .getByRole("link", { name: /Virtual ESP32.*Simulated ESP32/ })
-    .click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Delete device", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Confirm", exact: true }).click();
-  await page.getByRole("button", { name: "Create virtual ESP32" }).waitFor();
-  await page.getByText("+ Add device").click();
-  await page.locator("[name=name]").fill("Paper Color · integration");
-  await page.locator("[name=board]").selectOption("m5stack/paper-color");
-  await page.getByRole("button", { name: "Register", exact: true }).click();
-  const token = JSON.parse(
-    await page.locator("dialog pre").textContent(),
-  ).token;
-  await page.getByRole("button", { name: "Close", exact: true }).click();
-  await page.locator(".device").first().click();
-  mcu = simulatedDevice(origin, token);
-  await mcu.hello({
-    bootloader_version: "test",
-    role: "bootloader",
+    assert.equal(response.status, 200, name);
+    return response.json();
+  };
+
+  await operate("devices.create_virtual");
+  const board = await operate("devices.create", {
+    name: "Paper Color integration",
+    board: "m5stack/paper-color",
+  });
+  await operate("devices.create", {
+    name: "Core2 integration",
+    board: "m5stack/core2",
   });
   await page.reload();
+
+  const card = (name) =>
+    page.locator('[data-slot="card"]').filter({ hasText: name });
+  const pictured = card("Paper Color integration");
+  await pictured.getByText("m5stack/paper-color", { exact: true }).waitFor();
+  await pictured.getByText("Offline", { exact: true }).waitFor();
+  assert.equal(await pictured.locator("img").count(), 1);
+  await card("Core2 integration")
+    .getByText("m5stack/core2", { exact: true })
+    .waitFor();
+  assert.equal(await card("Core2 integration").locator("img").count(), 0);
+  assert.equal(await page.locator('[data-slot="card"]').count(), 2);
+  assert.equal(await page.getByText("Virtual ESP32").count(), 0);
+  assert.equal(
+    await page.getByRole("link", { name: /Paper Color integration/ }).count(),
+    0,
+  );
+
+  mcu = simulatedDevice(origin, board.token);
+  await mcu.hello({ bootloader_version: "test", role: "bootloader" });
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await pictured.getByText("Online", { exact: true }).waitFor();
+
+  for (const [name, required] of [
+    [
+      "Manage devices",
+      [
+        "devices.list",
+        "devices.get",
+        "bootloader.enter",
+        "ota.install",
+        "devices.delete",
+      ],
+    ],
+    ["Bind my ESP32", ["group/project", "devices.create", "devices.get"]],
+  ]) {
+    await page.getByRole("button", { name, exact: true }).click();
+    const dialog = page.getByRole("dialog", { name });
+    const prompt = await dialog.getByLabel("Prompt").inputValue();
+    for (const value of ["https://api.esphub.ai/mcp", ...required])
+      assert.ok(prompt.includes(value), value);
+    await dialog.getByRole("button", { name: "Copy prompt" }).click();
+    await dialog.getByRole("button", { name: "Copied", exact: true }).waitFor();
+    assert.equal(
+      await page.evaluate(() => navigator.clipboard.readText()),
+      prompt,
+    );
+    if (name === "Manage devices" && process.env.QA_MCP_SCREENSHOT)
+      await page.screenshot({ path: process.env.QA_MCP_SCREENSHOT });
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await dialog.waitFor({ state: "hidden" });
+  }
   if (process.env.QA_SCREENSHOT)
     await page.screenshot({ path: process.env.QA_SCREENSHOT });
-  await page.getByRole("button", { name: "Firmware", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Enter Bootloader mode", exact: true })
-    .waitFor();
-  await page
-    .getByRole("button", { name: "Install from URL", exact: true })
-    .click();
-  assert.deepEqual(
-    await page
-      .locator('[name="kind"] option')
-      .evaluateAll((options) => options.map((o) => o.value)),
-    ["python", "native", "micropython", "bootloader"],
-  );
-  await page.locator('[name="url"]').fill("https://example.org/main.py");
-  await page.getByRole("button", { name: "Install", exact: true }).click();
-  const install = await mcu.nextCommand();
-  const sha256 = "ab".repeat(32);
-  await mcu.send({t:"event", name:"install.done", data:{
-    kind:"python", transfer_id:install.args.transfer_id, sha256, bytes:10
-  }});
-  await page.getByText("Install completed.").waitFor();
-  await mcu.hello({
-    role: "app", bootloader_version: "1.1.17",
-    runtime_type: "micropython", runtime_version: "1.1.18",
-  });
-  await page.getByRole("button", { name: "Firmware", exact: true }).click();
-  await page.getByText("1.1.17", { exact: true }).waitFor();
-  await page.getByText("Runtime type", { exact: true }).waitFor();
-  await page.getByText("1.1.18", { exact: true }).waitFor();
-  await page.locator("#program").filter({hasText:sha256}).waitFor();
-  assert.match(await page.locator("#program").textContent(), new RegExp(install.args.transfer_id));
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Delete device", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Confirm", exact: true }).click();
-  await page.getByText(/No devices found/).waitFor();
-  await page.goto(origin + "/explorer");
-  await page.getByRole("button", { name: "Run tool" }).click();
-  await page.locator("#result").filter({ hasText: "[]" }).waitFor();
-  await page.goto(origin + "/account");
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await page.waitForURL(origin + "/signed-out");
+
+  for (const path of [
+    "/setup",
+    "/devices/setup",
+    "/explorer",
+    "/device/" + board.id,
+    "/setup-firmware/m5stack/paper-color/setup",
+  ]) {
+    assert.equal((await fetch(origin + path)).status, 404, path);
+  }
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const p of ["/", "/devices", "/setup", "/mcp"]) {
-    await page.goto(origin + p);
-    await page.locator("h1").waitFor();
+  for (const path of ["/", "/devices", "/terms/", "/privacy/"]) {
+    await page.goto(origin + path);
+    await page.getByRole("heading", { level: 1 }).waitFor();
     assert.ok(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
-      p,
+      path,
     );
   }
-  await page.goto(origin + "/setup?board=m5stack/stopwatch");
-  assert.equal(
-    await page
-      .getByRole("link", { name: "First-time USB kit" })
-      .getAttribute("href"),
-    "https://api.esphub.ai/releases/m5stack/stopwatch/setup",
-  );
-  assert.equal(
-    await page.getByRole("link", { name: "Bootloader OTA image" }).count(),
-    0,
-  );
-  await page.getByText("Firmware downloads", { exact: true }).click();
-  assert.equal(
-    await page.getByRole("link", { name: "Bootloader OTA image" }).count(),
-    1,
-  );
-  assert.equal(
-    await page
-      .getByRole("link", { name: "MicroPython OTA image" })
-      .getAttribute("href"),
-    "https://api.esphub.ai/releases/m5stack/stopwatch/micropython",
-  );
+  await page.goto(origin + "/devices");
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL(origin + "/signed-out");
   assert.deepEqual(errors, []);
   console.log(
-    "PASS hosted sign-in and sign-up routing, signed session verification, virtual board creation, MQTT installation, tool explorer, deletion, mobile navigation",
+    "PASS hosted authentication, physical device cards, live status refresh, MCP prompts, removed routes, mobile layout",
   );
 } finally {
   mcu?.close();
