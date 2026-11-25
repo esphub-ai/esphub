@@ -205,8 +205,7 @@ function Hero() {
         your <span className="text-lime-300">ESP32.</span>
       </h1>
       <p className="mt-2 max-w-lg text-sm text-balance text-muted-foreground sm:mt-3 sm:text-base">
-        Give your coding agent the tools to program, flash, and manage your
-        ESP32 boards.
+        Give your coding agent the tools to program your ESP32 boards wirelessly.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 sm:mt-6">
         <ConnectMenu />
