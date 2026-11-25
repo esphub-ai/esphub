@@ -12,7 +12,7 @@ export function provisioning(board) {
   const wifi =
     "On the Mac, pass wifi.ble_credential to tools/ble-wifi/macos.py as private JSON on stdin. Keep the board in EspHub Bootloader mode for the BLE connection. Select a listed network or enter a hidden SSID, then enter its password locally.";
   const flashKit =
-    "Read setup_manifest and match its board to the device. Download the ZIP over HTTPS from its GitHub Releases download_url, then flash over USB using INSTALL.txt and flash_args. First-time installation erases flash. Back up any device data before flashing.";
+    "Read setup_manifest and match its board to the device. Download the ZIP over HTTPS from its download_url, then flash over USB using INSTALL.txt and flash_args. First-time installation erases flash. Back up any device data before flashing.";
   if (profile.runtime === "native") {
     return {
       setup_manifest: base + "setup-manifest",
