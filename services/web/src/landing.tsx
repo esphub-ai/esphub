@@ -200,7 +200,9 @@ function Hero() {
   return (
     <div className="w-full">
       <h1 className="text-3xl leading-tight font-semibold tracking-tighter text-balance md:text-5xl xl:text-6xl">
-        Vibe code on <span className="text-lime-300">ESP32.</span>
+        Vibe OTA
+        <br />
+        your <span className="text-lime-300">ESP32.</span>
       </h1>
       <p className="mt-2 max-w-lg text-sm text-balance text-muted-foreground sm:mt-3 sm:text-base">
         Give your coding agent the tools to program, flash, and manage your
