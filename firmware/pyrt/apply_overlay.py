@@ -12,7 +12,7 @@ import shutil
 import sys
 
 uiflow, fw, profile, version = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3], sys.argv[4]
-board_dir = pathlib.Path(sys.argv[5])
+board_dir = fw / "board" / profile
 config = json.loads((board_dir / "micropython/profile.json").read_text())
 board = config["target"]
 metadata = json.loads((board_dir / "board.json").read_text())

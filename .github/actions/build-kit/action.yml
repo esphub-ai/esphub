@@ -20,4 +20,4 @@ runs:
         jq -er --arg name "$kit" --arg board "$BOARD" 'select(.board == $board and .usb.file == $name) | .usb.sha256 + "  " + .usb.file' "components/bootloader/$manifest" > components/bootloader/checksum
         (cd components/bootloader && sha256sum -c checksum)
         (cd components/runtime && sha256sum -c "$app.sha256")
-        python3 scripts/package-setup.py "$BOARD" "$BOARD_DIR" "components/bootloader/$kit" "components/runtime/$app.bin" dist
+        python3 scripts/package-setup.py "$BOARD" "components/bootloader/$kit" "components/runtime/$app.bin" dist

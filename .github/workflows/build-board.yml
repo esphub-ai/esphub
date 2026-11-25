@@ -57,7 +57,7 @@ jobs:
         run: |
           set -eo pipefail
           source "$IDF_PATH/export.sh"
-          python scripts/package-board-bootloader.py "$BOARD" "$VERSION" "$BOARD_DIR"
+          python scripts/package-board-bootloader.py "$BOARD" "$VERSION"
       - name: Select the board's composite action
         if: matrix.task.kind != 'bootloader'
         shell: bash

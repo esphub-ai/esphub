@@ -69,7 +69,7 @@ runs:
     - name: Apply the esp-bootloader overlay
       shell: bash
       run: |
-        python3 firmware/pyrt/apply_overlay.py uiflow firmware "$BOARD" "$VERSION" "$BOARD_DIR"
+        python3 firmware/pyrt/apply_overlay.py uiflow firmware "$BOARD" "$VERSION"
     - name: Build
       working-directory: uiflow
       shell: bash

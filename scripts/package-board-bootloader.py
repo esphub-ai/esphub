@@ -9,8 +9,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from zipfile import ZIP_DEFLATED, ZipFile
 
-board, version, board_dir = sys.argv[1:]
-profile = Path(board_dir)
+board, version = sys.argv[1:]
+group, project = board.split("/")
+profile = Path(__file__).resolve().parents[1] / "firmware/board" / group / project
 metadata = json.loads((profile / "board.json").read_text())
 shared = Path("shared-bl")
 build = json.loads((shared / "build.json").read_text())
@@ -19,7 +20,7 @@ image = (shared / "esp-bootloader.bin").read_bytes()
 assert sha256(image).hexdigest() == build["ota_sha256"]
 assert image[288:].startswith(f"ESPHUB2/bootloader/{metadata['bootloader']}\0bootloader-ota-v2\0".encode())
 chip = metadata["chip"]
-prefix = f"esphub-{os.environ['BOARD_FILE_STEM']}-{chip}-{version}"
+prefix = f"esphub-{group}_{project}-{chip}-{version}"
 out = Path("dist")
 out.mkdir(exist_ok=True)
 ota = prefix + "-ota.bin"
