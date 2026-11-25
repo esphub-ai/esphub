@@ -87,10 +87,34 @@ try {
     route.fulfill({ contentType: "text/html", body: "Signed out" }),
   );
   await page.goto(origin);
-  await page.getByRole("heading", { name: "EspHub" }).waitFor();
+  await page.getByRole("heading", { name: "Vibe code on ESP32." }).waitFor();
   await page
     .context()
     .grantPermissions(["clipboard-read", "clipboard-write"], { origin });
+  const skill = await page.request.get(origin + "/SKILL.md");
+  assert.equal(skill.status(), 200);
+  assert.match(await skill.text(), /Client ID Metadata Document \(CIMD\)/);
+  await page.getByRole("button", { name: "Connect EspHub" }).click();
+  await page.getByRole("menuitem", { name: "Cursor", exact: true }).click();
+  const connect = page.getByRole("dialog", { name: "Connect EspHub" });
+  await connect.getByText(/Paste this prompt into Cursor/).waitFor();
+  await connect.getByRole("button", { name: "Copy prompt" }).click();
+  assert.match(
+    await page.evaluate(() => navigator.clipboard.readText()),
+    /https:\/\/esphub\.ai\/SKILL\.md/,
+  );
+  await page.keyboard.press("Escape");
+  const gallery = page.getByRole("region", { name: "Board gallery" });
+  await gallery.getByRole("button", { name: /Browse boards/ }).click();
+  const picker = page.getByRole("dialog", { name: "ESP32 boards" });
+  await picker
+    .getByRole("button", { name: "m5stack/stopwatch", exact: true })
+    .click();
+  await gallery
+    .getByRole("button", {
+      name: "Browse boards, current board m5stack/stopwatch",
+    })
+    .waitFor();
   for (const [path, accountPath] of [
     ["/sign-in", "/sign-in"],
     ["/sign-up", "/sign-up"],

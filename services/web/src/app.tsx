@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { issuer, mcpEndpoint, portal } from "../../../shared/identity.js";
 import "./index.css";
+import Landing from "./landing";
 import {
   CheckIcon,
   CopyIcon,
@@ -215,30 +216,6 @@ function Brand() {
     <h1>
       <img src={logo} alt="EspHub" width={113} height={32} />
     </h1>
-  );
-}
-
-function Landing() {
-  return (
-    <main className="mx-auto grid max-w-3xl gap-6 px-4 py-8 sm:px-6 sm:py-14">
-      <Brand />
-      <Card>
-        <CardContent className="grid justify-items-start gap-4">
-          <p>Connect your coding agent to ESP32 devices with EspHub MCP.</p>
-          <a className={buttonVariants()} href="/devices">
-            Open workspace
-          </a>
-        </CardContent>
-      </Card>
-      <footer className="flex flex-wrap gap-4">
-        <a className={buttonVariants({ variant: "link" })} href="/terms/">
-          Terms of Service
-        </a>
-        <a className={buttonVariants({ variant: "link" })} href="/privacy/">
-          Privacy Policy
-        </a>
-      </footer>
-    </main>
   );
 }
 
