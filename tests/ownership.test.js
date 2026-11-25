@@ -10,7 +10,8 @@ test(
   async () => {
     const sql = postgres(process.env.TEST_DATABASE_URL, { max: 1 });
     try {
-      await sql.begin(async (tx) => {
+      const rollback = new Error("Roll back ownership test data");
+      await assert.rejects(sql.begin(async (tx) => {
         const users =
           await tx`INSERT INTO esphub.accounts(handle) VALUES(${crypto.randomUUID()}),(${crypto.randomUUID()}) RETURNING id`;
         const board = "m5stack/cardputer-adv";
@@ -45,8 +46,8 @@ test(
         });
         assert.notEqual(next.token, d.token);
         await operate(c, users[0].id, "devices.delete", { device_id: d.id });
-        await tx`DELETE FROM esphub.accounts WHERE id IN ${tx(users.map((u) => u.id))}`;
-      });
+        throw rollback;
+      }), error => error === rollback);
     } finally {
       await sql.end();
     }

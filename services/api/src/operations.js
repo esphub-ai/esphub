@@ -3,9 +3,8 @@ import { releaseUrl } from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
 import { newBleSecret, issueBle, normalizeBleAddress } from "./ble.js";
 import { connectedSince, publishDownlink } from "./iot.js";
-import { artifactBase } from "./uploads.js";
+import { artifactBase, maxUploadBytes } from "./uploads.js";
 import { boardIdPattern, boardImageUrl, getBoard, searchBoards } from "./boards.js";
-import { maxUploadBytes } from "./uploads.js";
 import { updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
 import { latestReleaseTag, releaseResponse } from "./releases.js";
@@ -49,7 +48,7 @@ const defs = [
   [
     "devices.get",
     readOnly,
-    "Show device kind, identity and connection status. Physical boards include EspHub Bootloader, Runtime, and Program update guidance, official downloads, and SDK information, even while offline.",
+    "Show device kind, identity and connection status. For a physical board, also return the reported application identity, bootloader and app downloads, and examples with pinned source and build instructions.",
     id,
   ],
   [
@@ -136,7 +135,7 @@ const defs = [
     "Returns a short-lived PUT URL, authorization headers, and an artifact URL for one file of the specified kind and byte size. A successful upload of exactly that size returns HTTP 201. The device can be offline.",
     {
       ...id,
-      kind: { type: "string", enum: ["bootloader", "app"] },
+      kind: otaKind,
       size: { type: "integer", minimum: 1, maximum: maxUploadBytes },
     },
   ],
@@ -363,7 +362,6 @@ export async function operate(c, owner, name, a) {
   }
   const [d] = ds;
   if (!d) fail(404, "Device not found");
-  const withSources = async (result) => ({ ...result, ...updateSources(await getBoard(db, d.board)) });
   if (name === "devices.get")
     return {
       id: d.id,
@@ -429,7 +427,7 @@ export async function operate(c, owner, name, a) {
     return { id: d.id, hub: "api.esphub.ai", token: secret, ble_secret: bleSecret };
   }
   if (name === "ota.prepare_upload")
-    return withSources(await internal(c, d.id, "prepare-upload", a));
+    return internal(c, d.id, "prepare-upload", a);
   const key = a.request_id ?? crypto.randomUUID();
   const queue = (op, args, boot = null) =>
     internal(c, d.id, "enqueue", { device: d.id, op, args, boot, key });
@@ -478,6 +476,9 @@ export async function operate(c, owner, name, a) {
     args = { target: "self" };
   }
   if (name === "devices.reset") op = "provision.reset";
-  if (name === "firmware.get") return withSources(await queue("status", {}));
+  if (name === "firmware.get") {
+    const [profile, state] = await Promise.all([getBoard(db, d.board), summary(c, d)]);
+    return { ...await queue("status", {}), software: state.software, ...updateSources(profile) };
+  }
   return queue(op, args);
 }

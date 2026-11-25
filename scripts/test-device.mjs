@@ -514,6 +514,13 @@ try {
   const inventory = currentApp.software;
   assert.equal(inventory.bootloader_version, "1.2.3");
   assert.deepEqual(inventory.application, { name: "color-bands", version: "2.0.4", sdk_version: "8.0.0", last_seen: false });
+  const firmware = await op("firmware.get", id, read);
+  assert.deepEqual(firmware.software, inventory);
+  assert.deepEqual(firmware.examples, currentApp.examples);
+  const status = await mcu.nextCommand();
+  assert.equal(status.id, firmware.command_id);
+  assert.equal(status.op, "status");
+  await mcu.send({ t: "res", id: status.id, ok: true, data: { fw: inventory.application } });
   assert.equal(
     (
       await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
