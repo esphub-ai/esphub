@@ -1,8 +1,8 @@
 import sdk from "../../../shared/sdk.generated.json" with { type: "json" };
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
-import upstream from "../../../firmware/pyrt/upstream.json" with { type: "json" };
+import upstream from "../../../firmware-source/firmware/pyrt/upstream.json" with { type: "json" };
 
-const repo = "https://github.com/okou-ai/esphub";
+const repo = "https://github.com/okou-ai/esphub-firmware";
 const tree = repo + "/tree/main";
 const blob = repo + "/blob/main";
 
@@ -82,6 +82,7 @@ export function updateSources(board) {
           },
         }),
     },
-    custom_build_guide_url: blob + "/README.md#build-your-own-update",
+    custom_build_guide_url:
+      "https://github.com/okou-ai/esphub/blob/main/README.md#build-your-own-update",
   };
 }
