@@ -30,7 +30,8 @@ ALTER TABLE esphub.devices ADD CONSTRAINT devices_board_check
 UPDATE esphub.device_commands SET
   state = CASE WHEN state = 'queued' THEN 'expired' ELSE 'unknown' END,
   args = '{}', next_wake = NULL
-WHERE operation = 'install' AND state IN ('queued', 'dispatched');
+WHERE operation = 'install' AND state IN ('queued', 'dispatched')
+  AND position('/' IN (args->>'board')) = 0;
 
 -- Old release tags name different files and MicroPython image descriptors.
 -- The publisher supplies the catalog rows for the newly built images.

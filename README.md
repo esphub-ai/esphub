@@ -61,7 +61,7 @@ The corresponding C APIs are `okou_wifi_join()` and `okou_wifi_join_state()`. Th
 
 ## Try a virtual ESP32
 
-Sign in, open **Devices**, and select **Create virtual ESP32**, or call `devices.create_virtual` from an authorized MCP client. Each account can create one private board. Creating it again returns the same device ID.
+Sign in, open **Devices**, and select **Create virtual ESP32**, or call `devices.create_virtual` from an authorized MCP client. Each account can create one private `esphub/virtual-esp32` board. Creating it again returns the same device ID.
 
 1. Call `devices.list` and select the device with `kind: "virtual"`. Use its ID with `firmware.get` to inspect the simulated firmware and current `process_id`.
 2. Call `devices.reboot` with that device ID. The response contains the new boot’s `process_id`. Supply a UUID as `request_id` on the first call and reuse it for retries.
