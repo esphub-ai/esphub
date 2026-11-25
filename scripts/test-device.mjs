@@ -471,7 +471,9 @@ try {
       queued = await op("ota.install", { ...id, kind, url, request_id: key });
     const cmd = await mcu.nextCommand();
     assert.equal(cmd.id, queued.command_id);
-    assert.deepEqual(cmd.args, { url, board: d.board, kind, transfer_id: key });
+    const expected = { url, kind, transfer_id: key };
+    if (kind === "python" || kind === "micropython") expected.board = d.board;
+    assert.deepEqual(cmd.args, expected);
     const ok = kind !== "bootloader";
     if (kind === "python") pythonInstall = key;
     await mcu.send({
@@ -486,7 +488,6 @@ try {
   assert.equal((await mcu.nextCommand()).id, reboot.command_id);
   const app = await mcu.hello({
     ...addresses,
-    board: "legacy-board-report",
     role: "app",
     runtime_type: "micropython",
     runtime_version: "1.2.4",
@@ -506,7 +507,6 @@ try {
         boot_id: boot,
         ble_address: usbAddress,
         t: "hello",
-        board: d.board,
         role: "bootloader",
       })
     ).status,
@@ -524,17 +524,16 @@ try {
   // A request dispatched in the bootloader is completed by a different boot.
   const installBootloader = { ...id, kind: "bootloader", url: localFiles.bootloader };
   await assert.rejects(op("ota.install", installBootloader), /bootloader/i);
-  const info = { board: d.board, chip: "esp32s3", dual_bootloader_ota: true, bootloader_profile: "esp32s3-16mb" };
-  await mcu.hello({ ...info, role: "bootloader", image_profile: "ESPHUB2/bootloader/esp32s3-16mb" });
+  await mcu.hello({ role: "bootloader" });
   const handoff = await op("ota.install", installBootloader);
   const firstAttempt = await mcu.nextCommand();
   assert.equal(firstAttempt.id, handoff.command_id);
-  await mcu.hello({ ...info, role: "app", image_profile: "ESPHUB2/micropython/" + d.board });
+  await mcu.hello({ role: "app", runtime_type: "micropython" });
   await mcu.send({ t: "event", name: "install.failed",
     data: { transfer_id: firstAttempt.args.transfer_id, error: "HTTPS read failed" } });
   assert.equal((await result(firstAttempt.id)).state, "failed");
   await assert.rejects(op("ota.install", installBootloader), /bootloader/i);
-  await mcu.hello({ ...info, role: "bootloader", image_profile: "ESPHUB2/bootloader/esp32s3-16mb" });
+  await mcu.hello({ role: "bootloader" });
   const retry = await op("ota.install", installBootloader);
   const nextAttempt = await mcu.nextCommand();
   assert.equal(nextAttempt.id, retry.command_id);
@@ -545,7 +544,7 @@ try {
   const exitCommand = await mcu.nextCommand();
   assert.equal(exitCommand.id, exit.command_id);
   assert.deepEqual(exitCommand.args, { target: "app" });
-  await mcu.hello({ ...info, role: "app", image_profile: "ESPHUB2/micropython/" + d.board });
+  await mcu.hello({ role: "app", runtime_type: "micropython" });
   assert.equal((await result(exit.command_id)).state, "succeeded");
   await assert.rejects(op("bootloader.exit", id), /bootloader mode/);
   await op("devices.reissue", id);

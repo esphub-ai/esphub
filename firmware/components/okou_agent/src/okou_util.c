@@ -230,7 +230,6 @@ char *okou_nvs_get_str_alloc(const char *key)
 
 esp_err_t okou_nvs_set_str(const char *key, const char *val)
 {
-    if (key && !strcmp(key, "hub") && !okou_hub_host_valid(val)) return ESP_ERR_INVALID_ARG;
     nvs_handle_t h;
     esp_err_t e = nvs_open(OKOU_NVS_NS, NVS_READWRITE, &h);
     if (e != ESP_OK) {

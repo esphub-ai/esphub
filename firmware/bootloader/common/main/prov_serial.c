@@ -43,12 +43,6 @@ static void console_line(char *line)
     if (!args) return;
     char *arg;
     while ((arg = strtok_r(NULL, " \t\r\n", &save))) cJSON_AddItemToArray(args, cJSON_CreateString(arg));
-    const cJSON *op = cJSON_GetArrayItem(args, 0);
-    if (!strcmp(name, "wifi") && cJSON_IsString(op) && !strcmp(op->valuestring, "add")) {
-        puts("Use OKL-WIFI JSON, cloud wifi.add, or local BLE to set up Wi-Fi.");
-        cJSON_Delete(args);
-        return;
-    }
     char *output = NULL;
     int rc = okou_cmd_run(name, args, &output);
     const char *message = output ? output : (rc == 0 ? "OK" : "Unknown command. Type help.");
@@ -119,7 +113,7 @@ static void serial_task(void *arg)
                 if (okou_ble_address(address))
                     printf("OKL-PROVISION-OK {\"ble_address\":\"%s\"}\n", address);
                 else
-                    puts("OKL-PROVISION-OK");
+                    puts("OKL-PROVISION-OK {}");
                 fflush(stdout);
                 okou_net_reconfigure();
                 okou_agent_reload_config();

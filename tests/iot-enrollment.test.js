@@ -20,25 +20,15 @@ test(
     const csr =
       "-----BEGIN CERTIFICATE REQUEST-----\nfixture\n-----END CERTIFICATE REQUEST-----";
     const calls = [];
-    let deny = true,
-      status = "ACTIVE",
-      notAfter = Date.now() / 1000 + 3600,
-      issued = 0;
+    let deny = true;
     t.mock.method(globalThis, "fetch", async (req) => {
       const url = new URL(req.url);
       calls.push([req.method, url.pathname, url.search]);
       assert.ok(req.headers.get("Authorization")?.includes("/us-west-2/"));
       if (url.pathname === "/certificates")
         return Response.json({
-          certificateId: String(++issued).repeat(64),
+          certificateId: "1".repeat(64),
           certificatePem: "fixture-pem",
-        });
-      if (req.method === "GET" && url.pathname.startsWith("/certificates/"))
-        return Response.json({
-          certificateDescription: {
-            status,
-            validity: { notAfter },
-          },
         });
       if (url.pathname.startsWith("/target-policies/") && deny)
         return new Response(null, { status: 403 });
@@ -59,14 +49,11 @@ test(
       );
       assert.equal(calls.length, count);
       assert.equal(calls.filter((c) => c[1] === "/certificates").length, 1);
-      await enroll(env, db, id, hash, csr, true);
-      assert.equal(issued, 1);
-      status = "INACTIVE";
-      await assert.rejects(enroll(env, db, id, hash, csr, true), /disabled/);
-      status = "ACTIVE";
-      notAfter = 1;
-      await enroll(env, db, id, hash, csr, true);
-      assert.equal(issued, 2);
+      await assert.rejects(
+        enroll(env, db, id, hash, csr.replace("fixture", "different-key")),
+        /Reissue the device token/,
+      );
+      assert.equal(calls.length, count);
       await publishDownlink(env, id, { boot_id: "boot", mid: 42 });
       assert.deepEqual(calls.at(-1), [
         "POST",

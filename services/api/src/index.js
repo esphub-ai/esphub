@@ -110,10 +110,8 @@ function validBoot(id) {
 }
 api.post("/api/device/iot/enroll", async (c) => {
   const d = await authenticatedDevice(c),
-    { csr, recover } = await c.req.json();
-  return c.json(
-    await enroll(c.env, c.get("sql"), d.id, d.hash, csr, recover === true),
-  );
+    { csr } = await c.req.json();
+  return c.json(await enroll(c.env, c.get("sql"), d.id, d.hash, csr));
 });
 // Only the IoT rule relay has this credential. Device identity and certificate
 // come from the broker's topic and principal, outside the device-controlled frame.

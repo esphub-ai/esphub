@@ -107,7 +107,7 @@ Resources:
             Action: iot:AttachPolicy
             Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:cert/*'
           - Effect: Allow
-            Action: [iot:DescribeCertificate, iot:UpdateCertificate, iot:DeleteCertificate]
+            Action: [iot:UpdateCertificate, iot:DeleteCertificate]
             Resource: !Sub 'arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:cert/*'
           - Effect: Allow
             Action: iot:CreateCertificateFromCsr

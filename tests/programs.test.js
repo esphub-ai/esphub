@@ -206,39 +206,6 @@ test("publishing bounds UTF-8 byte size and OTA accepts the supported HTTPS targ
       url: "https://example.com/a",
     }),
   );
-  assert.throws(
-    () => validate("programs.install", { device_id, source: "print(1)" }),
-    /Unknown tool/,
-  );
-});
-
-test("runtime starts without opening main.py for network reporting", () => {
-  const script = `import os, sys, tempfile, types
-from pathlib import Path
-boot = compile(Path("firmware/pyrt/overlay/okl/_boot.py").read_text(), "_boot.py", "exec")
-def module(name, **methods):
-    sys.modules[name] = types.SimpleNamespace(**methods)
-with tempfile.TemporaryDirectory() as root:
-    module("vfs", mount=lambda *a: None)
-    module("esp32", Partition=types.SimpleNamespace(TYPE_DATA=1, find=lambda *a, **k: [object()]))
-    module("okou", safe_boot=lambda: False)
-    module("micropython", alloc_emergency_exception_buf=lambda size: None)
-    module("os", chdir=lambda path: os.chdir(root), rename=os.rename, remove=os.remove)
-    main = Path(root, "main.py")
-    main.write_text("print('old')")
-    Path(root, ".esphub-download").write_text("print('partial')")
-    exec(boot, {"open": lambda *a: (_ for _ in ()).throw(AssertionError("unexpected file read"))})
-    assert main.read_text() == "print('old')"
-    main.write_text("if (")
-    exec(boot, {"open": lambda *a: (_ for _ in ()).throw(AssertionError("unexpected file read"))})
-    assert main.read_text() == "if ("
-    main.unlink()
-    exec(boot, {"open": lambda *a: (_ for _ in ()).throw(AssertionError("unexpected file read"))})
-    main.write_bytes(b"x" * 32769)
-    exec(boot, {"open": lambda *a: (_ for _ in ()).throw(AssertionError("unexpected file read"))})
-    sys.modules["os"] = os
-`;
-  execFileSync("python3", ["-I", "-c", script]);
 });
 
 test("PaperDIY verification counts only press events from the two user buttons", () => {

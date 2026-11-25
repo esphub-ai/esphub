@@ -168,10 +168,7 @@ try {
   await page.locator(".device").first().click();
   mcu = simulatedDevice(origin, token);
   await mcu.hello({
-    board: "paper-color",
-    chip: "esp32s3",
-    image_profile: "ESPHUB2/bootloader/esp32s3-16mb",
-    fw: { name: "bootloader", version: "test" },
+    bootloader_version: "test",
     role: "bootloader",
   });
   await page.reload();

@@ -40,7 +40,6 @@ cJSON *okou_partitions_json(void);
 
 /* ---- agent (okou_agent.c) ---- */
 void okou_agent_notify(void);
-cJSON *okou_hello_fields(void); /* hello object without "t" */
 extern okou_config_t g_okou_cfg;
 
 static inline bool okou_is_bootloader(void)

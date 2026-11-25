@@ -178,7 +178,6 @@ export function writeRegistration(port, { hub, token, ble_secret }) {
   return port.request("OKL-PROVISION", { hub, token, ble_secret }, (line) => {
     if (line.startsWith("OKL-PROVISION-ERR"))
       throw Error("The device rejected its registration.");
-    if (line === "OKL-PROVISION-OK") return {};
     if (line.startsWith("OKL-PROVISION-OK ")) return JSON.parse(line.slice(17));
   });
 }

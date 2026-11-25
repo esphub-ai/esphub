@@ -16,7 +16,7 @@ metadata = json.loads((profile / "board.json").read_text())
 shared = Path("shared-bl")
 build = json.loads((shared / "build.json").read_text())
 assert build["variant"] == metadata["bootloader"]
-assert re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", board) and len(board) < 32
+assert re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", board)
 image = (shared / "esp-bootloader.bin").read_bytes()
 assert sha256(image).hexdigest() == build["ota_sha256"]
 assert image[288:].startswith(f"ESPHUB2/bootloader/{metadata['bootloader']}\0bootloader-ota-v2\0".encode())

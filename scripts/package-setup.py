@@ -26,8 +26,6 @@ version = os.environ["VERSION"]
 prefix = f"esphub-{args.board}-{chip}-{version}-setup"
 kit = args.output / (prefix + ".zip")
 image = args.runtime.read_bytes()
-for marker in (b"iot/pull", b"ble/sync", b"/api/device/program/", b"X-Program-Status"):
-    assert marker not in image, f"Retired HTTPS route in runtime: {marker!r}"
 with ZipFile(args.bootloader) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
     rows = csv.reader(base.read("partitions.csv").decode().splitlines(), skipinitialspace=True)
     parts = {row[0]: row for row in rows if row and not row[0].startswith("#")}

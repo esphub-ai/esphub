@@ -45,10 +45,10 @@ def write_registration(port, registration):
         line += port.read_until(b"\n", 2048)
         if line.endswith(b"\n"):
             reply = line.rstrip(b"\r\n")
-            if reply == b"OKL-PROVISION-OK":
-                return None
             if reply.startswith(b"OKL-PROVISION-OK "):
-                address = json.loads(reply.split(b" ", 1)[1])["ble_address"]
+                address = json.loads(reply.split(b" ", 1)[1]).get("ble_address")
+                if address is None:
+                    return None
                 if not isinstance(address, str) or not re.fullmatch(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", address):
                     raise ValueError("Invalid Bluetooth address in USB receipt")
                 return address.lower()
