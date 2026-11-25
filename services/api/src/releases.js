@@ -35,6 +35,16 @@ export async function releaseResponse(board, asset, tag, sql, bucket) {
     if (!object) fail(503, "Published firmware asset unavailable");
     const headers = new Headers();
     object.writeHttpMetadata(headers);
+    if (asset === "setup-manifest") {
+      const manifest = await object.json();
+      const download = new URL(`https://api.esphub.ai/releases/${board}/setup`);
+      download.searchParams.set("tag", tag);
+      headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+      return Response.json(
+        { ...manifest, download_url: download.href },
+        { headers },
+      );
+    }
     headers.set("Content-Length", String(object.size));
     headers.set("ETag", object.httpEtag);
     headers.set("Cache-Control", "public, max-age=31536000, immutable");

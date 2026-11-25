@@ -229,3 +229,41 @@ test("R2 serves only completed versioned releases and preserves legacy redirects
     (error) => error.status === 503,
   );
 });
+
+test("migrated setup manifests point at the pinned EspHub download", async () => {
+  const tag = "firmware-setup-m5stack_stopwatch-v1.1.231";
+  const manifest = {
+    board: "m5stack/stopwatch",
+    version: "1.1.231",
+    sha256: "a".repeat(64),
+    download_url:
+      "https://github.com/okou-ai/esphub/releases/download/legacy/setup.zip",
+  };
+  const bucket = {
+    async head() {
+      return {};
+    },
+    async get() {
+      return {
+        async json() {
+          return manifest;
+        },
+        writeHttpMetadata(headers) {
+          headers.set("Content-Type", "application/json");
+        },
+      };
+    },
+  };
+  const response = await releaseResponse(
+    "m5stack/stopwatch",
+    "setup-manifest",
+    tag,
+    undefined,
+    bucket,
+  );
+  assert.deepEqual(await response.json(), {
+    ...manifest,
+    download_url:
+      "https://api.esphub.ai/releases/m5stack/stopwatch/setup?tag=" + tag,
+  });
+});
