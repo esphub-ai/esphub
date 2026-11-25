@@ -1,8 +1,9 @@
+import { releaseUrl } from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
 import { newBleSecret, issueBle, normalizeBleAddress } from "./ble.js";
 import { connectedSince, publishDownlink } from "./iot.js";
 import { artifactBase } from "./uploads.js";
-import boards from "../../../shared/boards.generated.json" with { type: "json" };
+import { boardIdPattern, boardImageUrl, getBoard, searchBoards } from "./boards.js";
 import { maxUploadBytes } from "./uploads.js";
 import { updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
@@ -23,6 +24,12 @@ const readOnly = { ...additive, readOnlyHint: true };
 const destructive = { ...additive, destructiveHint: true };
 
 const defs = [
+  [
+    "boards.search",
+    readOnly,
+    "Find supported boards by a literal, case-insensitive substring of their vendor/model ID. Omit query to list all boards. Includes photos and the latest published firmware by kind.",
+    strings("query"),
+  ],
   ["devices.list", readOnly, "List your registered devices.", {}],
   [
     "devices.create",
@@ -30,7 +37,7 @@ const defs = [
     "Registers a physical device with its name and group/project board ID (for example, m5stack/cardputer-adv). Returns its device ID, provisioning credentials, and board-specific setup information.",
     {
       ...strings("name"),
-      board: { enum: Object.keys(boards), type: "string" },
+      board: { type: "string", description: "Exact board ID returned by boards.search." },
     },
   ],
   [
@@ -207,7 +214,7 @@ export const tools = defs.map(
         ...(queueable(name) ? strings("request_id") : {}),
       },
       required: Object.keys(properties).filter(
-        (k) => name === "logs.read" ? k === "device_id" : !["password", "url"].includes(k),
+        (k) => name === "logs.read" ? k === "device_id" : !["password", "url", "query"].includes(k),
       ),
     },
   }),
@@ -258,6 +265,7 @@ export function validate(name, a) {
     (a.request_id && !uuid.test(a.request_id))
   )
     fail(400, "Invalid identifier");
+  if (a.board && !boardIdPattern.test(a.board)) fail(400, "Invalid board");
   if (a.name?.trim().length === 0 || a.name?.length > 64)
     fail(400, "Invalid name");
   for (const [k, max] of [
@@ -328,19 +336,27 @@ async function summary(c, d) {
 export async function operate(c, owner, name, a) {
   validate(name, a);
   const db = c.sql;
+  if (name === "boards.search") return searchBoards(db, a.query);
   if (name === "devices.create_virtual") return createVirtual(db, owner);
   if (name === "devices.create") {
     const secret = token("okl_dev_");
     const bleSecret = newBleSecret();
-    const [d] =
-      await db`INSERT INTO esphub.devices(owner,name,board,token_hash,ble_secret) VALUES(${owner},${a.name.trim()},${a.board},${await digest(secret)},${bleSecret}) RETURNING id,name,board,kind`;
+    const [d] = await db`WITH profile AS (
+        SELECT * FROM esphub.board_profiles WHERE id = ${a.board} AND is_current
+      ), registered AS (
+        INSERT INTO esphub.devices(owner, name, board, token_hash, ble_secret)
+        SELECT ${owner}, ${a.name.trim()}, id, ${await digest(secret)}, ${bleSecret} FROM profile
+        RETURNING id, name, board, kind)
+      SELECT registered.*, to_jsonb(profile) AS profile FROM registered JOIN profile ON profile.id = registered.board`;
+    if (!d) fail(400, "Unknown board");
+    const { profile, ...device } = d;
     return {
-      ...d,
+      ...device,
       token: secret,
       ble_secret: bleSecret,
       hub: "api.esphub.ai",
-      ...provisioning(d.board),
-      ...updateSources(d.board),
+      ...provisioning(profile),
+      ...updateSources(profile),
     };
   }
   const ds =
@@ -357,6 +373,7 @@ export async function operate(c, owner, name, a) {
         name: d.name,
         board: d.board,
         kind: d.kind,
+        ...(d.kind === "physical" && { image_url: boardImageUrl(d.board) }),
         created_at: d.created_at,
         ...(await summary(c, d)),
       })),
@@ -364,7 +381,7 @@ export async function operate(c, owner, name, a) {
   }
   const [d] = ds;
   if (!d) fail(404, "Device not found");
-  const withSources = (result) => ({ ...result, ...updateSources(d.board) });
+  const withSources = async (result) => ({ ...result, ...updateSources(await getBoard(db, d.board)) });
   if (name === "devices.get")
     return {
       id: d.id,
@@ -372,7 +389,7 @@ export async function operate(c, owner, name, a) {
       board: d.board,
       kind: d.kind,
       ...(await summary(c, d)),
-      ...(d.kind === "physical" ? updateSources(d.board) : {}),
+      ...(d.kind === "physical" ? updateSources(await getBoard(db, d.board)) : {}),
     };
   if (name === "devices.delete") {
     await db`DELETE FROM esphub.devices WHERE id=${d.id} AND owner=${owner}`;
@@ -469,7 +486,7 @@ export async function operate(c, owner, name, a) {
     let url = a.url;
     if (!url) {
       const tag = await latestReleaseTag(db, d.board, "bootloader");
-      url = `https://api.esphub.ai/releases/${d.board}/ota?tag=${tag}`;
+      url = releaseUrl(d.board, "ota", tag);
     } else if (url.startsWith(artifactBase)) {
       await internal(c, d.id, "check-upload", { url, kind: a.kind });
     }

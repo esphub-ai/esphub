@@ -34,7 +34,7 @@ import hermesLogo from "./assets/agents/hermes.png";
 import museLogo from "./assets/agents/muse-color.svg";
 import openClawLogo from "./assets/agents/openclaw-color.svg";
 import logo from "./assets/esphub-logo-light.svg";
-import boardIds from "./assets/board-ids.json";
+import { BoardPhoto, type Board } from "./components/board-photo";
 import skill from "../public/SKILL.md?raw";
 
 const setup = `Connect to EspHub at ${mcpEndpoint} using OAuth with CIMD and PKCE. Follow https://esphub.ai/SKILL.md. After I sign in, list my ESP32 devices.`;
@@ -51,16 +51,6 @@ const agents: { name: string; logo: string; monochrome?: boolean }[] = [
   { name: "Hermes", logo: hermesLogo },
   { name: "OpenClaw", logo: openClawLogo },
 ];
-const boardImages = import.meta.glob<string>("./assets/boards/*.webp", {
-  eager: true,
-  query: "?url",
-  import: "default",
-});
-const boards = boardIds.map(
-  (id) =>
-    [id, boardImages[`./assets/boards/${id.replace("/", "--")}.webp`]] as const,
-);
-
 function SkillDialog() {
   return (
     <Dialog>
@@ -283,10 +273,12 @@ function AgentConnection() {
 }
 
 function BoardPicker({
+  boards,
   select,
   open,
   onOpenChange,
 }: {
+  boards: Board[];
   select: (index: number) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -301,7 +293,7 @@ function BoardPicker({
           </DialogDescription>
         </DialogHeader>
         <div className="grid max-h-[64dvh] grid-cols-2 gap-2 overflow-y-auto p-1 sm:grid-cols-4">
-          {boards.map(([id, image], index) => (
+          {boards.map(({ id, image_url }, index) => (
             <Button
               key={id}
               variant="outline"
@@ -311,13 +303,12 @@ function BoardPicker({
               }}
               className="h-auto min-w-0 flex-col gap-1 p-2 whitespace-normal"
             >
-              <img
+              <BoardPhoto
                 className="aspect-square w-14 object-cover"
-                src={image}
+                imageUrl={image_url}
                 width={400}
                 height={400}
                 loading="lazy"
-                alt=""
               />
               <span className="w-full break-words text-center text-xs">
                 {id}
@@ -330,7 +321,7 @@ function BoardPicker({
   );
 }
 
-function CoverFlow() {
+function CoverFlow({ boards }: { boards: Board[] }) {
   const [active, setActive] = useState(0);
   const [playing, setPlaying] = useState(
     () => !matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -446,7 +437,7 @@ function CoverFlow() {
           advance(distance < 0 ? 1 : -1);
         }}
       >
-        {boards.map(([id, image], index) => {
+        {boards.map(({ id, image_url }, index) => {
           const offset = ((index - active + count + half) % count) - half;
           const selected = offset === 0;
           if (Math.abs(offset) > 3) return null;
@@ -473,12 +464,11 @@ function CoverFlow() {
               <span
                 className={`relative block size-full overflow-hidden bg-muted ${selected ? "shadow-xl shadow-black/55" : ""}`}
               >
-                <img
-                  src={image}
+                <BoardPhoto
+                  imageUrl={image_url}
                   className="size-full object-cover"
                   width={400}
                   height={400}
-                  alt=""
                   draggable={false}
                 />
                 <span
@@ -493,12 +483,11 @@ function CoverFlow() {
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-x-0 top-full h-1/4 overflow-hidden opacity-20 [mask-image:linear-gradient(to_bottom,black,transparent)]"
               >
-                <img
-                  src={image}
+                <BoardPhoto
+                  imageUrl={image_url}
                   className="absolute top-0 aspect-square w-full -scale-y-100 object-cover"
                   width={400}
                   height={400}
-                  alt=""
                   draggable={false}
                 />
               </span>
@@ -510,9 +499,10 @@ function CoverFlow() {
         className="sr-only"
         aria-live={!playing || keyboardFocus ? "polite" : "off"}
       >
-        {boards[active][0]}
+        {boards[active].id}
       </span>
       <BoardPicker
+        boards={boards}
         select={setActive}
         open={browsing}
         onOpenChange={setBrowsing}
@@ -521,7 +511,13 @@ function CoverFlow() {
   );
 }
 
-export default function Landing() {
+export default function Landing({
+  boards,
+  failed,
+}: {
+  boards?: Board[];
+  failed?: boolean;
+}) {
   return (
     <div className="mx-auto grid min-h-dvh max-w-7xl grid-rows-[auto_1fr_auto] px-4 sm:px-6 lg:px-8">
       <header className="flex items-center justify-between gap-3 border-b py-3 sm:py-4">
@@ -538,7 +534,23 @@ export default function Landing() {
       </header>
       <main className="grid min-w-0 content-center items-center gap-4 py-3 sm:py-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] md:gap-6 lg:gap-10">
         <Hero />
-        <CoverFlow />
+        {boards?.length ? (
+          <CoverFlow boards={boards} />
+        ) : (
+          <div>
+            <AgentConnection />
+            <p
+              role="status"
+              className="text-center text-sm text-muted-foreground"
+            >
+              {failed
+                ? "Board directory unavailable."
+                : boards
+                  ? "No boards available."
+                  : "Loading boards…"}
+            </p>
+          </div>
+        )}
       </main>
       <footer className="flex flex-wrap items-center gap-x-3 border-t py-1">
         <a

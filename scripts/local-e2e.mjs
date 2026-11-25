@@ -60,6 +60,7 @@ const child = spawn(
     "dev",
     ...configs.filter((c) => c.endsWith(".json")).flatMap((c) => ["-c", c]),
     "--local",
+    "--persist-to", ".wrangler/state",
     "--port",
     String(port),
     "--show-interactive-dev-session=false",

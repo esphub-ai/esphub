@@ -1,9 +1,10 @@
-import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import {
   assetNames,
   releaseTag,
   releaseVersion,
-} from "../../../shared/firmware-releases.js";
+} from "../../../firmware-source/shared/firmware-releases.js";
+import { boardIdPattern } from "./boards.js";
+import { releaseUrl } from "../../../shared/identity.js";
 import { fail } from "./auth.js";
 
 export async function latestReleaseTag(sql, board, kind) {
@@ -14,41 +15,65 @@ export async function latestReleaseTag(sql, board, kind) {
 }
 
 export async function releaseResponse(board, asset, tag, sql, bucket) {
-  if (!Object.hasOwn(boards, board)) fail(404, "Unknown board");
+  if (!boardIdPattern.test(board)) fail(404, "Unknown board");
+  const latest = tag === undefined;
   const kind = ["micropython", "native"].includes(asset)
     ? asset
     : ["setup", "setup-manifest"].includes(asset)
       ? "setup"
       : "bootloader";
-  const { chip, runtime } = boards[board];
-  if (["micropython", "native"].includes(kind) && kind !== runtime)
+  if (!Object.hasOwn(assetNames(board, "", kind, ""), asset))
     fail(404, "Unknown download");
-  if (!Object.hasOwn(assetNames(board, chip, kind, ""), asset))
-    fail(404, "Unknown download");
-  if (tag === undefined) tag = await latestReleaseTag(sql, board, kind);
+  if (latest) tag = await latestReleaseTag(sql, board, kind);
   const version = releaseVersion(tag, kind, board);
   if (!version) fail(404, "Unknown " + kind + " release");
-  const filename = assetNames(board, chip, kind, version)[asset];
   const prefix = `releases/${tag}/`;
-  if (bucket && (await bucket.head(prefix + "published.json"))) {
+  const marker = await bucket?.get(prefix + "published.json");
+  const receipt = marker && (await marker.json().catch(() => null));
+  let filename;
+  if (
+    Array.isArray(receipt?.assets) &&
+    receipt.assets.length &&
+    receipt.assets.every((a) => typeof a?.name === "string")
+  ) {
+    // Resolve immutable downloads from their published assets, even if Neon is offline
+    // or the board has since changed chip or runtime.
+    const [start, end] = assetNames(board, "{chip}", kind, version)[
+      asset
+    ].split("{chip}");
+    filename = receipt.assets.find(({ name }) =>
+      end === undefined
+        ? name === start
+        : name.startsWith(start) && name.endsWith(end) && !name.includes("/"),
+    )?.name;
+    if (!filename) fail(503, "Published firmware asset unavailable");
+  } else {
+    // Historical GitHub releases and older R2 markers have no asset inventory.
+    const [profile] =
+      await sql`SELECT chip, runtime FROM esphub.board_profiles WHERE id = ${board}`;
+    if (!profile) fail(404, "Unknown board");
+    if (["micropython", "native"].includes(kind) && kind !== profile.runtime)
+      fail(404, "Unknown download");
+    filename = assetNames(board, profile.chip, kind, version)[asset];
+  }
+  if (marker) {
     const object = await bucket.get(prefix + filename);
     if (!object) fail(503, "Published firmware asset unavailable");
     const headers = new Headers();
     object.writeHttpMetadata(headers);
     if (asset === "setup-manifest") {
       const manifest = await object.json();
-      const download = new URL(`https://api.esphub.ai/releases/${board}/setup`);
-      download.searchParams.set("tag", tag);
       headers.set("Cache-Control", "public, max-age=0, must-revalidate");
       return Response.json(
-        { ...manifest, download_url: download.href },
+        { ...manifest, download_url: releaseUrl(board, "setup", tag) },
         { headers },
       );
     }
     headers.set("Content-Length", String(object.size));
     headers.set("ETag", object.httpEtag);
     headers.set("Cache-Control", "public, max-age=31536000, immutable");
-    if (sql) headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+    if (latest)
+      headers.set("Cache-Control", "public, max-age=0, must-revalidate");
     return new Response(object.body, { headers });
   }
   return Response.redirect(

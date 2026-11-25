@@ -1,6 +1,7 @@
 import { enroll, publishDownlink } from "./iot.js";
 import { retryDue } from "./commands.js";
 import { maxUploadBytes } from "./uploads.js";
+import { boardImage, searchBoards } from "./boards.js";
 import { releaseResponse } from "./releases.js";
 import { Hono } from "hono";
 import { withDatabase } from "./database.js";
@@ -29,12 +30,13 @@ api.get("/releases/:group/:project/:asset", (c) => {
   const { group, project, asset } = c.req.param();
   const board = `${group}/${project}`;
   const tag = c.req.query("tag");
-  if (tag !== undefined)
-    return releaseResponse(board, asset, tag, undefined, c.env.FIRMWARE);
   return withDatabase(c.env, (sql) =>
     releaseResponse(board, asset, tag, sql, c.env.FIRMWARE),
   );
 });
+api.get("/boards/:group/:project/image", (c) =>
+  boardImage(c.env.FIRMWARE, `${c.req.param("group")}/${c.req.param("project")}`),
+);
 api.use(
   "*",
   cors({
@@ -94,6 +96,9 @@ api.use("*", (c, next) =>
     c.set("sql", sql);
     return next();
   }),
+);
+api.get("/boards", async (c) =>
+  c.json(await searchBoards(c.get("sql"), c.req.query("q"))),
 );
 api.get("/auth/me", async (c) =>
   c.json({ handle: (await identify(c)).handle }),

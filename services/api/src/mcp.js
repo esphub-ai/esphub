@@ -24,6 +24,7 @@ const options = {
 export const authenticateMcp = mcpAuth(options);
 const writeAccess = requireAdditionalScopes("devices:write");
 const readTools = new Set([
+  "boards.search",
   "commands.get",
   "logs.read",
   "devices.list",
@@ -68,10 +69,10 @@ export async function serveMcp(c) {
           async (args) => {
             try {
               const result = await withDatabase(c.env, async (sql) => {
-                const { owner } = await accountForSubject(
-                  sql,
-                  authInfo.extra.userId,
-                );
+                const owner =
+                  name === "boards.search"
+                    ? undefined
+                    : (await accountForSubject(sql, authInfo.extra.userId)).owner;
                 return operate({ env: c.env, sql }, owner, name, args);
               });
               return {
