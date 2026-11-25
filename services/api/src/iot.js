@@ -59,11 +59,11 @@ export async function connectedSince(env, id) {
   );
   return connection?.connected === true ? connection.connectedSince : null;
 }
-export function publishDownlink(env, id, payload) {
+export function publishDownlink(env, id, payload, qos = 1) {
   return request(
     env,
     env.IOT_DATA_ENDPOINT,
-    "/topics/" + encodeURIComponent("devices/" + id + "/wake") + "?qos=1",
+    "/topics/" + encodeURIComponent("devices/" + id + "/wake") + "?qos=" + qos,
     "POST",
     payload,
     "iotdata",

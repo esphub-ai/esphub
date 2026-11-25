@@ -50,7 +50,7 @@ export async function startBroker(site, port) {
         await exec("mosquitto_pub", [
           ...args,
           "-q",
-          "1",
+          new URL(req.url, "http://localhost").searchParams.get("qos") ?? "0",
           "-t",
           path.slice(8),
           "-m",

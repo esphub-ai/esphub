@@ -213,6 +213,7 @@ try {
     "wifi.ble_credential",
     "devices.create",
     "devices.create_virtual",
+    "devices.send",
     "ota.prepare_upload",
     "programs.publish",
     "logs.set",
@@ -416,7 +417,7 @@ try {
   assert.deepEqual((await result(toggled.command_id)).result, toggle.args);
   const text = "C: 42\n打印 🎉\n";
   const log = { t: "log", bytes: Buffer.from(text).toString("base64"), dropped: 17 };
-  await mcu.sendLog(log);
+  await mcu.sendBestEffort(log);
   // The simulated device sends no application ACK request for QoS 0. Wait for
   // the relay/Worker commit before disconnecting and checking offline reads.
   for (let i = 0; i < 100; i++) {
@@ -446,6 +447,32 @@ try {
   assert.equal((await op("devices.get", id)).online, false);
   await mcu.subscribe(); // New broker session, before this boot has introduced itself.
   assert.equal((await op("devices.get", id)).online, false);
+  await assert.rejects(
+    op("devices.send", { ...id, payload: "offline" }),
+    /offline/i,
+  );
+  await mcu.reconnect();
+  const payload = { text: "Hello", flags: [true, null] };
+  const { message_id } = await op("devices.send", { ...id, payload });
+  assert.deepEqual(await mcu.nextMessage(), { id: message_id, payload });
+  await mcu.sendBestEffort({
+    t: "message",
+    payload: [23.4],
+    reply_to: message_id,
+  });
+  let reply;
+  for (let i = 0; i < 100 && !reply; i++) {
+    const pageAfter = await op(
+      "logs.read",
+      { ...id, after: page.cursor },
+      read,
+    );
+    reply = pageAfter.records.find((entry) => entry.type === "message");
+    if (!reply) await delay(20);
+  }
+  assert.deepEqual(reply?.payload, [23.4]);
+  assert.equal(reply?.reply_to, message_id);
+  await mcu.disconnect();
   const added = await op("wifi.add", wifi);
   assert.equal((await result(added.command_id)).state, "queued");
   await mcu.reconnect();
