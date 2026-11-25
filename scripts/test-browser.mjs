@@ -87,7 +87,7 @@ try {
     route.fulfill({ contentType: "text/html", body: "Signed out" }),
   );
   await page.goto(origin);
-  await page.getByRole("heading", { name: "Vibe code on ESP32." }).waitFor();
+  await page.getByRole("heading", { name: "Vibe OTA your ESP32." }).waitFor();
   await page
     .context()
     .grantPermissions(["clipboard-read", "clipboard-write"], { origin });
