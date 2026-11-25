@@ -23,7 +23,7 @@ recipe = {"tag": os.environ["TAG"], "bootloader_version": os.environ["BOOTLOADER
 metadata = json.loads((profile / "board.json").read_text())
 chip = metadata["chip"]
 version = os.environ["VERSION"]
-prefix = f"esphub-{args.board}-{chip}-{version}-setup"
+prefix = f"esphub-{os.environ['BOARD_FILE_STEM']}-{chip}-{version}-setup"
 kit = args.output / (prefix + ".zip")
 image = args.runtime.read_bytes()
 with ZipFile(args.bootloader) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:

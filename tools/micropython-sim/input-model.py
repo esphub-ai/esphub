@@ -101,10 +101,10 @@ class Panel:
 keys = [0, 1, 1, 0, 2, 0, 1, 0]
 frames = [None, (22, 31), (22, 31), (28, 33), None, (90, 78), (90, 78), None]
 cases = {
-    "sticks3": (135, 240, "StickS3", ["A: 1  B: 0", "A: 1  B: 1", "A: 2  B: 1"]),
-    "atoms3r": (128, 128, "AtomS3R", ["Presses: 1", "Presses: 2"]),
-    "cores3": (320, 240, "CoreS3", ["X: 22  Y: 31", "X: 28  Y: 33", "X: 90  Y: 78"]),
-    "papers3": (540, 960, "PaperS3", ["Page 2", "Page 3"]),
+    "m5stack/sticks3": (135, 240, "StickS3", ["A: 1  B: 0", "A: 1  B: 1", "A: 2  B: 1"]),
+    "m5stack/atoms3r": (128, 128, "AtomS3R", ["Presses: 1", "Presses: 2"]),
+    "m5stack/cores3": (320, 240, "CoreS3", ["X: 22  Y: 31", "X: 28  Y: 33", "X: 90  Y: 78"]),
+    "m5stack/papers3": (540, 960, "PaperS3", ["Page 2", "Page 3"]),
 }
 board = globals().get("fixture_board")
 if board is None:

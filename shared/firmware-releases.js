@@ -1,5 +1,7 @@
+import { boardFileStem } from "./board-id.js";
+
 export function releaseTag(kind, board, version) {
-  return `firmware-${kind}-${board}-v${version}`;
+  return `firmware-${kind}-${boardFileStem(board)}-v${version}`;
 }
 
 export function releaseVersion(tag, kind, board) {
@@ -15,7 +17,8 @@ export function newer(a, b) {
 }
 
 export function assetNames(board, chip, kind, version) {
-  const base = `esphub-${board}-${chip}-${version}`;
+  const stem = boardFileStem(board);
+  const base = `esphub-${stem}-${chip}-${version}`;
   if (kind === "bootloader")
     return {
       manifest: base + ".json",
@@ -27,7 +30,7 @@ export function assetNames(board, chip, kind, version) {
       setup: base + "-setup.zip",
       "setup-manifest": base + "-setup.json",
     };
-  return { [kind]: `esphub-${board}-${kind}-${version}.bin` };
+  return { [kind]: `esphub-${stem}-${kind}-${version}.bin` };
 }
 
 export async function publishedFirmware(

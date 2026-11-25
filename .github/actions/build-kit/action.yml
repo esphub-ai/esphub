@@ -7,9 +7,9 @@ runs:
       run: |
         set -euo pipefail
         mkdir -p components/{bootloader,runtime} dist
-        base="esphub-$BOARD-$CHIP-$BOOTLOADER_VERSION"
+        base="esphub-$BOARD_FILE_STEM-$CHIP-$BOOTLOADER_VERSION"
         kit="$base-usb.zip"
-        app="esphub-$BOARD-$RUNTIME_KIND-$RUNTIME_VERSION"
+        app="esphub-$BOARD_FILE_STEM-$RUNTIME_KIND-$RUNTIME_VERSION"
         manifest="$base.json"
         if [[ "$LOCAL_BOOTLOADER" == false ]]; then
           gh release download "$BOOTLOADER_TAG" -R "$GITHUB_REPOSITORY" -p "$kit" -p "$manifest" -D components/bootloader

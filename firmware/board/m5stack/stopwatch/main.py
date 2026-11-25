@@ -24,4 +24,4 @@ try:
     canvas.push(0, 0)
 finally:
     canvas.delete()
-print('ESP Hub hello drawn: stopwatch')
+print('ESP Hub hello drawn: m5stack/stopwatch')

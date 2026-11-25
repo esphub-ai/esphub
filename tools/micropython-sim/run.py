@@ -18,15 +18,15 @@ from littlefs import LittleFS
 
 FIXTURES = Path(__file__).resolve().parent
 PANEL_CASES = {
-    "sticks3",
-    "atoms3r",
-    "papers3",
-    "cores3",
-    "cardputer-adv",
-    "stackchan",
-    "paper-diy",
+    "m5stack/sticks3",
+    "m5stack/atoms3r",
+    "m5stack/papers3",
+    "m5stack/cores3",
+    "m5stack/cardputer-adv",
+    "m5stack/stackchan",
+    "m5stack/paper-diy",
 }
-INTERACTIVE_CASES = {"sticks3", "atoms3r", "papers3", "cores3"}
+INTERACTIVE_CASES = {"m5stack/sticks3", "m5stack/atoms3r", "m5stack/papers3", "m5stack/cores3"}
 PANICS = (
     "Guru Meditation Error",
     "abort() was called",
@@ -117,9 +117,9 @@ def run(meta, kit, qemu_src, panel_mode, seconds):
         ]
         if xtensa:
             cmd += ["-m", "8M" if chip == "esp32s3" else "4M"]
-        if board in {"papermono", "stopwatch", "stackchan"}:
+        if board in {"m5stack/papermono", "m5stack/stopwatch", "m5stack/stackchan"}:
             cmd += ["-global", "ssi_psram.is_octal=true"]
-        if board == "cardputer-adv":
+        if board == "m5stack/cardputer-adv":
             # ESP32-S3 ADC calibration revision 1, eFuse block 2 bit 128.
             efuse = root / "efuse.bin"
             simulated = bytearray(1024)
@@ -132,7 +132,7 @@ def run(meta, kit, qemu_src, panel_mode, seconds):
                 "driver=nvram.esp32s3.efuse,property=drive,value=qaefuse",
             ]
         env = os.environ.copy()
-        if board == "paper-v11":
+        if board == "m5stack/paper-v11":
             env["ESPHUB_QA_PAPER_HRDY"] = "1"
 
         with (root / "qemu.log").open("w") as debug:

@@ -69,7 +69,7 @@ test("each board links to the actual source, build recipes and provisioning exam
 });
 
 test("ESP-Mosaico registers with a native example and no MicroPython download", async () => {
-  const board = "esp-mosaico";
+  const board = "espressif/esp-mosaico";
   const sql = async (strings, ...args) => {
     assert.match(strings.join("?"), /INSERT INTO esphub.devices/);
     assert.equal(args[2], board);
@@ -110,8 +110,8 @@ test("ESP-Mosaico registers with a native example and no MicroPython download", 
 
 test("Paper Color and StopWatch verification programs draw the measured status and greeting in a single frame", () => {
   for (const [board, model] of [
-    ["stopwatch", "Stopwatch"],
-    ["paper-color", "Paper Color"],
+    ["m5stack/stopwatch", "Stopwatch"],
+    ["m5stack/paper-color", "Paper Color"],
   ]) {
     const { verification_source } = provisioning(board);
     const stub = `import sys, json
@@ -169,10 +169,10 @@ except End: pass
 lcd.drawString.assert_any_call('Key: x', 8, 98)
 `;
   const output = execFileSync("python3", ["-I", "-c", stub], {
-    input: provisioning("cardputer-adv").verification_source,
+    input: provisioning("m5stack/cardputer-adv").verification_source,
     encoding: "utf8",
   });
-  assert.match(output, /ESP Hub hello drawn: cardputer-adv 240 135/);
+  assert.match(output, /ESP Hub hello drawn: m5stack\/cardputer-adv 240 135/);
   assert.match(output, /Keyboard event: 120/);
 });
 
@@ -209,7 +209,7 @@ test("publishing bounds UTF-8 byte size and OTA accepts the supported HTTPS targ
 });
 
 test("PaperDIY verification counts only press events from the two user buttons", () => {
-  validate("devices.create", { board: "paper-diy", name: "PaperDIY" });
+  validate("devices.create", { board: "m5stack/paper-diy", name: "PaperDIY" });
   const fixture = `import sys, time
 from unittest.mock import MagicMock, call
 m5 = MagicMock()
@@ -226,12 +226,12 @@ assert m5.Widgets.Label.return_value.setText.call_args_list == [
     call('A: 1   B: 0'), call('A: 1   B: 1'), call('A: 2   B: 1')]
 `;
   execFileSync("python3", ["-I", "-c", fixture], {
-    input: provisioning("paper-diy").verification_source,
+    input: provisioning("m5stack/paper-diy").verification_source,
   });
 });
 
 test("StackChan verification maps touches and releases to paired strip LEDs", () => {
-  validate("devices.create", { board: "stackchan", name: "StackChan" });
+  validate("devices.create", { board: "m5stack/stackchan", name: "StackChan" });
   const fixture = `import sys, time
 from unittest.mock import MagicMock, call
 m5 = MagicMock()
@@ -256,7 +256,7 @@ assert body.set_rgb_color.call_args_list == expected
 body.set_servo_power.assert_not_called()
 `;
   execFileSync("python3", ["-I", "-c", fixture], {
-    input: provisioning("stackchan").verification_source,
+    input: provisioning("m5stack/stackchan").verification_source,
   });
 });
 

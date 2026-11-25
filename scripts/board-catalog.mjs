@@ -1,4 +1,6 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
+import { boardId } from "../shared/board-id.js";
+
 const root = new URL("../firmware/board/", import.meta.url);
 const boards = {};
 for (const vendor of await readdir(root, { withFileTypes: true })) {
@@ -6,6 +8,7 @@ for (const vendor of await readdir(root, { withFileTypes: true })) {
   const vendorRoot = new URL(vendor.name + "/", root);
   for (const modelDir of await readdir(vendorRoot, { withFileTypes: true })) {
     if (!modelDir.isDirectory()) continue;
+    const id = boardId(vendor.name, modelDir.name);
     const directory = new URL(modelDir.name + "/", vendorRoot);
     const file = (name) => readFile(new URL(name, directory), "utf8");
     const {
@@ -15,15 +18,7 @@ for (const vendor of await readdir(root, { withFileTypes: true })) {
       flash_mb,
       bootloader,
       preview = false,
-      id = modelDir.name,
     } = JSON.parse(await file("board.json"));
-    if (
-      ![vendor.name, modelDir.name, id].every((v) =>
-        /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v),
-      ) ||
-      Object.hasOwn(boards, id)
-    )
-      throw Error("Invalid board path or duplicate ID: " + directory.pathname);
     if (![name, model, chip].every((v) => typeof v === "string" && v.length))
       throw Error("Invalid metadata for " + id);
     if (!Number.isInteger(flash_mb) || flash_mb < 8)
@@ -38,7 +33,7 @@ for (const vendor of await readdir(root, { withFileTypes: true })) {
       bootloader,
       ...(preview ? { preview: true } : {}),
       has_setup: Object.hasOwn(tasks, "setup"),
-      directory: `firmware/board/${vendor.name}/${modelDir.name}`,
+      directory: `firmware/board/${id}`,
       runtime,
       ...(runtime === "micropython" && { hello: await file("main.py") }),
     };

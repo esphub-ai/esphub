@@ -37,7 +37,7 @@ test(
     const [owner] =
       await db`INSERT INTO esphub.accounts(handle) VALUES(${crypto.randomUUID()}) RETURNING id`;
     try {
-      await db`INSERT INTO esphub.devices(id,owner,name,board,token_hash) VALUES(${id},${owner.id},'fixture','stopwatch',${hash})`;
+      await db`INSERT INTO esphub.devices(id,owner,name,board,token_hash) VALUES(${id},${owner.id},'fixture','m5stack/stopwatch',${hash})`;
       await assert.rejects(enroll(env, db, id, hash, csr), /403/);
       assert.ok(!calls.some((c) => c[2] === "?newStatus=ACTIVE"));
       deny = false;

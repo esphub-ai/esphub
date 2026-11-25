@@ -15,7 +15,7 @@ export function setupPage({ main, boards, op, esc }) {
 
   const options = Object.entries(boards)
     .map(
-      ([id, board]) => `<option value="${esc(id)}">${esc(board.name)}</option>`,
+      ([id, board]) => `<option value="${esc(id)}">${esc(board.name)} (${esc(id)})</option>`,
     )
     .join("");
   main.innerHTML = `<section class="app"><a class="crumb" href="/devices">← Devices</a><h1>Set up over USB</h1>

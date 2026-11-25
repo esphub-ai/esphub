@@ -23,7 +23,7 @@ EspHub has three deployment targets: the EspHub Bootloader, a Runtime, and a Pro
 
 In maintenance mode the ESP-IDF bootloader loads the EspHub Bootloader instead. Normal boots can go directly to the selected application. The active EspHub Bootloader writes and validates the other slot before selecting it for the next boot.
 
-The device registration selects the board-specific USB kit, including its partition table. MicroPython Runtime and Python Program install commands carry the registered board to match the Runtime image. A Bootloader update matches the running Bootloader variant. A Native Program uses the ESP image and chip checks. Shared bootloaders read the installed partition table at runtime.
+The registration uses the board's `group/project` ID (for example, `m5stack/cardputer-adv`) to select its USB kit, including its partition table. MicroPython Runtime and Python Program install commands carry the registered board to match the Runtime image. A Bootloader update matches the running Bootloader variant. A Native Program uses the ESP image and chip checks. Shared bootloaders read the installed partition table at runtime.
 
 ## Partition mapping
 

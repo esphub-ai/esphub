@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { migrate } from "./migrate.mjs";
 import boards from "../shared/boards.generated.json" with { type: "json" };
 import { publishedFirmware, assetNames } from "../shared/firmware-releases.js";
 
@@ -31,8 +32,8 @@ async function readManifest(board, kind, release) {
 const index = await publishedFirmware(boards, fetch, process.env.GH_TOKEN);
 const rows = [];
 for (const [board, releases] of Object.entries(index)) {
-  if (boards[board].runtime === "native" && !releases.native)
-    throw Error("Missing native example for " + board);
+  const { runtime } = boards[board];
+  if (!releases[runtime]) throw Error(`Missing ${runtime} release for ${board}`);
   if (boards[board].has_setup && !releases.setup)
     throw Error("Missing USB kit for " + board);
   if (boards[board].has_setup && !releases.bootloader)
@@ -52,15 +53,18 @@ for (const [board, releases] of Object.entries(index)) {
 
 if (!process.env.MIGRATION_DATABASE_URL)
   throw Error("Missing MIGRATION_DATABASE_URL");
-const sql = postgres(process.env.MIGRATION_DATABASE_URL, { max: 1 });
+const sql = postgres(process.env.MIGRATION_DATABASE_URL, { max: 1, prepare: false });
 try {
-  // A slower publish or deployment must not replace a newer catalog entry.
-  await sql`INSERT INTO esphub.firmware_releases AS current (board, kind, version, manifest)
-    SELECT board, kind, version, manifest FROM jsonb_to_recordset(${sql.json(rows)}::jsonb)
-      AS incoming(board text, kind text, version text, manifest jsonb)
-    ORDER BY board, kind
-    ON CONFLICT (board, kind) DO UPDATE SET version = excluded.version, manifest = excluded.manifest
-    WHERE string_to_array(excluded.version, '.')::numeric[] > string_to_array(current.version, '.')::numeric[]`;
+  await sql.begin(async (tx) => {
+    if (process.argv.includes("--migrate")) await migrate(tx);
+    // A slower publish or deployment must not replace a newer catalog entry.
+    await tx`INSERT INTO esphub.firmware_releases AS current (board, kind, version, manifest)
+      SELECT board, kind, version, manifest FROM jsonb_to_recordset(${tx.json(rows)}::jsonb)
+        AS incoming(board text, kind text, version text, manifest jsonb)
+      ORDER BY board, kind
+      ON CONFLICT (board, kind) DO UPDATE SET version = excluded.version, manifest = excluded.manifest
+      WHERE string_to_array(excluded.version, '.')::numeric[] > string_to_array(current.version, '.')::numeric[]`;
+  });
   console.log(`Synchronized ${rows.length} firmware catalog entries`);
 } finally {
   await sql.end();

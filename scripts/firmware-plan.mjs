@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, appendFileSync } from "node:fs";
 import { matchesGlob, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { boardId, boardFileStem } from "../shared/board-id.js";
 import { publishedFirmware, releaseTag } from "../shared/firmware-releases.js";
 
 const bootloaderInputs = [
@@ -97,22 +98,14 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
       fingerprint: digest([variant, container, sources]),
     });
   }
+  const namingInputs = matching(["shared/board-id.js", "shared/firmware-releases.js"]);
   for (const path of files.keys()) {
     const match =
-      /^firmware\/board\/([a-z0-9-]+)\/([a-z0-9-]+)\/ci\.json$/.exec(path);
+      /^firmware\/board\/([^/]+)\/([^/]+)\/ci\.json$/.exec(path);
     if (!match) continue;
     const dir = posix.dirname(path);
-    const {
-      chip,
-      flash_mb,
-      bootloader,
-      id: board = match[2],
-    } = json(dir + "/board.json");
-    if (
-      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(board) ||
-      Object.hasOwn(boards, board)
-    )
-      throw Error("Invalid or duplicate board ID: " + board);
+    const board = boardId(match[1], match[2]);
+    const { chip, flash_mb, bootloader } = json(dir + "/board.json");
     const jobs = json(path),
       tasks = {};
     const sharedBootloader = variants.get(bootloader);
@@ -140,6 +133,7 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
         container: sharedBootloader.container,
         fingerprint: digest([
           board,
+          namingInputs,
           chip,
           sharedBootloader.fingerprint,
           layouts,
@@ -174,6 +168,7 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
         container: job.container ?? "",
         fingerprint: digest([
           board,
+          namingInputs,
           chip,
           kind === "micropython" ? bootloader : null,
           job,
@@ -191,7 +186,6 @@ function firmwareProfiles(ref, cwd = process.cwd()) {
       ]);
     }
     boards[board] = {
-      boardDir: dir,
       runtime,
       chip,
       tasks,
@@ -213,7 +207,7 @@ export function boardPlans(
   const matrix = [];
   for (const [
     board,
-    { chip, tasks, bootloader, blFingerprint, boardDir, runtime },
+    { chip, tasks, bootloader, blFingerprint, runtime },
   ] of Object.entries(after)) {
     if (selected && selected !== board) continue;
     const published = releases[board] ?? {},
@@ -244,7 +238,7 @@ export function boardPlans(
       components.find((t) => t.kind === kind) ?? published[kind];
     matrix.push({
       board,
-      boardDir,
+      fileStem: boardFileStem(board),
       chip,
       jobs,
       bootloader,

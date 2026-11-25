@@ -27,7 +27,7 @@ const defs = [
   [
     "devices.create",
     additive,
-    "Registers a physical device under the supplied name and board model. Returns its device ID, provisioning credentials, and board-specific setup information.",
+    "Registers a physical device with its name and group/project board ID (for example, m5stack/cardputer-adv). Returns its device ID, provisioning credentials, and board-specific setup information.",
     {
       ...strings("name"),
       board: { enum: Object.keys(boards), type: "string" },

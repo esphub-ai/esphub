@@ -123,9 +123,9 @@ class Button:
 
 class Panel:
     class BOARD:
-        M5StackChan = "stackchan"
-        M5PaperDIY = "paper-diy"
-        M5CardputerADV = "cardputer-adv"
+        M5StackChan = "m5stack/stackchan"
+        M5PaperDIY = "m5stack/paper-diy"
+        M5CardputerADV = "m5stack/cardputer-adv"
 
     def begin(self):
         pass
@@ -154,11 +154,11 @@ tick = 0
 
 def verify():
     assert any("ESP Hub hello drawn:" in line for line in lines)
-    if board == "stackchan":
+    if board == "m5stack/stackchan":
         assert "Touch 1 True" in lines and "Touch 1 False" in lines and len(leds) == 8
-    elif board == "cardputer-adv":
+    elif board == "m5stack/cardputer-adv":
         assert "Keyboard event: 75" in lines and "Key: K" in drawn
-    elif board == "paper-diy":
+    elif board == "m5stack/paper-diy":
         assert drawn[-1] == "A: 1   B: 1"
     else:
         assert any("Battery 75%" in s for s in drawn)

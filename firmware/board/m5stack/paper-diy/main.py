@@ -19,7 +19,7 @@ wifi = label('Wi-Fi: %s' % ('offline' if rssi is None else '%d dBm' % rssi), 160
 battery = label('Battery: %d mV' % M5.Power.getBatteryVoltage(), 210)
 counter = label('A: 0   B: 0', 320)
 M5.Display.setEpdMode(M5.Display.EPDMode.EPD_FASTEST)
-print('ESP Hub hello drawn: paper-diy')
+print('ESP Hub hello drawn: m5stack/paper-diy')
 a = b = 0
 while True:
     M5.update()

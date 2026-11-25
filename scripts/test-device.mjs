@@ -70,6 +70,7 @@ async function testVirtualDevice(read) {
   ]);
   assert.deepEqual(virtual, duplicate);
   assert.equal(virtual.kind, "virtual");
+  assert.equal(virtual.board, "esphub/virtual-esp32");
   const vid = { device_id: virtual.id };
   const firmware = await op("firmware.get", vid, read);
   const [listedVirtual] = await op("devices.list", {}, read);
@@ -252,9 +253,16 @@ try {
     ).serverInfo.name,
     "esphub",
   );
+  const tag = "firmware-setup-m5stack_cardputer-adv-v1.2.3";
+  const kit = await fetch(base + "/backend/releases/m5stack/cardputer-adv/setup?tag=" + tag, {
+    redirect: "manual",
+  });
+  assert.equal(kit.status, 302);
+  assert.equal(kit.headers.get("Location"),
+    `https://github.com/okou-ai/esphub/releases/download/${tag}/esphub-m5stack_cardputer-adv-esp32s3-1.2.3-setup.zip`);
   await testVirtualDevice(read);
   const d = await op("devices.create", {
-      board: "paper-color",
+      board: "m5stack/paper-color",
       name: "Simulator",
     }),
     id = { device_id: d.id };
@@ -279,7 +287,7 @@ try {
   assert.match(d.verification_source, /Hello, M5Stack Paper Color/);
   assert.equal(
     d.setup_manifest,
-    "https://api.esphub.ai/releases/paper-color/setup-manifest",
+    "https://api.esphub.ai/releases/m5stack/paper-color/setup-manifest",
   );
   assert.deepEqual(Object.keys(d.sources).sort(), [
     "bootloader",
@@ -291,7 +299,7 @@ try {
   assert.equal(offline.kind, "physical");
   assert.deepEqual(offline.sources, d.sources);
   const watch = await op("devices.create", {
-    board: "stopwatch",
+    board: "m5stack/stopwatch",
     name: "Watch",
   });
   assert.match(watch.verification_source, /Hello, M5Stack Stopwatch/);

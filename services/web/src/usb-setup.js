@@ -1,6 +1,7 @@
 import { ESPLoader, Transport } from "esptool-js";
 import { strFromU8, unzipSync } from "fflate";
 import SparkMD5 from "spark-md5";
+import { releaseTag } from "../../../shared/firmware-releases.js";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -25,7 +26,7 @@ export async function flashSetupKit(port, board, profile, progress) {
     throw Error(
       "The published setup kit does not support USB Wi-Fi yet. Use a bootloader built with USB Wi-Fi setup.",
     );
-  const tag = `firmware-setup-${board}-v${manifest.version}`;
+  const tag = releaseTag("setup", board, manifest.version);
   const archive = await (
     await release(base + "/setup?tag=" + tag)
   ).arrayBuffer();

@@ -10,7 +10,7 @@ export default {
       url.searchParams.set("redirect_url", "https://app.esphub.ai/devices");
       return Response.redirect(url.href, 302);
     }
-    if (req.method === "GET" && /^\/setup-firmware\/[a-z0-9-]+\/(setup|setup-manifest)$/.test(u.pathname)) {
+    if (req.method === "GET" && /^\/setup-firmware\/[a-z0-9-]+\/[a-z0-9-]+\/(setup|setup-manifest)$/.test(u.pathname)) {
       const upstream = new URL(u.pathname.replace("/setup-firmware/", "/releases/"), u);
       const tag = u.searchParams.get("tag");
       if (tag !== null) upstream.searchParams.set("tag", tag);
