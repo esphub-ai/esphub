@@ -44,12 +44,20 @@ test("the latest version is selected independently by board and component across
         "bootloader",
         "1.1.9",
       ),
-      release("firmware-setup-m5stack_stopwatch-v1.0.1", ["m5stack/stopwatch"], "setup", "1.0.1"),
+      release(
+        "firmware-setup-m5stack_stopwatch-v1.0.1",
+        ["m5stack/stopwatch"],
+        "setup",
+        "1.0.1",
+      ),
     ],
     [
       newest,
       otherGroup,
-      { ...newest, tag_name: "firmware-bootloader-waveshare_stopwatch-v1.1.12" },
+      {
+        ...newest,
+        tag_name: "firmware-bootloader-waveshare_stopwatch-v1.1.12",
+      },
       {
         ...newest,
         draft: true,
@@ -64,7 +72,10 @@ test("the latest version is selected independently by board and component across
     });
   });
   assert.equal(catalog["m5stack/stopwatch"].bootloader.tag, newest.tag_name);
-  assert.equal(catalog["waveshare/stopwatch"].bootloader.tag, otherGroup.tag_name);
+  assert.equal(
+    catalog["waveshare/stopwatch"].bootloader.tag,
+    otherGroup.tag_name,
+  );
   assert.equal(catalog["m5stack/stopwatch"].setup.version, "1.0.1");
   assert.equal(
     releaseVersion(newest.tag_name, "bootloader", "waveshare/stopwatch"),
@@ -145,7 +156,10 @@ test("default downloads and OTA use the board's published release tag", async (t
   t.mock.method(globalThis, "fetch", () =>
     assert.fail("unexpected network request"),
   );
-  assert.equal(await latestReleaseTag(sql, "m5stack/stopwatch", "bootloader"), tag);
+  assert.equal(
+    await latestReleaseTag(sql, "m5stack/stopwatch", "bootloader"),
+    tag,
+  );
   const ota = await releaseResponse("m5stack/stopwatch", "ota", undefined, sql);
   assert.equal(
     ota.headers.get("Location"),
@@ -154,5 +168,64 @@ test("default downloads and OTA use the board's published release tag", async (t
   await assert.rejects(
     releaseResponse("m5stack/stopwatch", "setup", undefined, sql),
     (e) => e.status === 404,
+  );
+});
+
+test("R2 serves only completed versioned releases and preserves legacy redirects", async () => {
+  const tag = "firmware-bootloader-m5stack_stopwatch-v1.2.1";
+  const filename = "esphub-m5stack_stopwatch-esp32s3-1.2.1-ota.bin";
+  const object = {
+    size: 3,
+    body: new Uint8Array([1, 2, 3]),
+    httpEtag: '"test"',
+    writeHttpMetadata(headers) {
+      headers.set("Content-Type", "application/octet-stream");
+    },
+  };
+  let published = false;
+  let asset = object;
+  const bucket = {
+    async head(key) {
+      assert.equal(key, `releases/${tag}/published.json`);
+      return published ? {} : null;
+    },
+    async get(key) {
+      assert.equal(key, `releases/${tag}/${filename}`);
+      return asset;
+    },
+  };
+  const legacy = await releaseResponse(
+    "m5stack/stopwatch",
+    "ota",
+    tag,
+    undefined,
+    bucket,
+  );
+  assert.match(legacy.headers.get("Location"), /github\.com/);
+  published = true;
+  const pinned = await releaseResponse(
+    "m5stack/stopwatch",
+    "ota",
+    tag,
+    undefined,
+    bucket,
+  );
+  assert.deepEqual(
+    Array.from(new Uint8Array(await pinned.arrayBuffer())),
+    [1, 2, 3],
+  );
+  assert.match(pinned.headers.get("Cache-Control"), /immutable/);
+  const latest = await releaseResponse(
+    "m5stack/stopwatch",
+    "ota",
+    undefined,
+    async () => [{ version: "1.2.1" }],
+    bucket,
+  );
+  assert.match(latest.headers.get("Cache-Control"), /must-revalidate/);
+  asset = null;
+  await assert.rejects(
+    releaseResponse("m5stack/stopwatch", "ota", tag, undefined, bucket),
+    (error) => error.status === 503,
   );
 });

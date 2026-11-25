@@ -8,7 +8,7 @@ const headers = {
     Authorization: "Bearer " + token,
     "Content-Type": "application/json",
   },
-  name = "esphub-production";
+  name = process.argv[2] ?? "esphub-production";
 const check = () => fetch(base + "/" + name, { headers });
 if (!(await check()).ok) {
   const r = await fetch(base, {
