@@ -24,7 +24,7 @@ EspHub's default grant includes `devices:read` and `devices:write`. A read-only 
 
 First-time setup requires a physical USB connection. If you are running remotely, ask the user to plug the board into their local computer with a USB data cable. Use Computer Use on that same computer to guide the local setup, including the local Chrome USB picker when the board instructions use it. Ask the user to select the device and approve access if Chrome requires it. If you cannot access their computer through Computer Use, guide the user through the local steps and resume once they are done.
 
-1. Identify the exact USB-connected board from its markings or local hardware information. Confirm an ambiguous model with the user. Choose a value from the live `devices.create` board enum. Use the `group/project` identifier where the server provides one, such as `m5stack/cardputer-adv`.
+1. Identify the exact USB-connected board from its markings or local hardware information. Confirm an ambiguous model with the user. Call `boards.search` with a partial `group/project` ID, such as `cardputer`. Use the exact returned ID for registration. Each matching board includes the latest published version and pinned download URL for each available firmware kind.
 2. Call `devices.create` for a new registration. Keep the returned device credentials private and follow the returned board-specific setup instructions for the official firmware kit, USB registration, and Wi-Fi. Obtain confirmation before erasing existing data.
 3. Use `devices.get` to check that the registered device is online. When the board-specific flow starts an application, check for the expected role in the new session. If setup fails, report the blocked step and reuse the registration when troubleshooting.
 

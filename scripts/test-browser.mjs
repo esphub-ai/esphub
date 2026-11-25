@@ -172,7 +172,15 @@ try {
   await card("Core2 integration")
     .getByText("m5stack/core2", { exact: true })
     .waitFor();
-  assert.equal(await card("Core2 integration").locator("img").count(), 0);
+  for (const name of ["Paper Color integration", "Core2 integration"]) {
+    const photo = card(name).locator("img");
+    await photo.waitFor();
+    const width = await photo.evaluate(async (img) => {
+      await img.decode();
+      return img.naturalWidth;
+    });
+    assert.ok(width > 0);
+  }
   assert.equal(await page.locator('[data-slot="card"]').count(), 2);
   assert.equal(await page.getByText("Virtual ESP32").count(), 0);
   assert.equal(

@@ -2,10 +2,18 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { readFileSync, statSync } from "node:fs";
-import boards from "../shared/boards.generated.json" with { type: "json" };
-import { updateSources } from "../services/api/src/update-sources.js";
-import { provisioning } from "../services/api/src/provisioning.js";
+import { readBoardCatalog } from "../firmware-source/scripts/board-catalog.mjs";
+import { updateSources as describeUpdates } from "../services/api/src/update-sources.js";
+import { provisioning as describeProvisioning } from "../services/api/src/provisioning.js";
 import { operate, validate } from "../services/api/src/operations.js";
+
+const { boards, sdk_version, revision, upstream } = await readBoardCatalog();
+const profile = (id) => ({
+  id, ...boards[id], sdk_version, source_revision: revision,
+  upstream_repository: upstream.repository, upstream_ref: upstream.ref,
+});
+const updateSources = (id) => describeUpdates(profile(id));
+const provisioning = (id) => describeProvisioning(profile(id));
 
 test("each board links to the actual source, build recipes and provisioning example", () => {
   const { repository, ref } = JSON.parse(
@@ -13,7 +21,7 @@ test("each board links to the actual source, build recipes and provisioning exam
   );
   function localPath(url, view) {
     const prefix =
-      "https://github.com/okou-ai/esphub-firmware/" + view + "/main/";
+      "https://github.com/okou-ai/esphub-firmware/" + view + "/" + revision + "/";
     assert.ok(url.startsWith(prefix), url);
     return url.slice(prefix.length);
   }
@@ -83,10 +91,10 @@ test("ESP-Mosaico registers with a native example and no MicroPython download", 
   const board = "espressif/esp-mosaico";
   const sql = async (strings, ...args) => {
     assert.match(strings.join("?"), /INSERT INTO esphub.devices/);
-    assert.equal(args[2], board);
+    assert.equal(args[0], board);
     assert.match(args[3], /^[a-f0-9]{64}$/);
     return [
-      { id: "test-device", name: "ESP-Mosaico", board, kind: "physical" },
+      { id: "test-device", name: "ESP-Mosaico", board, kind: "physical", profile: profile(board) },
     ];
   };
   const result = await operate({ sql }, "owner", "devices.create", {
@@ -97,10 +105,7 @@ test("ESP-Mosaico registers with a native example and no MicroPython download", 
   assert.match(result.token, /^okl_dev_/);
   assert.match(result.ble_secret, /^[a-f0-9]{64}$/);
   assert.match(result.prompt, /runtime type native/);
-  assert.match(
-    result.sources.bootloader.variant_directory_url,
-    /esp32s31-16mb-usb-cdc$/,
-  );
+  assert.ok(result.sources.bootloader.variant_directory_url.endsWith("/" + boards[board].bootloader));
   assert.match(result.setup_manifest, /esp-mosaico\/setup-manifest$/);
   assert.equal(
     result.firmware_update.bootloader.setup_manifest_url,

@@ -201,6 +201,7 @@ try {
   const listed = (await call("tools/list", {})).tools;
   assert.deepEqual((await call("tools/list", {}, null)).tools, listed);
   const readOnly = new Set([
+    "boards.search",
     "commands.get",
     "devices.list",
     "devices.get",
@@ -209,6 +210,10 @@ try {
     "programs.get",
     "logs.read",
   ]);
+  const matches = await op("boards.search", { query: "CaRdPuTeR" }, read);
+  const publicMatches = await (await fetch(base + "/backend/boards?q=CaRdPuTeR")).json();
+  assert.deepEqual(matches, publicMatches);
+  assert.deepEqual(publicMatches.map(b => b.id).sort(), ["m5stack/cardputer", "m5stack/cardputer-adv"]);
   const additiveTools = new Set([
     "wifi.ble_credential",
     "devices.create",

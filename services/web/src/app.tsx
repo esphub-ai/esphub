@@ -3,11 +3,11 @@ import { createRoot } from "react-dom/client";
 import { issuer, mcpEndpoint, portal } from "../../../shared/identity.js";
 import "./index.css";
 import Landing from "./landing";
+import { BoardPhoto, type Board } from "./components/board-photo";
 import {
   CheckIcon,
   CopyIcon,
   CircleIcon,
-  CpuIcon,
   GearSixIcon,
   LinkIcon,
 } from "@phosphor-icons/react";
@@ -26,11 +26,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 import logo from "./assets/esphub-logo-light.svg";
-import stopwatch from "./assets/stopwatch.webp";
-import cardputer from "./assets/cardputer-adv.webp";
-import paperColor from "./assets/paper-color.webp";
-import mosaico from "./assets/esp-mosaico.webp";
-
 const prompts = {
   manage: `Connect to EspHub MCP at ${mcpEndpoint}. Use CIMD OAuth with devices:read and devices:write as needed.
 
@@ -40,7 +35,7 @@ const prompts = {
 4. Use devices.reissue to replace USB credentials or devices.delete to remove a device. Confirm the target and effect with me first.`,
   bind: `Connect to EspHub MCP at ${mcpEndpoint}. Use CIMD OAuth with devices:read and devices:write as needed.
 
-1. Ask me to connect my ESP32 over USB. Identify the manufacturer and model. Pick the exact group/project board ID from the EspHub catalog and ask me to confirm it if it is unclear.
+1. Ask me to connect my ESP32 over USB. Identify the manufacturer and model. Search the board ID with boards.search and pick the exact group/project ID and ask me to confirm it if it is unclear.
 2. Register the device with devices.create and follow the returned board-specific instructions for firmware, registration credentials, and Wi-Fi. Ask before erasing existing data. Keep the device credentials private.
 3. Use devices.get to check the registered device. Report it as online only when online is true. If setup stalls, tell me which step needs attention.`,
 };
@@ -113,17 +108,11 @@ function PromptDialog({
   );
 }
 
-const boardImages = {
-  "m5stack/stopwatch": stopwatch,
-  "m5stack/cardputer-adv": cardputer,
-  "m5stack/paper-color": paperColor,
-  "espressif/esp-mosaico": mosaico,
-};
-
 type Device = {
   id: string;
   name: string;
   board: string;
+  image_url?: string;
   kind: "physical" | "virtual";
   online: boolean;
 };
@@ -159,54 +148,39 @@ async function loadClerk() {
 function DeviceCards({ devices }: { devices: Device[] }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-      {devices.map(({ id, name, board, online }) => {
-        const image = Object.hasOwn(boardImages, board)
-          ? boardImages[board as keyof typeof boardImages]
-          : undefined;
-        return (
-          <Card key={id} size="sm">
-            <CardContent className="flex items-center gap-3">
-              {image ? (
-                <img
-                  className="aspect-square w-20 shrink-0 object-contain"
-                  src={image}
-                  alt=""
-                  width={400}
-                  height={400}
-                />
-              ) : (
-                <span
-                  className="grid aspect-square w-20 shrink-0 place-items-center bg-muted text-muted-foreground"
-                  aria-hidden="true"
-                >
-                  <CpuIcon className="size-8" />
-                </span>
-              )}
-              <div className="grid min-w-0 flex-1 gap-2">
-                <div>
-                  <CardTitle>{name}</CardTitle>
-                  <p className="break-all">{board}</p>
-                </div>
-                <Badge variant={online ? "secondary" : "outline"}>
-                  <CircleIcon
-                    weight="fill"
-                    aria-hidden="true"
-                    data-icon="inline-start"
-                    className={
-                      online
-                        ? "text-green-500 motion-safe:animate-pulse"
-                        : "text-zinc-500"
-                    }
-                  />
-                  <span className="leading-none">
-                    {online ? "Online" : "Offline"}
-                  </span>
-                </Badge>
+      {devices.map(({ id, name, board, image_url, online }) => (
+        <Card key={id} size="sm">
+          <CardContent className="flex items-center gap-3">
+            <BoardPhoto
+              imageUrl={image_url}
+              className="aspect-square w-20 shrink-0 object-contain"
+              width={400}
+              height={400}
+            />
+            <div className="grid min-w-0 flex-1 gap-2">
+              <div>
+                <CardTitle>{name}</CardTitle>
+                <p className="break-all">{board}</p>
               </div>
-            </CardContent>
-          </Card>
-        );
-      })}
+              <Badge variant={online ? "secondary" : "outline"}>
+                <CircleIcon
+                  weight="fill"
+                  aria-hidden="true"
+                  data-icon="inline-start"
+                  className={
+                    online
+                      ? "text-green-500 motion-safe:animate-pulse"
+                      : "text-zinc-500"
+                  }
+                />
+                <span className="leading-none">
+                  {online ? "Online" : "Offline"}
+                </span>
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   );
 }
@@ -311,6 +285,13 @@ const root = createRoot(document.getElementById("root")!);
 const path = location.pathname.replace(/\/$/, "") || "/";
 if (path === "/") {
   root.render(<Landing />);
+  fetch("/backend/boards")
+    .then(async (response) => {
+      if (!response.ok) throw Error("Board directory unavailable");
+      const boards: Board[] = await response.json();
+      root.render(<Landing boards={boards} />);
+    })
+    .catch(() => root.render(<Landing failed />));
 } else if (path === "/devices") {
   root.render(
     <main className="p-8">
