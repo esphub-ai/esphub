@@ -57,36 +57,43 @@ async function store(key, bytes) {
     throw Error("R2 verification failed for " + key);
 }
 
-try {
+async function migrateGallery() {
+  const [done] =
+    await sql`SELECT 1 FROM public.esphub_migrations WHERE name = ${migration}`;
+  if (done) return;
+  try {
+    execFileSync("git", ["cat-file", "-e", snapshot + "^{commit}"], {
+      stdio: "ignore",
+    });
+  } catch {
+    execFileSync("git", ["fetch", "--depth=1", "origin", snapshot]);
+  }
+  const file = (path) =>
+    execFileSync("git", ["show", `${snapshot}:${assets}/${path}`]);
+  const list = file("board-ids.json");
+  const ids = JSON.parse(list);
+  for (const id of ids) {
+    await store(
+      "boards/" + id + ".webp",
+      file("boards/" + id.replace("/", "--") + ".webp"),
+    );
+  }
+
+  // Uploads are retryable. Only the final ordering and receipt need a transaction.
   await sql.begin(async (tx) => {
-    await tx`SELECT pg_advisory_xact_lock(hashtext('esphub.board_gallery'))`;
-    const [done] =
-      await tx`SELECT 1 FROM public.esphub_migrations WHERE name = ${migration}`;
-    if (done) return;
-    try {
-      execFileSync("git", ["cat-file", "-e", snapshot + "^{commit}"], {
-        stdio: "ignore",
-      });
-    } catch {
-      execFileSync("git", ["fetch", "--depth=1", "origin", snapshot]);
-    }
-    const file = (path) =>
-      execFileSync("git", ["show", `${snapshot}:${assets}/${path}`]);
-    const list = file("board-ids.json");
-    const ids = JSON.parse(list);
-    for (const id of ids) {
-      await store(
-        "boards/" + id + ".webp",
-        file("boards/" + id.replace("/", "--") + ".webp"),
-      );
-    }
+    const [first] = await tx`INSERT INTO public.esphub_migrations (name, sha256)
+      VALUES (${migration}, ${createHash("sha256").update(list).digest("hex")})
+      ON CONFLICT (name) DO NOTHING RETURNING name`;
+    if (!first) return;
     await tx`UPDATE esphub.boards b SET display_order = gallery.ord
       FROM jsonb_array_elements_text(${tx.json(ids)}::jsonb) WITH ORDINALITY AS gallery(id, ord)
       WHERE b.id = gallery.id`;
-    await tx`INSERT INTO public.esphub_migrations (name, sha256) VALUES
-      (${migration}, ${createHash("sha256").update(list).digest("hex")})`;
-    console.log(`Migrated ${ids.length} board photos and their gallery order.`);
   });
+  console.log(`Migrated ${ids.length} board photos and their gallery order.`);
+}
+
+try {
+  await migrateGallery();
 } finally {
   await platform?.dispose();
   await sql.end();
