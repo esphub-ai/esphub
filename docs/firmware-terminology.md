@@ -35,16 +35,16 @@ The remaining named partitions serve these purposes:
 | `nvs` | Persistent device configuration, credentials, and pending update state. |
 | `otadata` | ESP-IDF boot selection and OTA image state. |
 | `phy_init` | Radio PHY initialization data. |
-| `coredump` | Crash diagnostics. |
 
 ### Capacity by layout
 
 | Flash | Each BL slot | Application slot | User filesystem |
 | --- | --- | --- | --- |
-| 8 MiB | 1.25 MiB | 4 MiB | 1.3125 MiB |
-| 16 MiB | 2 MiB | 4 MiB | 7.8125 MiB |
-| 32 MiB | 2 MiB | 4 MiB | 23.8125 MiB |
+| 8 MiB | 1.25 MiB | 4 MiB | 1.375 MiB |
+| 16 MiB | 2 MiB | 4 MiB | 7.875 MiB |
+| 32 MiB | 2 MiB | 4 MiB | 23.875 MiB |
 
+SDK 7 setup kits assign the former 64 KiB crash partition to LittleFS. Binary OTA uses the partition table already on the board. Back up user files before installing a new USB kit, which replaces that table.
 
 ## Implementation status and API names
 

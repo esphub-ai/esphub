@@ -130,6 +130,12 @@ export function simulatedDevice(site, token) {
       lastHello = await send({ t: "hello", ...lastInfo });
     },
     send,
+    sendLog(frame) {
+      return exec("mosquitto_pub", [
+        ...args, "-q", "0", "-t", "devices/" + device + "/up",
+        "-m", JSON.stringify({ frame: { ...frame, mid: ++mid, boot_id: boot } }),
+      ]);
+    },
     close() {
       sub?.kill();
     },

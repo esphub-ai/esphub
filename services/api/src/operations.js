@@ -157,6 +157,22 @@ const defs = [
     },
   ],
   [
+    "logs.set",
+    additive,
+    "Enable or disable remote ESP_LOG and MicroPython stdout for this physical device's current boot. Capture starts off. Disabling restores local output and discards buffered bytes. Check commands.get for the device receipt.",
+    { ...id, enabled: { type: "boolean" } },
+  ],
+  [
+    "logs.read",
+    readOnly,
+    "Read console output and device events in arrival order, including offline. Defaults to the latest boot. Pass the returned process_id and cursor as after to continue.",
+    {
+      ...id, ...strings("process_id"),
+      after: { type: "integer", minimum: 0 },
+      limit: { type: "integer", minimum: 1, maximum: 64 },
+    },
+  ],
+  [
     "programs.get",
     readOnly,
     "Read the transfer ID, SHA-256 and byte count of the last confirmed cloud main.py installation, including offline devices.",
@@ -182,7 +198,7 @@ export const tools = defs.map(
         ...(queueable(name) ? strings("request_id") : {}),
       },
       required: Object.keys(properties).filter(
-        (k) => !["password", "url"].includes(k),
+        (k) => name === "logs.read" ? k === "device_id" : !["password", "url"].includes(k),
       ),
     },
   }),
@@ -196,6 +212,7 @@ function queueable(name) {
       "bootloader.enter",
       "bootloader.exit",
       "ota.install",
+      "logs.set",
       "firmware.get",
     ].includes(name)
   );
@@ -216,6 +233,7 @@ export function validate(name, a) {
         (typeof v !== "string" ||
           !v.length ||
           v.length > (p.maxLength ?? 4096))) ||
+      (p.type === "boolean" && typeof v !== "boolean") ||
       (p.enum && !p.enum.includes(v)) ||
       (p.type === "integer" &&
         (!Number.isSafeInteger(v) ||
@@ -225,6 +243,7 @@ export function validate(name, a) {
       fail(400, "Invalid " + k);
   }
   if (
+    (a.process_id && !/^[a-f0-9]{32}$/.test(a.process_id)) ||
     (a.command_id && !uuid.test(a.command_id)) ||
     (a.device_id && !uuid.test(a.device_id)) ||
     (a.request_id && !uuid.test(a.request_id))
@@ -371,6 +390,7 @@ export async function operate(c, owner, name, a) {
     return bound;
   }
   if (name === "wifi.ble_credential") return issueBle(db, owner, d.id);
+  if (name === "logs.read") return internal(c, d.id, "logs", a);
   if (name === "programs.get") {
     const [installed] = await db`SELECT request_id AS transfer_id,result->>'sha256' AS sha256,
       (result->>'bytes')::integer AS bytes FROM esphub.device_commands
@@ -397,6 +417,10 @@ export async function operate(c, owner, name, a) {
   const key = a.request_id ?? crypto.randomUUID();
   const queue = (op, args, boot = null) =>
     internal(c, d.id, "enqueue", { device: d.id, op, args, boot, key });
+  if (name === "logs.set") {
+    if (!d.boot_id) fail(409, "A device boot is required for log capture");
+    return queue("logs.set", { enabled: a.enabled }, d.boot_id);
+  }
   const info = d.boot_info;
   if (name === "bootloader.enter")
     return info?.role === "bootloader"

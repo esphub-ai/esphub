@@ -36,3 +36,7 @@ First-time setup requires a physical USB connection. If you are running remotely
 - **Reset, rotate, or delete.** Confirm the target and effect with the user before `devices.reset`, `devices.reissue`, or `devices.delete`. A reset can require USB setup again, and deletion revokes device access.
 
 A queued command is an acknowledgement. Report success only after checking the result and any expected device state.
+
+## Remote console
+
+For a physical device running SDK 7, call `logs.set` with `device_id` and `enabled: true`, then check the receipt with `commands.get`. Ordinary ESP-IDF logs and MicroPython stdout are redirected for this boot. Read `logs.read` and continue with the returned `process_id` and `cursor` (as `after`). Set `enabled: false` to release the capture buffer and restore the local console. Previously uploaded records remain readable while the device is offline.

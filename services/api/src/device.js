@@ -28,10 +28,10 @@ export class Device extends DurableObject {
   current() {
     return this.db.exec("SELECT * FROM current_device").toArray()[0];
   }
-  stream(pid, dir) {
+  stream(device, pid) {
     return new Stream(
       this.env.UART,
-      "devices/" + this.current().id + "/" + pid + "/uart/" + dir,
+      "devices/" + device + "/" + pid + "/uart/tx",
     );
   }
   async armCommands(device) {
@@ -108,6 +108,18 @@ export class Device extends DurableObject {
       return Response.json({ revoked: true });
     }
     const args = await req.json();
+    if (path === "/logs") {
+      const pid = args.process_id ?? boot;
+      if (!pid)
+        return Response.json({ process_id: null, records: [], cursor: 0, last: 0 });
+      if (!this.db.exec("SELECT 1 FROM boots WHERE pid=?", pid).toArray().length)
+        return Response.json({ error: "Unknown boot" }, { status: 404 });
+      const page = await this.stream(args.device_id, pid).read(
+        args.after ?? 0,
+        args.limit ?? 16,
+      );
+      return Response.json({ process_id: pid, ...page });
+    }
     if (path === "/enqueue")
       return this.ctx.blockConcurrencyWhile(async () => {
         await this.armCommands(args.device);
@@ -218,6 +230,23 @@ export class Device extends DurableObject {
         }
         return Response.json({});
       }
+      if (m.t === "log") {
+        // Bound decoding before allocating and keep arbitrary console bytes out
+        // of the relay's own logs. The SDK sends at most 384 bytes per batch.
+        if (
+          typeof m.bytes !== "string" ||
+          !m.bytes.length || m.bytes.length > 512 || m.bytes.length % 4 !== 0 ||
+          !/^[A-Za-z0-9+/]+={0,2}$/.test(m.bytes) ||
+          !Number.isInteger(m.dropped) || m.dropped < 0 || m.dropped > 0xffffffff
+        )
+          return Response.json({ error: "Invalid log batch" }, { status: 400 });
+        const bytes = Uint8Array.from(atob(m.bytes), (c) => c.charCodeAt(0));
+        await this.recordEvent(device, pid, m.mid, {
+          text: new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes),
+          dropped_bytes: m.dropped,
+        });
+        return Response.json({});
+      }
       if (m.t !== "event")
         return Response.json({ error: "Unknown frame" }, { status: 400 });
       if (
@@ -232,17 +261,20 @@ export class Device extends DurableObject {
           WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation='install' AND state IN ('dispatched','unknown')`;
         await dispatch(db, this.env, device);
       }
-      if (typeof m.name === "string") await this.recordEvent(pid, m);
+      if (typeof m.name === "string")
+        await this.recordEvent(device, pid, m.mid, {
+          text: m.name + " " + JSON.stringify(m.data ?? {}),
+        });
       return Response.json({});
     });
   }
-  async recordEvent(pid, m) {
-    const tx = this.stream(pid, "tx");
+  async recordEvent(device, pid, mid, record) {
+    const tx = this.stream(device, pid);
     // QoS 1 and the relay can redeliver out of order. Repair a previous R2
     // append if the process stopped before its SQLite dedup entry was written.
     if (
       this.db
-        .exec("SELECT mid FROM uplink_events WHERE mid=?", m.mid)
+        .exec("SELECT mid FROM uplink_events WHERE mid=?", mid)
         .toArray().length
     )
       return;
@@ -252,16 +284,17 @@ export class Device extends DurableObject {
         "INSERT OR IGNORE INTO uplink_events VALUES(?)",
         head.telemetryMid,
       );
-    if (head.telemetryMid === m.mid) return;
+    if (head.telemetryMid === mid) return;
     await tx.append(
       [
         {
           at: new Date().toISOString(),
-          text: m.name + " " + JSON.stringify(m.data ?? {}),
+          mid,
+          ...record,
         },
       ],
-      { telemetryMid: m.mid },
+      { telemetryMid: mid },
     );
-    this.db.exec("INSERT OR IGNORE INTO uplink_events VALUES(?)", m.mid);
+    this.db.exec("INSERT OR IGNORE INTO uplink_events VALUES(?)", mid);
   }
 }

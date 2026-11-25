@@ -28,7 +28,15 @@ The shared agent reports the public Bluetooth controller address as `ble_address
 
 Each uplink contains a `frame` with a per-boot message ID. The AWS rule attaches the device UUID from the topic and the certificate ID from the broker principal. A Lambda relay forwards the envelope to the Worker. The Worker checks the registered certificate and the active boot. The device policy scopes publish and subscribe to the attached thing.
 
-Hello, command receipts and install outcomes request an application acknowledgement on the downlink. The ACK echoes the boot ID and message ID. The hello acknowledgement confirms that the hub has recorded the boot. A successful OTA write and boot selection completes installation locally. First boot and Hub connectivity do not affect image acceptance. ESP-IDF uses the OTA state `undefined` for images selected with rollback disabled. Ordinary events use MQTT QoS 1. Console output is available locally over USB.
+Hello, command receipts and install outcomes request an application acknowledgement on the downlink. The ACK echoes the boot ID and message ID. The hello acknowledgement confirms that the hub has recorded the boot. A successful OTA write and boot selection completes installation locally. First boot and Hub connectivity do not affect image acceptance. ESP-IDF uses the OTA state `undefined` for images selected with rollback disabled. Ordinary events use MQTT QoS 1.
+
+### Remote console
+
+ESP-IDF task logs (`ESP_LOGx`) and MicroPython stdout use the original console at boot. To redirect them, call `logs.set` with `device_id` and `enabled: true` (requires `devices:write`). Check `commands.get` for the device's receipt. The setting lasts for the current boot, including temporary network outages. Setting `enabled: false`, rebooting, or reloading the device registration discards the buffered tail. The SDK stores nothing in flash. Early ROM and panic output follow their native paths.
+
+Use `logs.read` with `devices:read` to get console batches and structured events, including after the device goes offline. To continue a page, pass its `process_id` and its `cursor` as `after`. R2 records use Hub arrival time and order. New records include the wire `mid` to recover send order within the boot. `dropped_bytes` counts device-side truncation, ring overruns and known send failures. A QoS 0 message can also be lost after publication.
+
+Enabling capture allocates one session with a 2 KiB byte ring, a 384-byte drain buffer and a 672-byte wire buffer. The session uses PSRAM when available, with a heap fallback. Formatting an ESP-IDF log uses a 256-byte buffer on the caller's stack. Python writes go straight into the ring. Producers never publish. The agent handles control first, then drains at most one batch every 250 ms. Each `t: "log"` frame carries Base64 bytes on the existing uplink. Synchronous QoS 0 uses ESP-MQTT's existing transmit buffer, bypassing the JSON event queue and the QoS 1 retransmission outbox. The C library formatter, TLS and network stack have their own working memory.
 
 ## Deployment
 
