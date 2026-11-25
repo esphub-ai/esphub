@@ -9,10 +9,11 @@ import { operate, validate } from "../services/api/src/operations.js";
 
 test("each board links to the actual source, build recipes and provisioning example", () => {
   const { repository, ref } = JSON.parse(
-    readFileSync("firmware/pyrt/upstream.json"),
+    readFileSync("firmware-source/firmware/pyrt/upstream.json"),
   );
   function localPath(url, view) {
-    const prefix = "https://github.com/okou-ai/esphub/" + view + "/main/";
+    const prefix =
+      "https://github.com/okou-ai/esphub-firmware/" + view + "/main/";
     assert.ok(url.startsWith(prefix), url);
     return url.slice(prefix.length);
   }
@@ -30,7 +31,7 @@ test("each board links to the actual source, build recipes and provisioning exam
     );
     assert.ok(
       readFileSync(
-        "firmware/components/okou_agent/include/okou_agent.h",
+        "firmware-source/firmware/components/okou_agent/include/okou_agent.h",
         "utf8",
       ).includes(
         `#define OKOU_SDK_VERSION "${firmware_update.program.sdk_version}"`,
@@ -38,12 +39,21 @@ test("each board links to the actual source, build recipes and provisioning exam
     );
     const variant = localPath(sources.bootloader.variant_directory_url, "tree");
     assert.equal(variant, "firmware/bootloader/" + boards[board].bootloader);
-    assert.ok(statSync(variant + "/CMakeLists.txt").isFile());
+    assert.ok(
+      statSync("firmware-source/" + variant + "/CMakeLists.txt").isFile(),
+    );
     for (const [kind, layer] of Object.entries(sources)) {
-      assert.ok(statSync(localPath(layer.directory_url, "tree")).isDirectory());
+      assert.ok(
+        statSync(
+          "firmware-source/" + localPath(layer.directory_url, "tree"),
+        ).isDirectory(),
+      );
       if (kind === "python") {
         assert.equal(
-          readFileSync(localPath(layer.starter_file_url, "blob"), "utf8"),
+          readFileSync(
+            "firmware-source/" + localPath(layer.starter_file_url, "blob"),
+            "utf8",
+          ),
           provisioning(board).verification_source,
         );
         continue;
@@ -55,15 +65,16 @@ test("each board links to the actual source, build recipes and provisioning exam
           : expected + "/action.yml";
       assert.equal(localPath(layer.board_directory_url, "tree"), expected);
       assert.equal(localPath(layer.build_action_url, "blob"), buildAction);
-      assert.ok(statSync(buildAction).isFile());
+      assert.ok(statSync("firmware-source/" + buildAction).isFile());
     }
     assert.equal(
       sources.micropython.upstream_directory_url,
       `https://github.com/${repository}/tree/${ref}`,
     );
     assert.equal(
-      localPath(custom_build_guide_url, "blob"),
-      "README.md#build-your-own-update",
+      new URL(custom_build_guide_url).pathname +
+        new URL(custom_build_guide_url).hash,
+      "/okou-ai/esphub/blob/main/README.md#build-your-own-update",
     );
   }
 });
@@ -189,7 +200,10 @@ test("publishing bounds UTF-8 byte size and OTA accepts the supported HTTPS targ
       kind,
       url: "https://example.com/artifact",
     });
-  assert.throws(() => validate("ota.install", { device_id, kind: "native" }), /Artifact URL required/);
+  assert.throws(
+    () => validate("ota.install", { device_id, kind: "native" }),
+    /Artifact URL required/,
+  );
   for (const url of [
     "http://example.com/a",
     "https://user:password@example.com/a",

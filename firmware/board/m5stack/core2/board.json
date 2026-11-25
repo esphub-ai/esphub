@@ -1,7 +1,0 @@
-{
-  "name": "Core2",
-  "model": "M5Stack Core2",
-  "chip": "esp32",
-  "flash_mb": 16,
-  "bootloader": "esp32-16mb"
-}

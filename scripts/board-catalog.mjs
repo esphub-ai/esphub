@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { boardId } from "../shared/board-id.js";
 
-const root = new URL("../firmware/board/", import.meta.url);
+const root = new URL("../firmware-source/firmware/board/", import.meta.url);
 const boards = {};
 for (const vendor of await readdir(root, { withFileTypes: true })) {
   if (!vendor.isDirectory()) continue;
@@ -46,7 +46,7 @@ await writeFile(
 
 const sdkHeader = await readFile(
   new URL(
-    "../firmware/components/okou_agent/include/okou_agent.h",
+    "../firmware-source/firmware/components/okou_agent/include/okou_agent.h",
     import.meta.url,
   ),
   "utf8",
