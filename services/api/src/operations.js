@@ -1,6 +1,6 @@
 import { softwareInventory } from "./software.js";
 import { newBleSecret, issueBle, normalizeBleAddress } from "./ble.js";
-import { connectedSince } from "./iot.js";
+import { connectedSince, publishDownlink } from "./iot.js";
 import { artifactBase } from "./uploads.js";
 import boards from "../../../shared/boards.generated.json" with { type: "json" };
 import { maxUploadBytes } from "./uploads.js";
@@ -161,6 +161,15 @@ const defs = [
     additive,
     "Enable or disable remote ESP_LOG and MicroPython stdout for this physical device's current boot. Capture starts off. Disabling restores local output and discards buffered bytes. Check commands.get for the device receipt.",
     { ...id, enabled: { type: "boolean" } },
+  ],
+  [
+    "devices.send",
+    additive,
+    "Send an application-defined JSON message to an online physical device. Best effort, no offline queue. Use logs.read for device messages and optional replies.",
+    {
+      ...id,
+      payload: { description: "Any JSON value, up to 1024 UTF-8 bytes." },
+    },
   ],
   [
     "logs.read",
@@ -379,6 +388,30 @@ export async function operate(c, owner, name, a) {
     return d.kind === "virtual"
       ? { ...staged, kind: "virtual", status: "staged", executable: false }
       : withSources(staged);
+  }
+  if (name === "devices.send") {
+    const payload = JSON.stringify(a.payload);
+    if (
+      payload === undefined ||
+      new TextEncoder().encode(payload).length > 1024
+    )
+      fail(400, "Invalid payload");
+    if (d.kind !== "physical") fail(400, "Physical device required");
+    const session =
+      d.cert_ready && d.boot_id ? await connectedSince(c.env, d.id) : null;
+    if (session === null || session !== Number(d.mqtt_connected_since))
+      fail(409, "Device offline");
+    const message_id = crypto.randomUUID();
+    await publishDownlink(
+      c.env,
+      d.id,
+      {
+        boot_id: d.boot_id,
+        message: { id: message_id, payload: a.payload },
+      },
+      0,
+    );
+    return { message_id };
   }
   if (d.kind === "virtual") return operateVirtual(db, d, name, a);
   if (name === "devices.bind_ble_address") {

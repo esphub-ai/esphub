@@ -19,6 +19,7 @@ export function simulatedDevice(site, token) {
     mid = 0;
   const acks = new Map(),
     inbox = [],
+    messages = [],
     httpsRequests = [];
   let lastHello, lastInfo;
   async function post(path, value) {
@@ -70,7 +71,7 @@ export function simulatedDevice(site, token) {
     sub.kill();
     await stopped;
     sub = undefined;
-    inbox.length = 0;
+    inbox.length = messages.length = 0;
   }
   async function subscribe() {
     if (!sub) {
@@ -101,6 +102,7 @@ export function simulatedDevice(site, token) {
           const m = JSON.parse(line);
           if (m.boot_id !== boot) return;
           if (m.command) inbox.push(m.command);
+          else if (m.message) messages.push(m.message);
           else acks.get(m.mid)?.(m);
         });
         sub.on("error", reject);
@@ -130,10 +132,15 @@ export function simulatedDevice(site, token) {
       lastHello = await send({ t: "hello", ...lastInfo });
     },
     send,
-    sendLog(frame) {
+    sendBestEffort(frame) {
       return exec("mosquitto_pub", [
-        ...args, "-q", "0", "-t", "devices/" + device + "/up",
-        "-m", JSON.stringify({ frame: { ...frame, mid: ++mid, boot_id: boot } }),
+        ...args,
+        "-q",
+        "0",
+        "-t",
+        "devices/" + device + "/up",
+        "-m",
+        JSON.stringify({ frame: { ...frame, mid: ++mid, boot_id: boot } }),
       ]);
     },
     close() {
@@ -141,12 +148,17 @@ export function simulatedDevice(site, token) {
     },
     async hello(info) {
       boot = randomUUID().replaceAll("-", "");
-      inbox.length = 0;
+      inbox.length = messages.length = 0;
       if (!device) device = (await post("iot/enroll", { csr })).device_id;
       await subscribe();
       lastInfo = info;
       lastHello = await send({ t: "hello", ...info });
       return boot;
+    },
+    async nextMessage() {
+      for (let i = 0; !messages.length && i < 250; ++i) await delay(20);
+      assert.ok(messages.length, "Expected a message on the MQTT subscription");
+      return messages.shift();
     },
     async nextCommand() {
       for (let i = 0; !inbox.length && i < 250; ++i) await delay(20);

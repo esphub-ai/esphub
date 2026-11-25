@@ -47,3 +47,9 @@ Enabling capture allocates one session with a 2 KiB byte ring, a 384-byte drain 
 ## Local verification
 
 `node scripts/local-e2e.mjs` requires an isolated PostgreSQL database, Chromium, Mosquitto and its command-line clients. The native USB test in `npm test` uses a C compiler, pkg-config and the cJSON development package. It exercises real MQTT QoS 1 traffic over loopback, the production Worker handlers, PostgreSQL and local R2. The fixture emulates AWS enrollment, principal projection and connectivity. Cloud policy enforcement and physical radio behavior require a deployed canary.
+
+## Application messages
+
+Call `devices.send(device_id, payload)` to send an application-defined JSON value (up to 1024 UTF-8 bytes). The tool requires write access and an online physical device. It returns a `message_id` after the broker accepts publication.
+
+The downlink carries `{"boot_id":"…","message":{"id":"…","payload":{}}}` on the existing wake topic. Devices can publish uplink frames with `t:"message"`, `payload`, and an optional `reply_to` containing the downlink ID. Read those messages as structured records from `logs.read`. Both directions use QoS 0 without retention, dispatch retries, or an offline delivery queue.

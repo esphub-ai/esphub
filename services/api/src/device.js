@@ -230,6 +230,28 @@ export class Device extends DurableObject {
         }
         return Response.json({});
       }
+      if (m.t === "message") {
+        if (
+          !Object.hasOwn(m, "payload") ||
+          new TextEncoder().encode(JSON.stringify(m.payload)).length > 1024 ||
+          (Object.hasOwn(m, "reply_to") &&
+            (typeof m.reply_to !== "string" ||
+              !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(
+                m.reply_to,
+              ))) ||
+          m.confirm === true
+        )
+          return Response.json(
+            { error: "Invalid device message" },
+            { status: 400 },
+          );
+        await this.recordEvent(device, pid, m.mid, {
+          type: "message",
+          payload: m.payload,
+          ...(m.reply_to ? { reply_to: m.reply_to } : {}),
+        });
+        return Response.json({});
+      }
       if (m.t === "log") {
         // Bound decoding before allocating and keep arbitrary console bytes out
         // of the relay's own logs. The SDK sends at most 384 bytes per batch.
