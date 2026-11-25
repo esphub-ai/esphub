@@ -159,7 +159,7 @@ try {
   await page.getByRole("button", { name: "Create virtual ESP32" }).waitFor();
   await page.getByText("+ Add device").click();
   await page.locator("[name=name]").fill("Paper Color · integration");
-  await page.locator("[name=board]").selectOption("paper-color");
+  await page.locator("[name=board]").selectOption("m5stack/paper-color");
   await page.getByRole("button", { name: "Register", exact: true }).click();
   const token = JSON.parse(
     await page.locator("dialog pre").textContent(),
@@ -168,10 +168,7 @@ try {
   await page.locator(".device").first().click();
   mcu = simulatedDevice(origin, token);
   await mcu.hello({
-    board: "paper-color",
-    chip: "esp32s3",
-    image_profile: "ESPHUB2/bootloader/esp32s3-16mb",
-    fw: { name: "bootloader", version: "test" },
+    bootloader_version: "test",
     role: "bootloader",
   });
   await page.reload();
@@ -231,12 +228,12 @@ try {
       p,
     );
   }
-  await page.goto(origin + "/setup?board=stopwatch");
+  await page.goto(origin + "/setup?board=m5stack/stopwatch");
   assert.equal(
     await page
       .getByRole("link", { name: "First-time USB kit" })
       .getAttribute("href"),
-    "https://api.esphub.ai/releases/stopwatch/setup",
+    "https://api.esphub.ai/releases/m5stack/stopwatch/setup",
   );
   assert.equal(
     await page.getByRole("link", { name: "Bootloader OTA image" }).count(),
@@ -251,7 +248,7 @@ try {
     await page
       .getByRole("link", { name: "MicroPython OTA image" })
       .getAttribute("href"),
-    "https://api.esphub.ai/releases/stopwatch/micropython",
+    "https://api.esphub.ai/releases/m5stack/stopwatch/micropython",
   );
   assert.deepEqual(errors, []);
   console.log(

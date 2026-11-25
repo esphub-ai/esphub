@@ -40,6 +40,6 @@ runs:
         esptool --chip esp32s31 image-info "$image"
         test "$(stat -c %s "$image")" -le 4194304
         mkdir -p dist
-        asset="esphub-$BOARD-native-$VERSION"
+        asset="esphub-$BOARD_FILE_STEM-native-$VERSION"
         cp "$image" "dist/$asset.bin"
         (cd dist && sha256sum "$asset.bin" > "$asset.sha256")

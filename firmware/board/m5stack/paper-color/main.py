@@ -25,4 +25,4 @@ try:
     canvas.push(0, 0)
 finally:
     canvas.delete()
-print('ESP Hub hello drawn: paper-color')
+print('ESP Hub hello drawn: m5stack/paper-color')

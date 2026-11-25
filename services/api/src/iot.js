@@ -73,7 +73,7 @@ export async function revokeCertificate(env, id) {
   if (id)
     await control(env, "/certificates/" + id + "?newStatus=INACTIVE", "PUT");
 }
-export async function enroll(env, db, id, hash, csr, recover = false) {
+export async function enroll(env, db, id, hash, csr) {
   if (!configured(env)) fail(503, "IoT credentials unavailable");
   if (
     typeof csr !== "string" ||
@@ -86,27 +86,8 @@ export async function enroll(env, db, id, hash, csr, recover = false) {
   let [saved] =
     await db`SELECT cert_id,cert_pem,cert_csr,cert_ready FROM esphub.devices WHERE id=${id} AND token_hash=${hash}`;
   if (!saved) fail(401, "Device token changed");
-  if (saved.cert_csr && saved.cert_csr !== csr)
+  if ((saved.cert_id || saved.cert_csr) && saved.cert_csr !== csr)
     fail(409, "Reissue the device token before replacing its key");
-  if (recover && saved.cert_ready) {
-    const certificate = (
-      await control(env, "/certificates/" + saved.cert_id, "GET")
-    )?.certificateDescription;
-    if (
-      certificate &&
-      ["INACTIVE", "REVOKED", "PENDING_TRANSFER"].includes(certificate.status)
-    )
-      fail(409, "Certificate disabled; reissue this registration");
-    // An expired or externally deleted certificate cannot be reused. Competing
-    // requests may only retire the same certificate once.
-    if (!certificate || certificate.validity?.notAfter * 1000 <= Date.now()) {
-      const [reset] =
-        await db`UPDATE esphub.devices SET cert_id=NULL,cert_pem=NULL,cert_ready=false
-        WHERE id=${id} AND token_hash=${hash} AND cert_id=${saved.cert_id} RETURNING id`;
-      if (!reset) fail(409, "Enrollment changed; retry");
-      saved = { cert_csr: csr };
-    }
-  }
   if (!saved.cert_id) {
     // Start INACTIVE. An interrupted enrollment cannot leave an authorized orphan.
     const cert = await control(env, "/certificates?setAsActive=false", "POST", {
@@ -114,14 +95,12 @@ export async function enroll(env, db, id, hash, csr, recover = false) {
     });
     [saved] =
       await db`UPDATE esphub.devices SET cert_id=${cert.certificateId},cert_pem=${cert.certificatePem},cert_csr=${csr}
-      WHERE id=${id} AND token_hash=${hash} AND cert_id IS NULL RETURNING cert_id,cert_pem,cert_csr,cert_ready`;
+      WHERE id=${id} AND token_hash=${hash} AND cert_id IS NULL RETURNING cert_id,cert_pem,cert_ready`;
     if (!saved) {
       await control(env, "/certificates/" + cert.certificateId, "DELETE");
       fail(409, "Enrollment changed; retry");
     }
   }
-  if (saved.cert_csr !== csr)
-    fail(409, "Reissue the device token before replacing its key");
   const enrollment = {
     device_id: id,
     endpoint: env.IOT_DATA_ENDPOINT,

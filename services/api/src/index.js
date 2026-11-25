@@ -25,8 +25,9 @@ api.get("/.well-known/openai-apps-challenge", (c) =>
   c.text("oQ1H5PIXgb4CmexhOlNNaTL2PkqnNppa17GSplpdaPY"),
 );
 api.get("/health", (c) => c.json({ service: "esphub-api", ok: true }));
-api.get("/releases/:board/:asset", (c) => {
-  const { board, asset } = c.req.param();
+api.get("/releases/:group/:project/:asset", (c) => {
+  const { group, project, asset } = c.req.param();
+  const board = `${group}/${project}`;
   const tag = c.req.query("tag");
   if (tag !== undefined) return releaseResponse(board, asset, tag);
   return withDatabase(c.env, (sql) => releaseResponse(board, asset, tag, sql));
@@ -110,10 +111,8 @@ function validBoot(id) {
 }
 api.post("/api/device/iot/enroll", async (c) => {
   const d = await authenticatedDevice(c),
-    { csr, recover } = await c.req.json();
-  return c.json(
-    await enroll(c.env, c.get("sql"), d.id, d.hash, csr, recover === true),
-  );
+    { csr } = await c.req.json();
+  return c.json(await enroll(c.env, c.get("sql"), d.id, d.hash, csr));
 });
 // Only the IoT rule relay has this credential. Device identity and certificate
 // come from the broker's topic and principal, outside the device-controlled frame.

@@ -8,7 +8,8 @@ on:
 permissions: {contents: read}
 env:
   BOARD: ${{ fromJSON(inputs.profile).board }}
-  BOARD_DIR: ${{ fromJSON(inputs.profile).boardDir }}
+  BOARD_DIR: firmware/board/${{ fromJSON(inputs.profile).board }}
+  BOARD_FILE_STEM: ${{ fromJSON(inputs.profile).fileStem }}
   CHIP: ${{ fromJSON(inputs.profile).chip }}
 jobs:
   reserve:
@@ -56,7 +57,7 @@ jobs:
         run: |
           set -eo pipefail
           source "$IDF_PATH/export.sh"
-          python scripts/package-board-bootloader.py "$BOARD" "$VERSION" "$BOARD_DIR"
+          python scripts/package-board-bootloader.py "$BOARD" "$VERSION"
       - name: Select the board's composite action
         if: matrix.task.kind != 'bootloader'
         shell: bash
@@ -65,7 +66,7 @@ jobs:
         if: matrix.task.kind != 'bootloader'
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.BOARD }}-${{ matrix.task.kind }}
+          name: ${{ env.BOARD_FILE_STEM }}.${{ matrix.task.kind }}
           path: dist/
           if-no-files-found: error
   kit:
@@ -91,12 +92,12 @@ jobs:
       - uses: actions/download-artifact@v4
         if: fromJSON(inputs.profile).kit.local_bootloader
         with:
-          name: ${{ env.BOARD }}-bootloader
+          name: ${{ env.BOARD_FILE_STEM }}.bootloader
           path: components/bootloader
       - uses: actions/download-artifact@v4
         if: fromJSON(inputs.profile).kit.local_runtime
         with:
-          name: ${{ env.BOARD }}-${{ env.RUNTIME_KIND }}
+          name: ${{ env.BOARD_FILE_STEM }}.${{ env.RUNTIME_KIND }}
           path: components/runtime
       - name: Select the board's USB kit action
         shell: bash
@@ -104,7 +105,7 @@ jobs:
       - uses: ./.board-task
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.BOARD }}-setup
+          name: ${{ env.BOARD_FILE_STEM }}.setup
           path: dist/
           if-no-files-found: error
   publish:
@@ -115,7 +116,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: ${{ env.BOARD }}-*
+          pattern: ${{ env.BOARD_FILE_STEM }}.*
           path: assets
       - name: Publish only the selected board's completed tasks
         env:
@@ -128,7 +129,7 @@ jobs:
             [[ -n "$job" ]] || continue
             tag=$(jq -r .tag <<< "$job")
             fingerprint=$(jq -r .fingerprint <<< "$job")
-            dir="assets/$BOARD-$kind"
+            dir="assets/$BOARD_FILE_STEM.$kind"
             if gh release view "$tag" -R "$GITHUB_REPOSITORY" --json isDraft,body,assets > release.json 2>/dev/null; then
               jq -e --arg receipt "Build inputs: $fingerprint" '.isDraft == false and (.body | contains($receipt))' release.json
               diff <(find "$dir" -type f -printf '%f\n' | sort) <(jq -r '.assets[].name' release.json | sort)

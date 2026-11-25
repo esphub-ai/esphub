@@ -20,7 +20,7 @@ rssi = okou.wifi_rssi()
 lcd.drawString('Wi-Fi %s  Battery %s%%' % (rssi, M5.Power.getBatteryLevel()), 8, 72)
 keyboard = MatrixKeyboard()
 lcd.drawString('Press a key', 8, 98)
-print('ESP Hub hello drawn: cardputer-adv', lcd.width(), lcd.height())
+print('ESP Hub hello drawn: m5stack/cardputer-adv', lcd.width(), lcd.height())
 while True:
     M5.update()
     if keyboard.is_pressed():

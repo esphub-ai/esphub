@@ -1,5 +1,6 @@
 /* Streaming HTTPS OTA. SPDX-License-Identifier: MIT */
 #include <stdio.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -23,17 +24,17 @@
 #include "psa/crypto.h"
 
 #define CHUNK 4096
+#define URL_LIMIT 1024
 #define PROGRAM_LIMIT (32 * 1024)
 #define PROGRAM "/flash/main.py"
 #define PROFILE_OFFSET (sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) + sizeof(esp_app_desc_t))
-#define OKOU_BOARD_CAPACITY 32
 
 static const char *TAG = "install";
 typedef struct {
     char kind[16];
-    char board[OKOU_BOARD_CAPACITY];
-    char url[1025];
+    char url[URL_LIMIT + 1];
     char id[37];
+    char profile[]; /* Empty for Native Programs. */
 } inst_t;
 static volatile bool s_running;
 
@@ -50,28 +51,50 @@ static bool https_url(const char *url)
     return len > 0 && !memchr(host, '@', len);
 }
 
-static bool parse_args(const cJSON *a, inst_t *in, char *err, size_t n)
+static esp_err_t parse_args(const cJSON *a, inst_t **out, char *err, size_t n)
 {
-    memset(in, 0, sizeof(*in));
     const char *kind = cJSON_GetStringValue(cJSON_GetObjectItem(a, "kind"));
-    const char *board = cJSON_GetStringValue(cJSON_GetObjectItem(a, "board"));
     const char *url = cJSON_GetStringValue(cJSON_GetObjectItem(a, "url"));
     const char *id = cJSON_GetStringValue(cJSON_GetObjectItem(a, "transfer_id"));
-    if (!kind || (strcmp(kind, "bootloader") && strcmp(kind, "micropython") && strcmp(kind, "native") && strcmp(kind, "python"))) {
-        snprintf(err, n, "Expected bootloader, micropython, native or python"); return false;
+    const char *prefix = "", *model = "";
+    if (kind && (!strcmp(kind, "micropython") || !strcmp(kind, "python"))) {
+        prefix = OKOU_MICROPYTHON_IMAGE_PREFIX;
+        model = cJSON_GetStringValue(cJSON_GetObjectItem(a, "board"));
+        if (!model || !*model) {
+            snprintf(err, n, "Missing MicroPython board");
+            return ESP_ERR_INVALID_ARG;
+        }
+    } else if (kind && !strcmp(kind, "bootloader")) {
+        prefix = OKOU_BL_IMAGE_PREFIX;
+        model = CONFIG_OKOU_BL_PROFILE;
+    } else if (!kind || strcmp(kind, "native")) {
+        snprintf(err, n, "Expected bootloader, micropython, native or python");
+        return ESP_ERR_INVALID_ARG;
     }
-    if (!board || !*board || strlen(board) >= sizeof(in->board)) {
-        snprintf(err, n, "Invalid board"); return false;
+    const size_t profile_size = strlen(prefix) + strlen(model) + 1;
+    if (profile_size + sizeof(OKOU_OTA_CAPABILITY) > CHUNK - PROFILE_OFFSET) {
+        snprintf(err, n, "Profile exceeds image header");
+        return ESP_ERR_INVALID_ARG;
     }
-    strlcpy(in->board, board, sizeof(in->board));
-    if (!https_url(url) || strlen(url) >= sizeof(in->url)) {
-        snprintf(err, n, "Expected HTTPS URL (up to 1024 bytes)"); return false;
+    if (!https_url(url) || strlen(url) > URL_LIMIT) {
+        snprintf(err, n, "Expected HTTPS URL (up to %u bytes)", (unsigned)URL_LIMIT);
+        return ESP_ERR_INVALID_ARG;
     }
+    if (!id || strlen(id) != 36) {
+        snprintf(err, n, "Invalid transfer ID");
+        return ESP_ERR_INVALID_ARG;
+    }
+    inst_t *in = malloc(sizeof(*in) + profile_size);
+    if (!in) {
+        snprintf(err, n, "out of memory");
+        return ESP_ERR_NO_MEM;
+    }
+    snprintf(in->profile, profile_size, "%s%s", prefix, model);
     strlcpy(in->kind, kind, sizeof(in->kind));
     strlcpy(in->url, url, sizeof(in->url));
-    if (!id || strlen(id) != 36) { snprintf(err, n, "Invalid transfer ID"); return false; }
     strlcpy(in->id, id, sizeof(in->id));
-    return true;
+    *out = in;
+    return ESP_OK;
 }
 
 static cJSON *receipt(const inst_t *in)
@@ -162,30 +185,19 @@ static bool matches_profile(const uint8_t *profile, const char *expected)
            !memcmp(profile + len, OKOU_OTA_CAPABILITY, sizeof(OKOU_OTA_CAPABILITY));
 }
 
-static bool valid_header(const uint8_t *header, const char *kind, const char *board)
+static bool valid_header(const uint8_t *header, const inst_t *in)
 {
     const esp_image_header_t *ih = (const esp_image_header_t *)header;
     if (ih->magic != ESP_IMAGE_HEADER_MAGIC || ih->chip_id != CONFIG_IDF_FIRMWARE_CHIP_ID) return false;
-    if (!strcmp(kind, "native")) return true;
-    const uint8_t *profile = header + PROFILE_OFFSET;
-    bool bootloader = !strcmp(kind, "bootloader");
-    if (bootloader)
-        return CONFIG_OKOU_BL_PROFILE[0] &&
-               matches_profile(profile, OKOU_BL_IMAGE_PREFIX CONFIG_OKOU_BL_PROFILE);
-    char expected[sizeof("ESPHUB2/micropython/") + OKOU_BOARD_CAPACITY];
-    snprintf(expected, sizeof(expected), "ESPHUB2/micropython/%s", board);
-    return matches_profile(profile, expected);
+    return !in->profile[0] || matches_profile(header + PROFILE_OFFSET, in->profile);
 }
 
-static bool compatible_runtime(const esp_partition_t *app, const char *board)
+static bool compatible_runtime(const esp_partition_t *app, const char *expected, uint8_t *buf)
 {
-    char expected[sizeof("ESPHUB2/micropython/") + OKOU_BOARD_CAPACITY];
-    uint8_t profile[sizeof(expected) + sizeof(OKOU_OTA_CAPABILITY)];
-    snprintf(expected, sizeof(expected), "ESPHUB2/micropython/%s", board);
     esp_app_desc_t desc;
-    return app && esp_ota_get_partition_description(app, &desc) == ESP_OK &&
-           esp_partition_read(app, PROFILE_OFFSET, profile, sizeof(profile)) == ESP_OK &&
-           matches_profile(profile, expected);
+    size_t bytes = strlen(expected) + 1 + sizeof(OKOU_OTA_CAPABILITY);
+    return esp_ota_get_partition_description(app, &desc) == ESP_OK &&
+           esp_partition_read(app, PROFILE_OFFSET, buf, bytes) == ESP_OK && matches_profile(buf, expected);
 }
 
 /* Write the firmware header last so a partial image cannot boot. */
@@ -227,7 +239,7 @@ static bool run_install(inst_t *in)
     }
     if (!c || !buf || (!script && !header)) { fail = "Out of memory"; goto out; }
     if (!target || target->address == esp_ota_get_running_partition()->address) { fail = "Incompatible partition layout"; goto out; }
-    if (script && !compatible_runtime(target, in->board)) {
+    if (script && !compatible_runtime(target, in->profile, buf)) {
         fail = "Install the matching URL OTA MicroPython runtime first"; goto out;
     }
     uint32_t limit = script ? PROGRAM_LIMIT : target->size;
@@ -260,7 +272,7 @@ static bool run_install(inst_t *in)
                 off = (uint32_t)n < CHUNK - written ? (uint32_t)n : CHUNK - written;
                 memcpy(header + written, buf, off);
                 if (written + off == CHUNK) {
-                    if (!valid_header(header, in->kind, in->board)) { fail = "Firmware type, board, chip or flash profile mismatch"; goto out; }
+                    if (!valid_header(header, in)) { fail = "Firmware type, board, chip or flash profile mismatch"; goto out; }
                     if (esp_ota_begin(target, length > 0 ? (size_t)length : OTA_SIZE_UNKNOWN, &ota) != ESP_OK) {
                         fail = "Cannot open target partition"; goto out;
                     }
@@ -346,15 +358,9 @@ esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen)
         snprintf(err, errlen, "install already in progress");
         return ESP_ERR_INVALID_STATE;
     }
-    inst_t *in = malloc(sizeof(*in));
-    if (!in) {
-        snprintf(err, errlen, "out of memory");
-        return ESP_ERR_NO_MEM;
-    }
-    if (!parse_args(args, in, err, errlen)) {
-        free(in);
-        return ESP_ERR_INVALID_ARG;
-    }
+    inst_t *in;
+    esp_err_t parsed = parse_args(args, &in, err, errlen);
+    if (parsed != ESP_OK) return parsed;
     /* Keep only the identity needed to report an interrupted transfer. */
     cJSON *p = receipt(in);
     char *s = p ? cJSON_PrintUnformatted(p) : NULL;
@@ -373,7 +379,6 @@ esp_err_t install_op(const cJSON *args, cJSON *data, char *err, size_t errlen)
         snprintf(err, errlen, "cannot start install task");
         return ESP_ERR_NO_MEM;
     }
-    cJSON_AddBoolToObject(data, "accepted", true);
     return ESP_OK;
 }
 

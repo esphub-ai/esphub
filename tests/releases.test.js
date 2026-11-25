@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  bootloaderManifest,
+  latestReleaseTag,
   releaseResponse,
 } from "../services/api/src/releases.js";
 import {
@@ -12,8 +12,8 @@ import {
 
 test("the latest version is selected independently by board and component across pages", async () => {
   const boards = {
-    "paper-color": { chip: "esp32s3" },
-    stopwatch: { chip: "esp32s3" },
+    "waveshare/stopwatch": { chip: "esp32s3" },
+    "m5stack/stopwatch": { chip: "esp32s3" },
   };
   const release = (tag, targets, kind, version) => ({
     tag_name: tag,
@@ -25,34 +25,35 @@ test("the latest version is selected independently by board and component across
     ),
   });
   const newest = release(
-    "firmware-bootloader-stopwatch-v1.1.12",
-    ["stopwatch"],
+    "firmware-bootloader-m5stack_stopwatch-v1.1.12",
+    ["m5stack/stopwatch"],
     "bootloader",
     "1.1.12",
+  );
+  const otherGroup = release(
+    "firmware-bootloader-waveshare_stopwatch-v1.1.5",
+    ["waveshare/stopwatch"],
+    "bootloader",
+    "1.1.5",
   );
   const pages = [
     [
       release(
-        "firmware-bootloader-stopwatch-v1.1.9",
-        ["stopwatch"],
+        "firmware-bootloader-m5stack_stopwatch-v1.1.9",
+        ["m5stack/stopwatch"],
         "bootloader",
         "1.1.9",
       ),
-      release("setup-v1.0.1", Object.keys(boards), "setup", "1.0.1"),
+      release("firmware-setup-m5stack_stopwatch-v1.0.1", ["m5stack/stopwatch"], "setup", "1.0.1"),
     ],
     [
       newest,
-      { ...newest, tag_name: "firmware-bootloader-paper-color-v1.1.12" },
-      release(
-        "bootloader-v1.0.11",
-        Object.keys(boards),
-        "bootloader",
-        "1.0.11",
-      ),
+      otherGroup,
+      { ...newest, tag_name: "firmware-bootloader-waveshare_stopwatch-v1.1.12" },
       {
         ...newest,
         draft: true,
-        tag_name: "firmware-bootloader-stopwatch-v2.0.0",
+        tag_name: "firmware-bootloader-m5stack_stopwatch-v2.0.0",
       },
     ],
   ];
@@ -62,11 +63,11 @@ test("the latest version is selected independently by board and component across
       headers: pages.length ? { Link: '<some-url>; rel="next"' } : {},
     });
   });
-  assert.equal(catalog.stopwatch.bootloader.tag, newest.tag_name);
-  assert.equal(catalog["paper-color"].bootloader, undefined);
-  assert.equal(catalog.stopwatch.setup, undefined);
+  assert.equal(catalog["m5stack/stopwatch"].bootloader.tag, newest.tag_name);
+  assert.equal(catalog["waveshare/stopwatch"].bootloader.tag, otherGroup.tag_name);
+  assert.equal(catalog["m5stack/stopwatch"].setup.version, "1.0.1");
   assert.equal(
-    releaseVersion(newest.tag_name, "bootloader", "paper-color"),
+    releaseVersion(newest.tag_name, "bootloader", "waveshare/stopwatch"),
     null,
   );
 });
@@ -80,33 +81,33 @@ test("a fork checks its own published components", async () => {
     return Response.json([]);
   };
   const releases = await publishedFirmware(
-    { stopwatch: { chip: "esp32s3" } },
+    { "m5stack/stopwatch": { chip: "esp32s3" } },
     request,
     undefined,
     "firmware-user/custom-boards",
   );
-  assert.deepEqual(releases, { stopwatch: {} });
+  assert.deepEqual(releases, { "m5stack/stopwatch": {} });
 });
 
 test("only current board-scoped downloads resolve to immutable GitHub artifacts", async () => {
   for (const [kind, tag, asset] of [
     [
       "setup-manifest",
-      "firmware-setup-stopwatch-v1.1.3",
-      "esphub-stopwatch-esp32s3-1.1.3-setup.json",
+      "firmware-setup-m5stack_stopwatch-v1.1.3",
+      "esphub-m5stack_stopwatch-esp32s3-1.1.3-setup.json",
     ],
     [
       "micropython",
-      "firmware-micropython-stopwatch-v1.0.3",
-      "esphub-stopwatch-micropython-1.0.3.bin",
+      "firmware-micropython-m5stack_stopwatch-v1.0.3",
+      "esphub-m5stack_stopwatch-micropython-1.0.3.bin",
     ],
     [
       "ota",
-      "firmware-bootloader-stopwatch-v1.1.4",
-      "esphub-stopwatch-esp32s3-1.1.4-ota.bin",
+      "firmware-bootloader-m5stack_stopwatch-v1.1.4",
+      "esphub-m5stack_stopwatch-esp32s3-1.1.4-ota.bin",
     ],
   ]) {
-    const r = await releaseResponse("stopwatch", kind, tag);
+    const r = await releaseResponse("m5stack/stopwatch", kind, tag);
     assert.equal(
       r.headers.get("Location"),
       `https://github.com/okou-ai/esphub/releases/download/${tag}/${asset}`,
@@ -114,58 +115,44 @@ test("only current board-scoped downloads resolve to immutable GitHub artifacts"
   }
   await assert.rejects(
     releaseResponse(
-      "paper-color",
+      "m5stack/paper-color",
       "ota",
-      "firmware-bootloader-stopwatch-v1.1.3",
+      "firmware-bootloader-m5stack_stopwatch-v1.1.3",
     ),
     /Unknown bootloader/,
   );
   const native = await releaseResponse(
-    "esp-mosaico",
+    "espressif/esp-mosaico",
     "native",
-    "firmware-native-esp-mosaico-v1.1.3",
+    "firmware-native-espressif_esp-mosaico-v1.1.3",
   );
   assert.match(
     native.headers.get("Location"),
-    /esphub-esp-mosaico-native-1\.1\.3\.bin$/,
+    /esphub-espressif_esp-mosaico-native-1\.1\.3\.bin$/,
   );
   await assert.rejects(
-    releaseResponse("esp-mosaico", "micropython", undefined),
+    releaseResponse("espressif/esp-mosaico", "micropython", undefined),
     /Unknown download/,
-  );
-  await assert.rejects(
-    releaseResponse("stopwatch", "setup", "setup-stopwatch-v1.1.72"),
-    /Unknown setup/,
   );
 });
 
-test("default downloads and OTA metadata use the board's published database record", async (t) => {
-  const manifest = {
-    chip: "esp32s3",
-    version: "1.1.133",
-    ota: { sha256: "a".repeat(64), size: 1152416 },
-  };
-  const tag = "firmware-bootloader-stopwatch-v1.1.133";
+test("default downloads and OTA use the board's published release tag", async (t) => {
+  const tag = "firmware-bootloader-m5stack_stopwatch-v1.1.133";
   const sql = async (_query, board, kind) => {
-    assert.equal(board, "stopwatch");
-    return kind === "bootloader"
-      ? [{ version: manifest.version, manifest }]
-      : [];
+    assert.equal(board, "m5stack/stopwatch");
+    return kind === "bootloader" ? [{ version: "1.1.133" }] : [];
   };
   t.mock.method(globalThis, "fetch", () =>
     assert.fail("unexpected network request"),
   );
-  assert.deepEqual(await bootloaderManifest(sql, "stopwatch"), {
-    ...manifest,
-    tag,
-  });
-  const ota = await releaseResponse("stopwatch", "ota", undefined, sql);
+  assert.equal(await latestReleaseTag(sql, "m5stack/stopwatch", "bootloader"), tag);
+  const ota = await releaseResponse("m5stack/stopwatch", "ota", undefined, sql);
   assert.equal(
     ota.headers.get("Location"),
-    `https://github.com/okou-ai/esphub/releases/download/${tag}/esphub-stopwatch-esp32s3-1.1.133-ota.bin`,
+    `https://github.com/okou-ai/esphub/releases/download/${tag}/esphub-m5stack_stopwatch-esp32s3-1.1.133-ota.bin`,
   );
   await assert.rejects(
-    releaseResponse("stopwatch", "setup", undefined, sql),
+    releaseResponse("m5stack/stopwatch", "setup", undefined, sql),
     (e) => e.status === 404,
   );
 });

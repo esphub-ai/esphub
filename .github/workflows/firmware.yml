@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       board:
-        description: Optional public board ID. Only unpublished changes are built.
+        description: Optional group/project board ID, e.g. m5stack/cardputer-adv. Only unpublished changes are built.
         type: string
         required: false
       pr_number:

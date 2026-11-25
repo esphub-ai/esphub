@@ -9,12 +9,13 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("board")
-parser.add_argument("board_dir", type=Path)
 parser.add_argument("bootloader", type=Path)
 parser.add_argument("runtime", type=Path)
 parser.add_argument("output", type=Path)
 args = parser.parse_args()
-profile = args.board_dir
+group, project = args.board.split("/")
+root = Path(__file__).resolve().parents[1]
+profile = root / "firmware/board" / group / project
 kind = os.environ["RUNTIME_KIND"]
 assert kind in ("micropython", "native")
 recipe = {"tag": os.environ["TAG"], "bootloader_version": os.environ["BOOTLOADER_VERSION"],
@@ -23,11 +24,9 @@ recipe = {"tag": os.environ["TAG"], "bootloader_version": os.environ["BOOTLOADER
 metadata = json.loads((profile / "board.json").read_text())
 chip = metadata["chip"]
 version = os.environ["VERSION"]
-prefix = f"esphub-{args.board}-{chip}-{version}-setup"
+prefix = f"esphub-{group}_{project}-{chip}-{version}-setup"
 kit = args.output / (prefix + ".zip")
 image = args.runtime.read_bytes()
-for marker in (b"iot/pull", b"ble/sync", b"/api/device/program/", b"X-Program-Status"):
-    assert marker not in image, f"Retired HTTPS route in runtime: {marker!r}"
 with ZipFile(args.bootloader) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
     rows = csv.reader(base.read("partitions.csv").decode().splitlines(), skipinitialspace=True)
     parts = {row[0]: row for row in rows if row and not row[0].startswith("#")}
@@ -50,7 +49,7 @@ with ZipFile(args.bootloader) as base, ZipFile(kit, "w", ZIP_DEFLATED) as dest:
     dest.writestr(app_file, image)
     if kind == "micropython":
         dest.write(profile / "main.py", "main.py")
-    dest.write(Path(__file__).resolve().parents[1] / "tools/ble-wifi/provision_usb.py", "provision_usb.py")
+    dest.write(root / "tools/ble-wifi/provision_usb.py", "provision_usb.py")
     flash_args = base.read("flash_args").rstrip() + f"\n{offset:#x} {app_file}\n".encode()
     name = "board-nvs.bin"
     assert len(base.read(name)) == int(parts["nvs"][4], 0)

@@ -45,7 +45,7 @@ test("firmware planning uses the dispatched PR snapshots without a manual rebuil
   for (const [name, event, manual, before] of [
     ["pull_request", { pull_request: { base: { sha: base } } }, false, base],
     ["push", { before: base }, false, base],
-    ["workflow_dispatch", { inputs: { board: "stopwatch" } }, true, undefined],
+    ["workflow_dispatch", { inputs: { board: "m5stack/stopwatch" } }, true, undefined],
   ]) {
     assert.deepEqual(
       firmwareEventContext(event, {
@@ -70,12 +70,11 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
     mkdirSync(dirname(join(cwd, path)), { recursive: true });
     writeFileSync(join(cwd, path), data);
   };
-  const addBoard = (model, vendor = "m5stack", id = model) => {
+  const addBoard = (model, vendor = "m5stack") => {
     const dir = `firmware/board/${vendor}/${model}`;
     put(
       dir + "/board.json",
       JSON.stringify({
-        id,
         chip: "esp32s3",
         flash_mb: 16,
         bootloader: "esp32s3-16mb",
@@ -134,11 +133,11 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   let before = snapshot();
   put("firmware/board/m5stack/stopwatch/layout/partitions.csv", "new table");
   let after = snapshot();
-  assert.deepEqual(select(before, after), { stopwatch: ["bootloader", "setup"] });
-  assert.equal(after.stopwatch.blFingerprint, before.stopwatch.blFingerprint);
+  assert.deepEqual(select(before, after), { "m5stack/stopwatch": ["bootloader", "setup"] });
+  assert.equal(after["m5stack/stopwatch"].blFingerprint, before["m5stack/stopwatch"].blFingerprint);
   assert.equal(
-    after.stopwatch.blFingerprint,
-    after["paper-color"].blFingerprint,
+    after["m5stack/stopwatch"].blFingerprint,
+    after["m5stack/paper-color"].blFingerprint,
   );
   before = after;
   put(
@@ -147,7 +146,7 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   );
   after = snapshot();
   assert.deepEqual(select(before, after), {
-    stopwatch: ["micropython", "setup"],
+    "m5stack/stopwatch": ["micropython", "setup"],
   });
   before = after;
   put(
@@ -155,7 +154,7 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
     "new packaging recipe",
   );
   after = snapshot();
-  assert.deepEqual(select(before, after), { stopwatch: ["setup"] });
+  assert.deepEqual(select(before, after), { "m5stack/stopwatch": ["setup"] });
   before = after;
   const advDir = "firmware/board/m5stack/cardputer-adv";
   cpSync(new URL("../" + advDir, import.meta.url), join(cwd, advDir), {
@@ -164,15 +163,15 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   });
   after = snapshot();
   assert.deepEqual(select(before, after), {
-    "cardputer-adv": ["bootloader", "micropython", "setup"],
+    "m5stack/cardputer-adv": ["bootloader", "micropython", "setup"],
   });
   before = after;
   put("firmware/bootloader/esp32s3-8mb/sdkconfig.defaults", "new defaults");
   after = snapshot();
   assert.deepEqual(select(before, after), {
-    "cardputer-adv": ["bootloader", "setup"],
+    "m5stack/cardputer-adv": ["bootloader", "setup"],
   });
-  assert.equal(after.stopwatch.blFingerprint, before.stopwatch.blFingerprint);
+  assert.equal(after["m5stack/stopwatch"].blFingerprint, before["m5stack/stopwatch"].blFingerprint);
   before = after;
   appendFileSync(
     join(cwd, advDir, "micropython/manifest.py"),
@@ -180,7 +179,7 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   );
   after = snapshot();
   assert.deepEqual(select(before, after), {
-    "cardputer-adv": ["micropython", "setup"],
+    "m5stack/cardputer-adv": ["micropython", "setup"],
   });
   before = after;
   put("firmware/components/okou_agent/src/sdk.c", "shared");
@@ -204,20 +203,20 @@ test("board CI discovers a new directory and selects only affected tasks", (t) =
   before = after;
   put("firmware/board/m5stack/stopwatch/main.py", "print('hello')");
   after = snapshot();
-  assert.deepEqual(select(before, after), { stopwatch: ["setup"] });
+  assert.deepEqual(select(before, after), { "m5stack/stopwatch": ["setup"] });
   before = after;
-  addBoard("stopwatch", "waveshare", "waveshare-stopwatch");
+  addBoard("stopwatch", "waveshare");
   after = snapshot();
   assert.deepEqual(select(before, after), {
-    "waveshare-stopwatch": ["bootloader", "micropython", "setup"],
+    "waveshare/stopwatch": ["bootloader", "micropython", "setup"],
   });
+  const [selected] = boardPlans({}, after, {}, { ...options, board: "waveshare/stopwatch" });
+  assert.equal(selected.board, "waveshare/stopwatch");
+  assert.equal(selected.fileStem, "waveshare_stopwatch");
+  assert.equal(selected.kit.tag, "firmware-setup-waveshare_stopwatch-v1.1.9");
   assert.equal(
-    after["waveshare-stopwatch"].boardDir,
-    "firmware/board/waveshare/stopwatch",
-  );
-  assert.equal(
-    after["waveshare-stopwatch"].blFingerprint,
-    after.stopwatch.blFingerprint,
+    after["waveshare/stopwatch"].blFingerprint,
+    after["m5stack/stopwatch"].blFingerprint,
   );
   const released = Object.fromEntries(
     Object.entries(after).map(([name, p]) => [name, p.tasks]),

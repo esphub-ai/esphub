@@ -6,7 +6,7 @@ import boards from "../../../shared/boards.generated.json" with { type: "json" }
 import { maxUploadBytes } from "./uploads.js";
 import { updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
-import { bootloaderManifest } from "./releases.js";
+import { latestReleaseTag } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
 import { createVirtual, operateVirtual } from "./virtual-device.js";
 const programByteLimit = 32 * 1024;
@@ -27,7 +27,7 @@ const defs = [
   [
     "devices.create",
     additive,
-    "Registers a physical device under the supplied name and board model. Returns its device ID, provisioning credentials, and board-specific setup information.",
+    "Registers a physical device with its name and group/project board ID (for example, m5stack/cardputer-adv). Returns its device ID, provisioning credentials, and board-specific setup information.",
     {
       ...strings("name"),
       board: { enum: Object.keys(boards), type: "string" },
@@ -409,33 +409,18 @@ export async function operate(c, owner, name, a) {
   if (name === "ota.install") {
     if (info?.role !== "bootloader")
       fail(409, "Enter EspHub Bootloader mode first using bootloader.enter");
-    if (!a.url) {
-      const manifest = await bootloaderManifest(db, d.board);
-      return queue(
-        "install",
-        {
-          kind: "bootloader",
-          board: d.board,
-          transfer_id: key,
-          url:
-            "https://api.esphub.ai/releases/" +
-            d.board +
-            "/ota?tag=" +
-            manifest.tag,
-          sha256: manifest.ota.sha256,
-          size: manifest.ota.size,
-          version: manifest.version,
-        },
-        d.boot_id,
-      );
+    let url = a.url;
+    if (!url) {
+      const tag = await latestReleaseTag(db, d.board, "bootloader");
+      url = `https://api.esphub.ai/releases/${d.board}/ota?tag=${tag}`;
+    } else if (url.startsWith(artifactBase)) {
+      await internal(c, d.id, "check-upload", { url, kind: a.kind });
     }
-    if (a.url.startsWith(artifactBase))
-      await internal(c, d.id, "check-upload", { url: a.url, kind: a.kind });
-    return queue(
-      "install",
-      { board: d.board, url: a.url, kind: a.kind, transfer_id: key },
-      d.boot_id,
-    );
+    const args = {
+      ...(a.kind === "micropython" || a.kind === "python" ? { board: d.board } : {}),
+      url, kind: a.kind, transfer_id: key,
+    };
+    return queue("install", args, d.boot_id);
   }
   let op,
     args = {};

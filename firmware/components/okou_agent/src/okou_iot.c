@@ -261,7 +261,7 @@ bool okou_iot_publish(cJSON *frame, bool confirm)
     if (!mqtt || !acks || !frame)
         return false;
     uint32_t mid = ++next_mid;
-    if (!cJSON_GetObjectItemCaseSensitive(frame, "boot_id") && !cJSON_AddStringToObject(frame, "boot_id", boot))
+    if (!cJSON_AddStringToObject(frame, "boot_id", boot))
         return false;
     if (!cJSON_AddNumberToObject(frame, "mid", mid) || (confirm && !cJSON_AddTrueToObject(frame, "confirm")))
         return false;

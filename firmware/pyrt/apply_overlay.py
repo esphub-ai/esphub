@@ -3,7 +3,7 @@
 Python runtime for one board. Every edit asserts its anchor, so an upstream change fails the
 build instead of silently producing a different firmware.
 
-  apply_overlay.py <uiflow checkout> <EspHub firmware dir> <board> <version> <board directory>
+  apply_overlay.py <uiflow checkout> <EspHub firmware dir> <group/project> <version>
 """
 import json
 import re
@@ -11,8 +11,9 @@ import pathlib
 import shutil
 import sys
 
-uiflow, fw, profile, version = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3], sys.argv[4]
-board_dir = pathlib.Path(sys.argv[5])
+uiflow_dir, firmware_dir, board_id, version = sys.argv[1:]
+uiflow, fw = pathlib.Path(uiflow_dir), pathlib.Path(firmware_dir)
+board_dir = fw / "board" / board_id
 config = json.loads((board_dir / "micropython/profile.json").read_text())
 board = config["target"]
 metadata = json.loads((board_dir / "board.json").read_text())
@@ -115,7 +116,7 @@ edit(mp.resolve() / "extmod/nimble/modbluetooth_nimble.c", "int mp_bluetooth_ini
      "extern bool okou_ble_host_owned(void);\nint mp_bluetooth_init(void) {\n"
      "    if (okou_ble_host_owned()) return MP_EBUSY;")
 
-(m5 / bdir / "sdkconfig.okl").write_text(frag + f'CONFIG_OKOU_BOARD_PROFILE="{profile}"\nCONFIG_OKOU_BL_PROFILE="{bootloader}"\n')
+(m5 / bdir / "sdkconfig.okl").write_text(frag + f'CONFIG_OKOU_BOARD_PROFILE="{board_id}"\nCONFIG_OKOU_BL_PROFILE="{bootloader}"\n')
 if generic:
     # Start from the chip port so boards without a UIFlow target never probe
     # an unrelated display, camera or power-management IC at startup.

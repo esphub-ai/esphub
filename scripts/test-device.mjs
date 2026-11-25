@@ -70,6 +70,7 @@ async function testVirtualDevice(read) {
   ]);
   assert.deepEqual(virtual, duplicate);
   assert.equal(virtual.kind, "virtual");
+  assert.equal(virtual.board, "esphub/virtual-esp32");
   const vid = { device_id: virtual.id };
   const firmware = await op("firmware.get", vid, read);
   const [listedVirtual] = await op("devices.list", {}, read);
@@ -252,9 +253,16 @@ try {
     ).serverInfo.name,
     "esphub",
   );
+  const tag = "firmware-setup-m5stack_cardputer-adv-v1.2.3";
+  const kit = await fetch(base + "/backend/releases/m5stack/cardputer-adv/setup?tag=" + tag, {
+    redirect: "manual",
+  });
+  assert.equal(kit.status, 302);
+  assert.equal(kit.headers.get("Location"),
+    `https://github.com/okou-ai/esphub/releases/download/${tag}/esphub-m5stack_cardputer-adv-esp32s3-1.2.3-setup.zip`);
   await testVirtualDevice(read);
   const d = await op("devices.create", {
-      board: "paper-color",
+      board: "m5stack/paper-color",
       name: "Simulator",
     }),
     id = { device_id: d.id };
@@ -279,7 +287,7 @@ try {
   assert.match(d.verification_source, /Hello, M5Stack Paper Color/);
   assert.equal(
     d.setup_manifest,
-    "https://api.esphub.ai/releases/paper-color/setup-manifest",
+    "https://api.esphub.ai/releases/m5stack/paper-color/setup-manifest",
   );
   assert.deepEqual(Object.keys(d.sources).sort(), [
     "bootloader",
@@ -291,7 +299,7 @@ try {
   assert.equal(offline.kind, "physical");
   assert.deepEqual(offline.sources, d.sources);
   const watch = await op("devices.create", {
-    board: "stopwatch",
+    board: "m5stack/stopwatch",
     name: "Watch",
   });
   assert.match(watch.verification_source, /Hello, M5Stack Stopwatch/);
@@ -471,7 +479,9 @@ try {
       queued = await op("ota.install", { ...id, kind, url, request_id: key });
     const cmd = await mcu.nextCommand();
     assert.equal(cmd.id, queued.command_id);
-    assert.deepEqual(cmd.args, { url, board: d.board, kind, transfer_id: key });
+    const expected = { url, kind, transfer_id: key };
+    if (kind === "python" || kind === "micropython") expected.board = d.board;
+    assert.deepEqual(cmd.args, expected);
     const ok = kind !== "bootloader";
     if (kind === "python") pythonInstall = key;
     await mcu.send({
@@ -486,7 +496,6 @@ try {
   assert.equal((await mcu.nextCommand()).id, reboot.command_id);
   const app = await mcu.hello({
     ...addresses,
-    board: "legacy-board-report",
     role: "app",
     runtime_type: "micropython",
     runtime_version: "1.2.4",
@@ -506,7 +515,6 @@ try {
         boot_id: boot,
         ble_address: usbAddress,
         t: "hello",
-        board: d.board,
         role: "bootloader",
       })
     ).status,
@@ -524,17 +532,16 @@ try {
   // A request dispatched in the bootloader is completed by a different boot.
   const installBootloader = { ...id, kind: "bootloader", url: localFiles.bootloader };
   await assert.rejects(op("ota.install", installBootloader), /bootloader/i);
-  const info = { board: d.board, chip: "esp32s3", dual_bootloader_ota: true, bootloader_profile: "esp32s3-16mb" };
-  await mcu.hello({ ...info, role: "bootloader", image_profile: "ESPHUB2/bootloader/esp32s3-16mb" });
+  await mcu.hello({ role: "bootloader" });
   const handoff = await op("ota.install", installBootloader);
   const firstAttempt = await mcu.nextCommand();
   assert.equal(firstAttempt.id, handoff.command_id);
-  await mcu.hello({ ...info, role: "app", image_profile: "ESPHUB2/micropython/" + d.board });
+  await mcu.hello({ role: "app", runtime_type: "micropython" });
   await mcu.send({ t: "event", name: "install.failed",
     data: { transfer_id: firstAttempt.args.transfer_id, error: "HTTPS read failed" } });
   assert.equal((await result(firstAttempt.id)).state, "failed");
   await assert.rejects(op("ota.install", installBootloader), /bootloader/i);
-  await mcu.hello({ ...info, role: "bootloader", image_profile: "ESPHUB2/bootloader/esp32s3-16mb" });
+  await mcu.hello({ role: "bootloader" });
   const retry = await op("ota.install", installBootloader);
   const nextAttempt = await mcu.nextCommand();
   assert.equal(nextAttempt.id, retry.command_id);
@@ -545,7 +552,7 @@ try {
   const exitCommand = await mcu.nextCommand();
   assert.equal(exitCommand.id, exit.command_id);
   assert.deepEqual(exitCommand.args, { target: "app" });
-  await mcu.hello({ ...info, role: "app", image_profile: "ESPHUB2/micropython/" + d.board });
+  await mcu.hello({ role: "app", runtime_type: "micropython" });
   assert.equal((await result(exit.command_id)).state, "succeeded");
   await assert.rejects(op("bootloader.exit", id), /bootloader mode/);
   await op("devices.reissue", id);

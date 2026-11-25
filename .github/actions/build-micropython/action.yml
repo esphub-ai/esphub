@@ -69,7 +69,7 @@ runs:
     - name: Apply the esp-bootloader overlay
       shell: bash
       run: |
-        python3 firmware/pyrt/apply_overlay.py uiflow firmware "$BOARD" "$VERSION" "$BOARD_DIR"
+        python3 firmware/pyrt/apply_overlay.py uiflow firmware "$BOARD" "$VERSION"
     - name: Build
       working-directory: uiflow
       shell: bash
@@ -86,12 +86,18 @@ runs:
       shell: bash
       run: |
         image="uiflow/${MP_PORT}/build-${MP_TARGET}/micropython.bin"
-        python3 -c 'import sys; assert open(sys.argv[1], "rb").read(400)[288:].startswith(("ESPHUB2/micropython/" + sys.argv[2] + "\0bootloader-ota-v2\0").encode())' "$image" "$BOARD"
+        python3 - "$image" "$BOARD" <<'PYTHON'
+        import sys
+        profile = f"ESPHUB2/micropython/{sys.argv[2]}\0bootloader-ota-v2\0".encode()
+        with open(sys.argv[1], "rb") as image:
+            image.seek(288)
+            assert image.read(len(profile)) == profile
+        PYTHON
         test "$(stat -c %s "$image")" -le 4194304
         grep -Fx "CONFIG_PM_ENABLE=y" "uiflow/${MP_PORT}/build-${MP_TARGET}/sdkconfig"
         grep -Fx "CONFIG_OKOU_BLE_WIFI=y" "uiflow/${MP_PORT}/build-${MP_TARGET}/sdkconfig"
         grep -Fx "CONFIG_FREERTOS_USE_TICKLESS_IDLE=y" "uiflow/${MP_PORT}/build-${MP_TARGET}/sdkconfig"
         grep -Fx "CONFIG_OKOU_BOARD_PROFILE=\"$BOARD\"" "uiflow/${MP_PORT}/build-${MP_TARGET}/sdkconfig"
         mkdir -p dist
-        cp "$image" "dist/esphub-$BOARD-micropython-$VERSION.bin"
-        cd dist && sha256sum *.bin > "esphub-$BOARD-micropython-$VERSION.sha256"
+        cp "$image" "dist/esphub-$BOARD_FILE_STEM-micropython-$VERSION.bin"
+        cd dist && sha256sum *.bin > "esphub-$BOARD_FILE_STEM-micropython-$VERSION.sha256"

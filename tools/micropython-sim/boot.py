@@ -42,7 +42,7 @@ if _qa_mode in ("model", "forward"):
     import M5 as _native_m5
 
     assert callable(_native_m5.begin)
-    if _qa_board in ("sticks3", "atoms3r", "papers3", "cores3"):
+    if _qa_board in ("m5stack/sticks3", "m5stack/atoms3r", "m5stack/papers3", "m5stack/cores3"):
         filename = "input-model.py"
     else:
         filename = "panel-model.py"
@@ -91,11 +91,11 @@ class Console(io.IOBase):
         if self.lines >= 4:
             return
         if _qa_board in (
-            "stopwatch",
-            "paper-color",
-            "cardputer-adv",
-            "paper-diy",
-            "stackchan",
+            "m5stack/stopwatch",
+            "m5stack/paper-color",
+            "m5stack/cardputer-adv",
+            "m5stack/paper-diy",
+            "m5stack/stackchan",
         ):
             if line.startswith("ESP Hub hello drawn: " + _qa_board):
                 self.lines = 4

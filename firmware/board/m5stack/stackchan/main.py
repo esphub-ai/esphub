@@ -19,7 +19,7 @@ wifi = 'offline' if rssi is None else '%d dBm' % rssi
 lcd.drawString('Wi-Fi: ' + wifi, 8, 92)
 lcd.drawString('Battery: %.2f V' % body.get_battery_voltage(), 8, 124)
 lcd.drawString('Touch the base', 8, 170)
-print('ESP Hub hello drawn: stackchan')
+print('ESP Hub hello drawn: m5stack/stackchan')
 colors = (0x33cc00, 0x00cccc, 0x000099)
 active = [False, False, False]
 while True:

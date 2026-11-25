@@ -18,7 +18,7 @@ test(
       await db`INSERT INTO esphub.accounts(handle) VALUES(${crypto.randomUUID()}) RETURNING id`;
     try {
       const [device] =
-        await db`INSERT INTO esphub.devices(owner,name,board,token_hash,boot_id) VALUES(${owner.id},'test','paper-color',${crypto.randomUUID()},${boot}) RETURNING id`;
+        await db`INSERT INTO esphub.devices(owner,name,board,token_hash,boot_id) VALUES(${owner.id},'test','m5stack/paper-color',${crypto.randomUUID()},${boot}) RETURNING id`;
       const c = { sql: db, env: {} },
         id = device.id,
         key = crypto.randomUUID();

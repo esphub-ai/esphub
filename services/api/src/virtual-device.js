@@ -1,6 +1,6 @@
 import { fail } from "./auth.js";
 
-const board = "virtual-esp32";
+const board = "esphub/virtual-esp32";
 const firmware = { name: "EspHub virtual firmware", version: "1.0.0" };
 const info = { board, role: "simulator", fw: firmware };
 

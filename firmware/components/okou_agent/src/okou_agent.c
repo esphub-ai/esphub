@@ -274,7 +274,7 @@ void okou_event(const char *name, const char *json)
 #if CONFIG_OKL_URL_OTA
 #define OKOU_IMAGE_PROFILE OKOU_BL_IMAGE_PREFIX CONFIG_OKOU_BL_PROFILE
 #elif CONFIG_OKOU_MICROPYTHON_RUNTIME
-#define OKOU_IMAGE_PROFILE "ESPHUB2/micropython/" CONFIG_OKOU_BOARD_PROFILE
+#define OKOU_IMAGE_PROFILE OKOU_MICROPYTHON_IMAGE_PREFIX CONFIG_OKOU_BOARD_PROFILE
 #endif
 #ifdef OKOU_IMAGE_PROFILE
 static const char image_profile[] __attribute__((section(".rodata_custom_desc"), aligned(4))) = OKOU_IMAGE_PROFILE "\0" OKOU_OTA_CAPABILITY;
@@ -293,7 +293,6 @@ static void report_mac(cJSON *o, const char *field, esp_mac_type_t type)
 static void hello_fill(cJSON *o)
 {
     bool launcher = okou_is_bootloader();
-    cJSON_AddStringToObject(o, "boot_id", s_boot_id);
     cJSON_AddStringToObject(o, "role", launcher ? "bootloader" : "app");
     char ble_address[18];
     if (okou_ble_address(ble_address)) cJSON_AddStringToObject(o, "ble_address", ble_address);
@@ -356,13 +355,6 @@ static void diagnostics_fill(cJSON *o)
     cJSON_AddNumberToObject(o, "heap_internal_largest",
                             heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     cJSON_AddNumberToObject(o, "uptime_ms", (double)(now_us() / 1000));
-}
-
-cJSON *okou_hello_fields(void)
-{
-    cJSON *o = cJSON_CreateObject();
-    hello_fill(o);
-    return o;
 }
 
 /* ------------------------------------------------------------------ socket */
@@ -619,6 +611,7 @@ static void handle_req(const cJSON *root)
     }
     if (strcmp(op, "status") == 0) {
         hello_fill(data);
+        cJSON_AddStringToObject(data, "boot_id", s_boot_id);
         diagnostics_fill(data);
         okou_net_info(data);
         cJSON_AddItemToObject(data, "partitions", okou_partitions_json());

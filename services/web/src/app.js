@@ -339,7 +339,7 @@ async function action(k) {
     dialog(
       "Register a device",
       field("name", "Device name", "text", 'required maxlength="64"') +
-        '<label>Board<select class="field" name="board">' + Object.entries(boardName).map(([id, name]) => '<option value="' + esc(id) + '">' + esc(name) + '</option>').join('') + '</select></label>',
+        '<label>Board<select class="field" name="board">' + Object.entries(boardName).map(([id, name]) => '<option value="' + esc(id) + '">' + esc(name) + ' (' + esc(id) + ')</option>').join('') + '</select></label>',
       "Register",
       async (a) => {
         const d = await op("devices.create", a);

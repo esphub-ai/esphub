@@ -10,21 +10,6 @@
 #include "bootloader.h"
 #include "okou_ble.h"
 
-static bool str_field(const cJSON *o, const char *k, size_t max, const char **out, char *err, size_t n)
-{
-    const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, k);
-    *out = NULL;
-    if (!v) {
-        return true;
-    }
-    if (!cJSON_IsString(v) || strlen(v->valuestring) > max) {
-        snprintf(err, n, "%s must be a string of at most %u chars", k, (unsigned)max);
-        return false;
-    }
-    *out = v->valuestring;
-    return true;
-}
-
 bool prov_apply(const char *line, char *err, size_t n)
 {
     cJSON *j = cJSON_Parse(line);
@@ -33,29 +18,22 @@ bool prov_apply(const char *line, char *err, size_t n)
         snprintf(err, n, "invalid JSON");
         return false;
     }
-    if (cJSON_GetObjectItemCaseSensitive(j, "wifi")) {
-        cJSON_Delete(j);
-        snprintf(err, n, "use BLE for Wi-Fi setup");
-        return false;
-    }
+    const cJSON *hub_field = cJSON_GetObjectItemCaseSensitive(j, "hub");
+    const cJSON *name_field = cJSON_GetObjectItemCaseSensitive(j, "name");
     const cJSON *tok = cJSON_GetObjectItemCaseSensitive(j, "token");
-    const char *hub = NULL, *name = NULL, *dtok = NULL;
-    bool ok = str_field(j, "hub", OKOU_HUB_HOST_MAX, &hub, err, n) && str_field(j, "name", 32, &name, err, n);
-    if (ok && hub && !okou_hub_host_valid(hub)) {
+    const char *hub = cJSON_GetStringValue(hub_field);
+    const char *name = cJSON_GetStringValue(name_field);
+    const char *dtok = cJSON_GetStringValue(tok);
+    bool ok = true;
+    if (hub_field && !okou_hub_host_valid(hub)) {
         snprintf(err, n, "hub must be a hostname such as api.esphub.ai");
         ok = false;
-    }
-    if (ok && tok && !cJSON_IsString(tok)) {
-        snprintf(err, n, "expected a device token");
+    } else if (name_field && (!name || strlen(name) > 32)) {
+        snprintf(err, n, "name must be a string of at most 32 chars");
         ok = false;
-    }
-    if (ok && cJSON_IsString(tok)) {
-        if (strncmp(tok->valuestring, "okl_dev_", 8) != 0 || strlen(tok->valuestring) > 95) {
-            snprintf(err, n, "token must be a hub device token (okl_dev_...)");
-            ok = false;
-        } else {
-            dtok = tok->valuestring;
-        }
+    } else if (tok && (!dtok || strncmp(dtok, "okl_dev_", 8) || strlen(dtok) > 95)) {
+        snprintf(err, n, "token must be a hub device token (okl_dev_...)");
+        ok = false;
     }
 #if CONFIG_OKOU_BLE_WIFI
     const cJSON *ble = cJSON_GetObjectItemCaseSensitive(j, "ble_secret");

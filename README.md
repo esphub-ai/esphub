@@ -15,7 +15,7 @@ See the [firmware glossary and partition mapping](docs/firmware-terminology.md) 
 
 The M5Stack board catalog covers ESP32, ESP32-S3, ESP32-C5, ESP32-C6 and ESP32-C61 models with Wi-Fi, Bluetooth and 8–32 MiB of flash. The [board matrix](docs/m5stack-boards.md) lists hardware revisions, bundled controllers, flash, SRAM, runtime port and manufacturer firmware. Cardputer-Adv includes the M5Stack display bindings and the official `hardware.MatrixKeyboard` driver for its TCA8418 keyboard controller. Identify the physical board before registration. GitHub Releases hosts a board-specific first-time USB kit with the shared EspHub Bootloader, application image, partition table, flash arguments and a SHA-256 manifest. MicroPython boards also include an example main.py. [ESP-Mosaico](firmware/board/espressif/esp-mosaico/README.md) uses Espressif’s Hello World with the EspHub SDK. This kit erases flash and replaces the partition table and app. Back up device data before installing it.
 
-To build the shared bootloader locally, use ESP-IDF 5.4.1 from the selected `firmware/bootloader/<target>-<size>mb/` directory. Use ESP-IDF 5.5.4 for `esp32c5-16mb` and `esp32c61-16mb`. Select the `bootloader` identifier from the board’s `firmware/board/m5stack/<board>/board.json`. For example, build the 16 MiB ESP32-S3 variant with the following command.
+To build the shared bootloader locally, use ESP-IDF 5.4.1 from the selected `firmware/bootloader/<target>-<size>mb/` directory. Use ESP-IDF 5.5.4 for `esp32c5-16mb` and `esp32c61-16mb`. Select the `bootloader` identifier from the board’s `firmware/board/<group>/<project>/board.json`. For example, build the 16 MiB ESP32-S3 variant with the following command.
 
 ```sh
 cd firmware/bootloader/esp32s3-16mb
@@ -28,7 +28,7 @@ Connect the board over USB and call `devices.create`. Download and flash the mat
 OKL-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret>"}
 ```
 
-The USB `hub` setting takes a plain hostname such as `api.esphub.ai`. A scheme, port or path is rejected. An existing URL-valued setting requires writing the hostname over USB. OTA artifacts still use full HTTPS URLs.
+The USB `hub` setting takes a plain hostname such as `api.esphub.ai`. OTA artifacts use full HTTPS URLs.
 
 After `OKL-PROVISION-OK`, run the Mac BLE tool while the board is in the bootloader and choose a network or enter a hidden SSID and password locally. Then call `bootloader.exit`, type `app` on USB, or power-cycle the board to start the application. For MicroPython boards, use the OTA procedure to install the returned verification program and check its board-specific hello. For ESP-Mosaico, check the Hello World on the display and confirm the online native runtime in `devices.get`.
 
@@ -42,7 +42,7 @@ OKL-WIFI {"op":"wifi.join","ssid":"My network","password":"<password>","hidden":
 OKL-WIFI {"op":"wifi.status"}
 ```
 
-For an open network, use an empty password. A join is saved after the device gets an IP address. BLE remains available for offline setup and for older bootloaders. On an online device, use `wifi.add` with an SSID and optional password to save a network remotely. Read `commands.get` for the result.
+For an open network, use an empty password. A join is saved after the device gets an IP address. For direct USB console access, `wifi add <ssid> [password] [hidden]` saves a network immediately. Use the JSON commands for credentials containing spaces. BLE also supports offline setup. On an online device, use `wifi.add` with an SSID and optional password to save a network remotely. Read `commands.get` for the result.
 
 The first-time kit and an explicit bootloader entry set a one-shot hold flag. The bootloader consumes it and stays available for that boot. On the next power cycle it starts a valid app, or stays available if the app is missing or invalid. A Hub hello only reports the session.
 
@@ -61,7 +61,7 @@ The corresponding C APIs are `okou_wifi_join()` and `okou_wifi_join_state()`. Th
 
 ## Try a virtual ESP32
 
-Sign in, open **Devices**, and select **Create virtual ESP32**, or call `devices.create_virtual` from an authorized MCP client. Each account can create one private board. Creating it again returns the same device ID.
+Sign in, open **Devices**, and select **Create virtual ESP32**, or call `devices.create_virtual` from an authorized MCP client. Each account can create one private `esphub/virtual-esp32` board. Creating it again returns the same device ID.
 
 1. Call `devices.list` and select the device with `kind: "virtual"`. Use its ID with `firmware.get` to inspect the simulated firmware and current `process_id`.
 2. Call `devices.reboot` with that device ID. The response contains the new boot’s `process_id`. Supply a UUID as `request_id` on the first call and reuse it for retries.
@@ -88,12 +88,12 @@ Call `devices.get` to get `sources.bootloader` and the available application sou
 
 | OTA kind | What to edit | What to send |
 | --- | --- | --- |
-| `bootloader` | Shared EspHub Bootloader source in `firmware/bootloader/common/`, board flash layout under `firmware/board/<vendor>/<model>/layout/`, and the hub protocol in `firmware/components/okou_agent/` | The board's `*-ota.bin` release asset |
+| `bootloader` | Shared EspHub Bootloader source in `firmware/bootloader/common/`, board flash layout under `firmware/board/<group>/<project>/layout/`, and the hub protocol in `firmware/components/okou_agent/` | The board's `*-ota.bin` release asset |
 | `micropython` | Runtime integration in `firmware/pyrt/`, the board's `micropython/` directory and the linked UIFlow MicroPython upstream. To build a modified upstream, set the repository and commit in `firmware/pyrt/upstream.json`. | The board's `esphub-<board>-micropython-<version>.bin` release asset |
 | `native` | Build the application for the intended hardware. | ESP application binary for the `app` partition |
 | `python` | Start from the linked `main.py` or write your own UTF-8 `main.py`. | The script itself, ready to run without compilation |
 
-To build a binary with GitHub Actions, optionally fork this repository, enable GitHub Actions in the fork, and commit your changes. Run **Actions → Board firmware → Run workflow** on your fork's `main` branch and enter the public board ID (for example, `paper-color`). The workflow builds missing or changed components, checks their board and image profiles, and publishes them to your fork's Releases. A main-branch push that touches firmware also starts this workflow. The build needs permission to write repository contents. Preserve the target chip, partition layout and OTA image descriptor generated by the SDK. Retain the hub connection and bootloader-entry protocol if you want to manage the new firmware remotely.
+To build a binary with GitHub Actions, optionally fork this repository, enable GitHub Actions in the fork, and commit your changes. Run **Actions → Board firmware → Run workflow** on your fork's `main` branch and enter the public board ID (for example, `m5stack/paper-color`). The workflow builds missing or changed components, checks their board and image profiles, and publishes them to your fork's Releases. A main-branch push that touches firmware also starts this workflow. The build needs permission to write repository contents. Preserve the target chip, partition layout and OTA image descriptor generated by the SDK. Retain the hub connection and bootloader-entry protocol if you want to manage the new firmware remotely.
 
 ### Upload a local file
 
@@ -139,11 +139,11 @@ Main must require the `SDK version`, `verify` and `Firmware` checks, require bra
 
 ### Board firmware CI
 
-Each `firmware/board/<vendor>/<model>/board.json` declares the board's chip, flash capacity, and shared bootloader variant. The directory name supplies the public board ID unless `board.json` sets a unique `id`. The board directory owns its partition layout, application configuration, verification example and USB setup action.
+Each `firmware/board/<group>/<project>/board.json` declares the board's chip, flash capacity, and shared bootloader variant. The two directory names form the public board ID, such as `m5stack/cardputer-adv` or `espressif/esp-mosaico`. Registration, release URLs, manifests and MicroPython image profiles use that same ID. The board directory owns its partition layout, application configuration, verification example and USB setup action.
 
 The firmware workflow builds each selected variant once from `firmware/bootloader/<target>-<size>mb/`. On main it publishes the bootloader binaries under an input-fingerprinted `bl-*` tag. Later runs reuse the published binaries when preparing a board with the same variant and build inputs. The shared builds use internal RAM.
 
-The board workflow combines the shared binaries with each board's partition table, and publishes board-facing assets under `firmware-<component>-<board>-v<version>`. USB setup includes the board's bootloader and application image. Its manifest pins both component tags.
+The board workflow combines the shared binaries with each board's partition table, and publishes board-facing assets under `firmware-<component>-<group>_<project>-v<version>`. Release filenames also use an underscore between the group and project. For example, the public setup URL is `/releases/m5stack/cardputer-adv/setup`. USB setup includes the board's bootloader and application image. Its manifest pins both component tags.
 
 ## Origin
 

@@ -8,7 +8,7 @@ with open("model.txt") as f:
     model, size = f.read().strip().split("\n")
 with open("main.py") as f:
     main = f.read()
-if board in ("sticks3", "atoms3r", "cores3", "papers3"):
+if board in ("m5stack/sticks3", "m5stack/atoms3r", "m5stack/cores3", "m5stack/papers3"):
     with open("input-model.py") as f:
         exec(f.read(), {})
     sys.exit(0)
@@ -64,7 +64,7 @@ class Time:
 
 sys.modules["time"] = Time
 
-if board in ("stopwatch", "paper-color", "stackchan", "cardputer-adv", "paper-diy"):
+if board in ("m5stack/stopwatch", "m5stack/paper-color", "m5stack/stackchan", "m5stack/cardputer-adv", "m5stack/paper-diy"):
     for signal in (None, -57):
         with open("panel-model.py") as f:
             exec(f.read(), {"main": main, "board": board})

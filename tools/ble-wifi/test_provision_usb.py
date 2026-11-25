@@ -51,8 +51,8 @@ class UsbTests(unittest.TestCase):
             os.close(master)
             os.close(slave)
 
-    def test_legacy_and_error_receipts(self):
-        for reply, expected in [(b"OKL-PROVISION-OK\n", None), (b"OKL-PROVISION-ERR invalid\n", RuntimeError)]:
+    def test_registration_without_address_and_registration_failure(self):
+        for reply, expected in [(b"OKL-PROVISION-OK {}\n", None), (b"OKL-PROVISION-ERR invalid\n", RuntimeError)]:
             port = Mock()
             port.read_until.return_value = reply
             registration = {"hub": "example.org", "token": "test", "ble_secret": "test"}
