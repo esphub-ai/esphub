@@ -32,7 +32,7 @@ First-time setup requires a physical USB connection. If you are running remotely
 
 - **Inspect.** Use `devices.list` and `devices.get` for identity and state. Use `firmware.get` for board-specific downloads and install guidance.
 - **Manage Wi-Fi.** Start with `wifi.list`. Use `wifi.scan`, `wifi.add`, or `wifi.remove` as needed. For an offline board, follow its local provisioning instructions.
-- **Develop a board application.** Choose an example by its capability description in `boards.search`. For a newly registered board, use the exact `setup_example` returned by `devices.create`. Check out its pinned source, open the entrypoint and run the build command. Upload custom binaries with `ota.prepare_upload`. Enter Bootloader mode, install with `ota.install` (kind `app` or `bootloader`), follow `commands.get` and confirm the firmware version after reboot.
+- **Develop a board application.** Choose an example by its capability description in `boards.search`. For a newly registered board, use the exact `setup_example` returned by `devices.create`. Check out its pinned source, open the entrypoint and run the build command. Upload custom binaries with `ota.prepare_upload`. Enter Bootloader mode with `bootloader.enter`, install with `ota.install` (kind `app` or `bootloader`), follow `commands.get` and confirm the firmware version after reboot.
 - **Reset, rotate, or delete.** Confirm the target and effect with the user before `devices.reset`, `devices.reissue`, or `devices.delete`. A reset can require USB setup again, and deletion revokes device access.
 
 A queued command is an acknowledgement. Report success only after checking the result and any expected device state.
