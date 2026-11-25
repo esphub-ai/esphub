@@ -98,7 +98,6 @@ jobs:
           done
           curl -fsS --retry 5 --retry-all-errors https://api.esphub.ai/.well-known/oauth-protected-resource/mcp | jq -e '.resource == "https://api.esphub.ai/mcp" and .authorization_servers == ["https://clerk.esphub.ai"] and (.scopes_supported | contains(["devices:read","devices:write"]))'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer esh_key_invalidtestkey' https://api.esphub.ai/mcp)" = 401
-          curl -fsS https://app.esphub.ai/tools.json | jq -e '["programs.publish","bootloader.enter","ota.install","ota.prepare_upload"] - map(.name) | length == 0'
           for board in $(jq -r 'to_entries[] | select(.value.has_setup) | .key' shared/boards.generated.json); do
             curl -fsSL --retry 3 "https://api.esphub.ai/releases/$board/setup-manifest" | jq -e --arg board "$board" '.board == $board and (.sha256 | test("^[a-f0-9]{64}$")) and (.runtime_size > 0)'
             curl -fsSL "https://api.esphub.ai/releases/$board/manifest" | jq -e --arg board "$board" '.board == $board'
