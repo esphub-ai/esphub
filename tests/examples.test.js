@@ -1,43 +1,51 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { readBoardCatalog } from "../firmware-source/scripts/board-catalog.mjs";
 import { updateSources } from "../services/api/src/update-sources.js";
 import { operate, validate } from "../services/api/src/operations.js";
-import { fixtureVersion, jsonBucket, setupRelease } from "./fixtures/setup-release.mjs";
+import { releaseUrl } from "../shared/identity.js";
+import { jsonBucket, setupRelease } from "./fixtures/setup-release.mjs";
 
-const { boards, sdk_version, revision } = await readBoardCatalog();
-test("every catalog example opens the matching pinned source and build instructions", () => {
-  for (const [id, board] of Object.entries(boards)) {
-    const result = updateSources({ ...board, id, source_revision: revision, sdk_version });
-    assert.ok(result.examples.some(e => e.id === result.default_example), id);
-    assert.equal(result.sources.sdk.version, sdk_version);
-    for (const example of result.examples) {
-      const directory = `firmware/board/${id}/examples/${example.id}`;
-      assert.ok(example.source_url.endsWith(`/tree/${revision}/${directory}`));
-      assert.ok(existsSync(`firmware-source/${directory}/${example.entrypoint}`));
-      assert.ok(example.build_guide_url.endsWith(`/blob/${revision}/docs/build-examples.md`));
-      assert.equal(example.build_command, `python3 scripts/build-example.py ${id} --example ${example.id}`);
-      assert.ok(example.description.trim());
-    }
+const { source, boards } = JSON.parse(await readFile(new URL("./fixtures/catalog.json", import.meta.url), "utf8"));
+const profiles = Object.fromEntries(boards.map((board) => [board.id,
+  { ...board, source_revision: source.revision, sdk_version: source.sdk_version, sdk_source_url: source.sdk_source_url, is_current: true }]));
+
+test("example and source links come from the publisher's catalog record", () => {
+  for (const profile of Object.values(profiles)) {
+    const result = updateSources(profile);
+    assert.equal(result.examples, profile.published_examples);
+    assert.ok(result.examples.some((e) => e.id === result.default_example), profile.id);
+    assert.deepEqual(result.sources, {
+      bootloader: { directory_url: profile.bootloader_source_url },
+      sdk: { version: source.sdk_version, directory_url: source.sdk_source_url },
+    });
+    assert.deepEqual(result.firmware_update, {
+      bootloader: { download_url: releaseUrl(profile.id, "ota") },
+      app: { download_url: releaseUrl(profile.id, "app") },
+    });
   }
 });
 
 test("registration returns the exact example from the immutable kit when the catalog moves ahead", async () => {
-  const id = "m5stack/stopwatch", board = boards[id];
-  const { files, manifest } = setupRelease(id, board, "a".repeat(40));
-  const profile = { ...board, id, source_revision: revision, sdk_version, setup_version: fixtureVersion };
+  const id = "m5stack/stopwatch", profile = profiles[id];
+  const current = profile.published_examples.find((e) => e.id === profile.default_example);
+  const kitExample = { ...current, source_url: "https://source.example/an-earlier-revision/" + current.id };
+  const { tag, files, assets, manifest } = setupRelease(id, profile, kitExample);
   const sql = async (query) => {
-    if (query.join("?").includes("INSERT INTO esphub.devices"))
+    const text = query.join("?");
+    if (text.includes("INSERT INTO esphub.devices"))
       return [{ id: "test-id", board: id, name: "Watch", kind: "physical" }];
-    return [profile];
+    if (text.includes("esphub.release_assets"))
+      return assets.filter((row) => row.asset === "setup-manifest");
+    return [{ ...profile, setup_tag: tag }];
   };
   const result = await operate({ sql, env: { FIRMWARE: jsonBucket(files) } }, "owner",
     "devices_create", { board: id, name: "Watch" });
   assert.match(result.token, /^eh_dev_/);
   assert.match(result.ble_secret, /^[a-f0-9]{64}$/);
   assert.deepEqual(result.setup_example, manifest.example);
-  assert.ok(result.setup_manifest.endsWith("?tag=" + manifest.tag));
+  assert.equal(result.setup_manifest, releaseUrl(id, "setup-manifest", tag));
+  assert.deepEqual(result.examples, profile.published_examples);
   assert.notEqual(result.examples[0].source_url, result.setup_example.source_url);
 });
 

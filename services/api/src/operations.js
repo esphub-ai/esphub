@@ -1,4 +1,3 @@
-import { releaseTag } from "../../../firmware-source/shared/firmware-releases.js";
 import { releaseUrl } from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
 import { newBleSecret, issueBle, normalizeBleAddress } from "./ble.js";
@@ -8,7 +7,7 @@ import { artifactBase, maxUploadBytes } from "./uploads.js";
 import { boardIdPattern, boardImageUrl, getBoard, searchBoards } from "./boards.js";
 import { updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
-import { latestReleaseTag, publishedAsset, releaseResponse } from "./releases.js";
+import { releaseFile, releaseResponse } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
 import { createVirtual, operateVirtual } from "./virtual-device.js";
 const strings = (...names) =>
@@ -329,12 +328,12 @@ export async function operate(c, owner, name, a) {
   if (name === "boards_search") return searchBoards(db, a.query);
   if (name === "devices_create_virtual") return createVirtual(db, owner);
   if (name === "devices_create") {
-    const [profile] = await db`SELECT b.*, r.version AS setup_version FROM esphub.board_profiles b
+    const [profile] = await db`SELECT b.*, r.tag AS setup_tag FROM esphub.board_profiles b
       LEFT JOIN esphub.firmware_releases r ON r.board = b.id AND r.kind = 'setup'
       WHERE b.id = ${a.board} AND b.is_current`;
     if (!profile) fail(400, "Unknown board");
-    if (!profile.setup_version) fail(404, "No published setup kit for this board");
-    const tag = releaseTag("setup", a.board, profile.setup_version);
+    if (!profile.setup_tag) fail(404, "No published setup kit for this board");
+    const tag = profile.setup_tag;
     const response = await releaseResponse(a.board, "setup-manifest", tag, db, c.env.FIRMWARE);
     const manifest = await response.json();
     if (manifest.board !== a.board || manifest.tag !== tag || !manifest.example?.source_url)
@@ -481,10 +480,10 @@ export async function operate(c, owner, name, a) {
     if (url?.startsWith(artifactBase)) {
       ({ size: imageSize } = await internal(c, d.id, "check-upload", { url, kind: a.kind }));
     } else if (!url || url.split("?")[0] === official) {
-      const tag = (url && new URL(url).searchParams.get("tag")) || await latestReleaseTag(db, d.board, a.kind);
-      const file = await publishedAsset(d.board, a.kind, asset, tag, c.env.FIRMWARE);
-      imageSize = file.size ?? (await c.env.FIRMWARE.head(file.key))?.size;
-      url = releaseUrl(d.board, asset, tag);
+      const tag = (url && new URL(url).searchParams.get("tag")) || undefined;
+      const file = await releaseFile(db, d.board, asset, tag);
+      imageSize = file.size ?? (await c.env.FIRMWARE.head(file.object_key))?.size;
+      url = releaseUrl(d.board, asset, file.tag);
     }
     if (a.kind === "app" && validLayout(info.layout) && imageSize > info.layout.app_size_bytes)
       fail(409, `Image ${imageSize} bytes, app slot ${info.layout.app_size_bytes}, maximum after resize ${maxAppSize(info.layout)}`);

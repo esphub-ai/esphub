@@ -2,7 +2,7 @@ name: Production
 on:
   push:
     branches: [main]
-    paths: ['services/**', 'migrations/**', 'shared/**', 'tests/**', 'package*.json', 'scripts/*.mjs', 'firmware-source', '.gitmodules', '.github/workflows/production.yml']
+    paths: ['services/**', 'migrations/**', 'shared/**', 'tests/**', 'package*.json', 'scripts/*.mjs', '.github/workflows/production.yml']
   pull_request:
   workflow_dispatch:
 permissions: {contents: read}
@@ -21,15 +21,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true
+          # The local gallery import reads its photos from a historical commit.
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with: {node-version: 24, cache: npm}
       - run: npm ci
       - run: sudo apt-get update -qq && sudo apt-get install -y mosquitto mosquitto-clients pkg-config libcjson-dev
       - run: npm run migrate && npm run migrate
-      - run: node firmware-source/scripts/publish-catalog.mjs --if-empty
-        env: {FIRMWARE_DATABASE_URL: "${{ env.MIGRATION_DATABASE_URL }}"}
+      - run: node scripts/seed-catalog.mjs
       - run: node scripts/migrate-board-gallery.mjs --local
       - run: npm test && npm run build && node scripts/local-e2e.mjs
       - run: npx wrangler deploy --dry-run -c services/api/wrangler.jsonc && npx wrangler deploy --dry-run -c services/web/wrangler.jsonc
@@ -52,7 +52,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
-        with: {submodules: true, persist-credentials: false}
+        with: {persist-credentials: false}
       - uses: actions/setup-node@v4
         with: {node-version: 24, cache: npm}
       - run: npm ci && npm run build
@@ -71,11 +71,9 @@ jobs:
           node scripts/ensure-bucket.mjs esphub-firmware
       - name: Migrate the production database
         run: npm run migrate
-      - name: Seed an empty board directory and migrate the original gallery
-        env: {FIRMWARE_DATABASE_URL: "${{ env.MIGRATION_DATABASE_URL }}"}
-        run: |
-          node firmware-source/scripts/publish-catalog.mjs --if-empty
-          node scripts/migrate-board-gallery.mjs --remote
+      # The esphub-firmware publisher owns the board catalog and release index.
+      - name: Migrate the original gallery
+        run: node scripts/migrate-board-gallery.mjs --remote
       - name: Deploy API and device broker
         run: |
           umask 077
