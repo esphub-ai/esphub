@@ -305,7 +305,8 @@ try {
     const upload = (body, headers) =>
       fetch(local(grant.upload_url), { method: "PUT", headers, body });
     assert.equal((await upload(file, {})).status, 403);
-    assert.equal((await upload(file.subarray(1), grant.headers)).status, 400);
+    const wrongLength = await upload(file.subarray(1), grant.headers);
+    assert.equal(wrongLength.status, 400, `${kind}: ${await wrongLength.text()}`);
     const response = await upload(file, grant.headers);
     assert.equal(response.status, 201, await response.clone().text());
     assert.equal((await response.json()).url, grant.url);

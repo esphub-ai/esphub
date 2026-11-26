@@ -76,8 +76,12 @@ export class Uploads {
     if (
       !request.body ||
       request.headers.get("Content-Length") !== String(row.size)
-    )
+    ) {
+      // The API forwards this stream to the Durable Object. Consume a rejected
+      // body without buffering it so the forwarding Worker can return the 400.
+      if (request.body) await request.body.pipeTo(new WritableStream()).catch(() => {});
       return error(400, "Send the file bytes with the declared Content-Length");
+    }
     return this.save(row, request.body);
   }
 
