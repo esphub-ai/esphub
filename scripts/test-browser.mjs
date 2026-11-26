@@ -86,6 +86,14 @@ try {
   await page.route(origin + "/signed-out", (route) =>
     route.fulfill({ contentType: "text/html", body: "Signed out" }),
   );
+  // Route the CDN hostname to the local Worker's real R2 and Images bindings.
+  const photoRequests = [];
+  await page.route("https://cdn.esphub.ai/boards/**", async (route) => {
+    const url = new URL(route.request().url());
+    photoRequests.push(url);
+    const response = await page.request.get(origin + "/backend" + url.pathname + url.search);
+    await route.fulfill({ response });
+  });
   await page.goto(origin);
   await page.getByRole("heading", { name: "Vibe OTA your ESP32." }).waitFor();
   await page
@@ -95,7 +103,7 @@ try {
   assert.equal(skill.status(), 200);
   assert.match(await skill.text(), /Client ID Metadata Document \(CIMD\)/);
   await page.getByRole("button", { name: "Connect EspHub" }).click();
-  await page.getByRole("menuitem", { name: "Cursor", exact: true }).click();
+  await page.getByRole("button", { name: "Cursor", exact: true }).click();
   const connect = page.getByRole("dialog", { name: "Connect EspHub" });
   await connect.getByText(/Paste this prompt into Cursor/).waitFor();
   await connect.getByRole("button", { name: "Copy prompt" }).click();
@@ -105,16 +113,39 @@ try {
   );
   await page.keyboard.press("Escape");
   const gallery = page.getByRole("region", { name: "Board gallery" });
-  await gallery.getByRole("button", { name: /Browse boards/ }).click();
-  const picker = page.getByRole("dialog", { name: "ESP32 boards" });
-  await picker
-    .getByRole("button", { name: "m5stack/stopwatch", exact: true })
-    .click();
-  await gallery
-    .getByRole("button", {
-      name: "Browse boards, current board m5stack/stopwatch",
-    })
-    .waitFor();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const boards = await (await page.request.get(origin + "/backend/boards/gallery")).json();
+  const selected = boards.find(({ id }) => id === "m5stack/stopwatch");
+  assert.ok(selected);
+  assert.equal(await gallery.locator(".lane-cycle:not(.lane-copy) button").count(), boards.length);
+  await page.getByRole("link", { name: `Explore ${boards.length} boards` }).click();
+  const tile = gallery.getByRole("button", { name: selected.model, exact: true });
+  await tile.scrollIntoViewIfNeeded();
+  const thumbnail = await tile.locator("img").evaluate(async (img) => {
+    await img.decode();
+    const source = new Image();
+    source.src = img.currentSrc;
+    await source.decode();
+    return { src: source.src, width: source.naturalWidth, height: source.naturalHeight };
+  });
+  const requestedWidth = Number(new URL(thumbnail.src).searchParams.get("width"));
+  assert.equal(new URL(thumbnail.src).origin, "https://cdn.esphub.ai");
+  assert.ok(requestedWidth > 0 && requestedWidth <= 320);
+  assert.equal(Math.max(thumbnail.width, thumbnail.height), requestedWidth);
+  assert.ok(photoRequests.length > 0 && photoRequests.every((url) => url.searchParams.has("width")));
+  await tile.click();
+  const product = page.getByRole("dialog", { name: selected.name, exact: true });
+  await product.getByRole("img", { name: selected.model }).evaluate((img) => img.decode());
+  assert.ok(photoRequests.some((url) => url.href === selected.image_url));
+  assert.equal(await product.getByRole("link", { name: "Product page" }).getAttribute("href"), selected.product_url);
+  await product.getByRole("button", { name: "Connect to my coding agent" }).click();
+  await page.getByRole("button", { name: "Codex", exact: true }).click();
+  await connect.getByRole("button", { name: "Copy prompt" }).click();
+  assert.ok((await page.evaluate(() => navigator.clipboard.readText())).includes(selected.id));
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1280, height: 640 });
+  await page.getByRole("link", { name: "Privacy Policy" }).scrollIntoViewIfNeeded();
+  assert.ok(await gallery.locator(".wall-row").first().evaluate((row) => row.getBoundingClientRect().bottom <= 0));
   for (const [path, accountPath] of [
     ["/sign-in", "/sign-in"],
     ["/sign-up", "/sign-up"],

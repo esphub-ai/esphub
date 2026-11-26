@@ -39,7 +39,7 @@ export default {
     out.headers.set("X-Content-Type-Options", "nosniff");
     out.headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self' https://clerk.esphub.ai https://challenges.cloudflare.com https://*.protect.clerk.com; frame-src 'self' https://challenges.cloudflare.com https://*.protect.clerk.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://clerk.esphub.ai https://api.esphub.ai https://*.protect.clerk.com:*; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+      "default-src 'self'; script-src 'self' https://clerk.esphub.ai https://challenges.cloudflare.com https://*.protect.clerk.com; frame-src 'self' https://challenges.cloudflare.com https://*.protect.clerk.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://clerk.esphub.ai https://api.esphub.ai https://*.protect.clerk.com:*; img-src 'self' https://cdn.esphub.ai; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
     );
     return out;
   },
