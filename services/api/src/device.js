@@ -1,4 +1,4 @@
-import { validLayout } from "./layout.js";
+import { maxAppSize, validLayout } from "./layout.js";
 import { normalizeBleAddress } from "./ble.js";
 import { withDatabase } from "./database.js";
 import { dispatch, enqueue, receipt, retryDue, nextRetry } from "./commands.js";
@@ -276,16 +276,33 @@ export class Device extends DurableObject {
           m.data?.transfer_id,
         )
       ) {
-        const operation = m.data.kind === "resize_app" ? "resize_app" : "install";
-        if (operation === "resize_app" && (d.boot_info?.role !== "bootloader" ||
-            (m.name === "install.done" && !validLayout(m.data))))
-          return Response.json({ error: "Invalid resize receipt" }, { status: 400 });
-        if (operation === "resize_app" && m.name === "install.done") await saveLayout(m.data);
-        // The bootloader can resume a saved transfer in a subsequent boot.
-        await db`UPDATE esphub.device_commands SET state=${m.name === "install.done" ? "succeeded" : "failed"},
-          result=${JSON.stringify(m.data)}::text::jsonb,args='{}',next_wake=NULL
-          WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation=${operation} AND (operation<>'resize_app' OR dispatched_boot<>${pid})
-          AND state IN ('dispatched','unknown')`;
+        let succeeded = m.name === "install.done";
+        const resizing = m.data.kind === "resize_app";
+        let outcome = m.data;
+        if (!succeeded && m.data.kind === "app" && m.data.error === "Download exceeds target size" &&
+            validLayout(d.boot_info?.layout)) {
+          const { app_size_bytes } = d.boot_info.layout;
+          const max_app_size_bytes = maxAppSize(d.boot_info.layout);
+          outcome = { ...m.data, app_size_bytes, max_app_size_bytes, image_size_at_least: app_size_bytes + 1 };
+        }
+        if (resizing) {
+          if (d.boot_info?.role !== "bootloader")
+            return Response.json({ error: "Launcher required" }, { status: 409 });
+          const [command] = await db`SELECT result,dispatched_boot FROM esphub.device_commands
+            WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation='resize_app'`;
+          if (!command || command.dispatched_boot === pid) return Response.json({});
+          if (succeeded && (!validLayout(m.data) ||
+              command.result?.app_size_bytes !== m.data.app_size_bytes ||
+              command.result?.data_size_bytes !== m.data.data_size_bytes)) {
+            succeeded = false;
+            outcome = { ...m.data, error: "Active layout does not match the requested capacities" };
+          }
+        }
+        const updated = await db`UPDATE esphub.device_commands SET state=${succeeded ? "succeeded" : "failed"},
+          result=${JSON.stringify(outcome)}::text::jsonb,args='{}',next_wake=NULL
+          WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation=${resizing ? "resize_app" : "install"}
+          AND state IN ('dispatched','unknown') RETURNING id`;
+        if (resizing && succeeded && updated.length) await saveLayout(m.data);
         await dispatch(db, this.env, device);
       }
       if (typeof m.name === "string")

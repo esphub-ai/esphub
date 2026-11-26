@@ -7,16 +7,21 @@ const rootCommit = Uint8Array.from(
 
 export const appAlignment = 64 * 1024;
 export const maxFlashBytes = 32 * 1024 * 1024;
+export const minLittleFSBytes = 2 * 4096;
+
+export function maxAppSize({ app_size_bytes, data_size_bytes }) {
+  return Math.floor((app_size_bytes + data_size_bytes - minLittleFSBytes) / appAlignment) * appAlignment;
+}
 
 export function validLayout(layout) {
   if (!layout) return false;
   const { app_size_bytes: app, data_size_bytes: data } = layout;
   return Number.isSafeInteger(app) && app >= appAlignment && app % appAlignment === 0 &&
-    Number.isSafeInteger(data) && data >= 8192 && data % 4096 === 0 && app + data <= maxFlashBytes;
+    Number.isSafeInteger(data) && data >= minLittleFSBytes && data % 4096 === 0 && app + data <= maxFlashBytes;
 }
 
 export function emptyLittleFS(size) {
-  if (!Number.isSafeInteger(size) || size < 8192 || size > maxFlashBytes || size % 4096)
+  if (!Number.isSafeInteger(size) || size < minLittleFSBytes || size > maxFlashBytes || size % 4096)
     throw new RangeError("Invalid LittleFS capacity");
   const bytes = new Uint8Array(256).fill(0xff);
   const view = new DataView(bytes.buffer);

@@ -38,6 +38,8 @@ export async function claimCommand(db, device, boot, reconnect = false) {
     WHERE q.state='dispatched' OR (q.state='queued' AND q.expires_at>now() AND (q.boot_id IS NULL OR q.boot_id=${boot}))
     ORDER BY q.seq LIMIT 1
   ) UPDATE esphub.device_commands q SET state='dispatched',dispatched_boot=${boot},
+    result=CASE WHEN operation='resize_app' THEN jsonb_build_object(
+      'app_size_bytes',args->'app_size_bytes','data_size_bytes',args->'data_size_bytes') ELSE result END,
     delivery_deadline=COALESCE(delivery_deadline,now()+CASE WHEN operation IN ('install','resize_app') THEN interval '10 minutes' ELSE interval '90 seconds' END),
     next_wake=least(delivery_deadline,now()+interval '15 seconds')
     FROM first WHERE q.id=first.id AND (q.state='queued' OR
@@ -77,11 +79,14 @@ export async function dispatch(
 }
 
 export async function receipt(db, device, boot, frame) {
-  if (frame.ok && frame.data?.rebooting === true) {
-    // A table write is acknowledged by the subsequent boot's durable install event.
-    const [resizing] = await db`SELECT state FROM esphub.device_commands WHERE device_id=${device}
+  if (frame.ok && (frame.data?.rebooting === true || frame.data?.unchanged === true)) {
+    const [resize] = await db`SELECT state,result FROM esphub.device_commands WHERE device_id=${device}
       AND id=${frame.id} AND dispatched_boot=${boot} AND operation='resize_app'`;
-    if (resizing) return resizing;
+    if (resize && (resize.result?.app_size_bytes !== frame.data.app_size_bytes ||
+        resize.result?.data_size_bytes !== frame.data.data_size_bytes))
+      fail(409, "Resize receipt does not match the requested layout");
+    // A real boundary change is complete only after the next boot reads its table.
+    if (resize && frame.data.rebooting === true) return resize;
   }
   const state = frame.ok ? "succeeded" : "failed";
   const result = JSON.stringify(
@@ -94,6 +99,7 @@ export async function receipt(db, device, boot, frame) {
     WHERE device_id=${device} AND id=${frame.id} AND dispatched_boot=${boot}
     AND state IN ('dispatched','unknown') AND receipt_hash IS NULL
     AND (operation<>'install' OR NOT ${frame.ok})
+    AND (operation<>'resize_app' OR NOT ${frame.ok} OR ${frame.data?.unchanged === true})
     RETURNING state`;
   if (row) return row;
   const [existing] =

@@ -3,12 +3,12 @@ import { releaseUrl } from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
 import { newBleSecret, issueBle, normalizeBleAddress } from "./ble.js";
 import { connectedSince, publishDownlink } from "./iot.js";
-import { appAlignment, emptyLittleFS, maxFlashBytes, validLayout } from "./layout.js";
+import { appAlignment, emptyLittleFS, maxAppSize, maxFlashBytes, minLittleFSBytes, validLayout } from "./layout.js";
 import { artifactBase, maxUploadBytes } from "./uploads.js";
 import { boardIdPattern, boardImageUrl, getBoard, searchBoards } from "./boards.js";
 import { updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
-import { latestReleaseTag, releaseResponse } from "./releases.js";
+import { latestReleaseTag, publishedAsset, releaseResponse } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
 import { createVirtual, operateVirtual } from "./virtual-device.js";
 const strings = (...names) =>
@@ -148,6 +148,8 @@ const defs = [
       ...id,
       kind: otaKind,
       url: { type: "string", maxLength: 1024 },
+      image_size_bytes: { type: "integer", minimum: 1, maximum: 0xffffffff,
+        description: "Byte length of a third-party HTTPS image, if known. EspHub measures its own uploads and releases." },
     },
   ],
   [
@@ -201,7 +203,7 @@ export const tools = defs.map(
         ...(queueable(name) ? strings("request_id") : {}),
       },
       required: Object.keys(properties).filter(
-        (k) => name === "logs.read" ? k === "device_id" : !["password", "url", "query", "erase_littlefs"].includes(k),
+        (k) => name === "logs.read" ? k === "device_id" : !["password", "url", "query", "erase_littlefs", "image_size_bytes"].includes(k),
       ),
     },
   }),
@@ -462,7 +464,7 @@ export async function operate(c, owner, name, a) {
       fail(409, "Launcher layout unavailable. Update the Launcher or request firmware.get and wait for its status receipt.");
     const { app_size_bytes: current, data_size_bytes: filesystem } = info.layout;
     const data = current + filesystem - a.app_size_bytes;
-    if (data < 8192) fail(400, "Target exceeds available app and LittleFS capacity");
+    if (data < minLittleFSBytes) fail(400, "Target exceeds available app and LittleFS capacity");
     if (a.app_size_bytes !== current && a.erase_littlefs !== true)
       fail(400, "Changing the app slot erases LittleFS. Set erase_littlefs=true to authorize.");
     return queue("resize_app", {
@@ -473,13 +475,19 @@ export async function operate(c, owner, name, a) {
   if (name === "ota.install") {
     if (info?.role !== "bootloader")
       fail(409, "Enter EspHub Bootloader mode first using bootloader.enter");
-    let url = a.url, imageSize;
-    if (!url) {
-      const tag = await latestReleaseTag(db, d.board, a.kind);
-      url = releaseUrl(d.board, a.kind === "bootloader" ? "ota" : "app", tag);
-    } else if (url.startsWith(artifactBase)) {
+    const asset = a.kind === "bootloader" ? "ota" : "app";
+    const official = releaseUrl(d.board, asset);
+    let url = a.url, imageSize = a.image_size_bytes;
+    if (url?.startsWith(artifactBase)) {
       ({ size: imageSize } = await internal(c, d.id, "check-upload", { url, kind: a.kind }));
+    } else if (!url || url.split("?")[0] === official) {
+      const tag = (url && new URL(url).searchParams.get("tag")) || await latestReleaseTag(db, d.board, a.kind);
+      const file = await publishedAsset(d.board, a.kind, asset, tag, c.env.FIRMWARE);
+      imageSize = file.size ?? (await c.env.FIRMWARE.head(file.key))?.size;
+      url = releaseUrl(d.board, asset, tag);
     }
+    if (a.kind === "app" && validLayout(info.layout) && imageSize > info.layout.app_size_bytes)
+      fail(409, `Image ${imageSize} bytes, app slot ${info.layout.app_size_bytes}, maximum after resize ${maxAppSize(info.layout)}`);
     const args = {
       url, kind: a.kind, transfer_id: key, ...(imageSize ? { image_size: imageSize } : {}),
     };

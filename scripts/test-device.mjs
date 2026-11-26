@@ -576,15 +576,18 @@ try {
   await assert.rejects(op("ota.resize_app", { ...grow, erase_littlefs: false }), /erases LittleFS/);
   await assert.rejects(op("ota.resize_app", { ...grow, app_size_bytes: 0x600000 }), /exceeds available/);
 
-  const request = await op("ota.resize_app", grow);
+  const growRequest = await op("ota.resize_app", grow);
   const resize = await mcu.nextCommand();
-  assert.equal(resize.id, request.command_id);
+  assert.equal(resize.id, growRequest.command_id);
   assert.equal(resize.op, "resize_app");
   assert.equal(resize.args.data_size_bytes, largerLayout.data_size_bytes);
   assert.equal(Buffer.from(resize.args.empty_fs, "base64").length, 256);
   assert.equal(resize.args.transfer_id, grow.request_id);
   await mcu.send({ t: "res", id: resize.id, ok: true, data: { ...largerLayout, rebooting: true } });
   assert.equal((await result(resize.id)).state, "dispatched");
+  await mcu.send({ t: "event", name: "install.done", data: { ...largerLayout, kind: "resize_app", transfer_id: grow.request_id } });
+  assert.equal((await result(resize.id)).state, "dispatched");
+  assert.deepEqual((await op("devices.get", id)).info.layout, originalLayout);
   await mcu.hello({ role: "bootloader" });
   const confirmed = { ...largerLayout, kind: "resize_app", transfer_id: grow.request_id };
   await mcu.send({ t: "event", name: "install.done", data: confirmed });
@@ -596,7 +599,7 @@ try {
   await op("ota.resize_app", { ...id, app_size_bytes: largerLayout.app_size_bytes });
   const same = await mcu.nextCommand();
   assert.equal(same.args.erase_littlefs, false);
-  await mcu.send({ t: "res", id: same.id, ok: true, data: largerLayout });
+  await mcu.send({ t: "res", id: same.id, ok: true, data: { ...largerLayout, unchanged: true } });
   assert.equal((await result(same.id)).state, "succeeded");
   await op("ota.resize_app", { ...id, app_size_bytes: originalLayout.app_size_bytes, erase_littlefs: true });
   const shrink = await mcu.nextCommand();
@@ -604,6 +607,19 @@ try {
   await mcu.send({ t: "res", id: shrink.id, ok: false, error: "Installed app exceeds target" });
   assert.equal((await result(shrink.id)).state, "failed");
   assert.deepEqual((await op("devices.get", id)).info.layout, largerLayout);
+  await assert.rejects(op("ota.install", { ...id, kind: "app", url: "https://firmware.example/test.bin",
+    image_size_bytes: 5242881 }), /Image 5242881 bytes, app slot 5242880, maximum after resize 5570560/);
+  // A third-party stream without a known length still reports usable device bounds.
+  await op("ota.install", { ...id, kind: "app", url: "https://firmware.example/test.bin" });
+  const streamed = await mcu.nextCommand();
+  await mcu.send({ t: "event", name: "install.failed", data: {
+    kind: "app", transfer_id: streamed.args.transfer_id, error: "Download exceeds target size",
+  } });
+  const tooLarge = await result(streamed.id);
+  assert.equal(tooLarge.result.app_size_bytes, largerLayout.app_size_bytes);
+  assert.equal(tooLarge.result.max_app_size_bytes, 0x550000);
+  assert.equal(tooLarge.result.image_size_at_least, largerLayout.app_size_bytes + 1);
+
   await op("devices.reissue", id);
   assert.equal(
     (
