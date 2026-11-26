@@ -29,16 +29,16 @@ import logo from "./assets/esphub-logo-light.svg";
 const prompts = {
   manage: `Connect to EspHub MCP at ${mcpEndpoint}. Use CIMD OAuth with devices:read and devices:write as needed.
 
-1. Use devices.list to list my physical devices and their online status. Ask which device I want to manage and what I want to do.
-2. Use devices.get for details. For Wi-Fi, start with wifi.list and use wifi.scan, wifi.add, or wifi.remove as needed.
-3. Pick an example from boards.search or use the setup_example returned by devices.create. Edit its pinned source and build the app. For custom firmware, upload the binary with ota.prepare_upload. Enter Bootloader mode with bootloader.enter, call ota.install with kind app or bootloader, and verify the receipt and firmware version after reboot.
+1. Use devices_list to list my physical devices and their online status. Ask which device I want to manage and what I want to do.
+2. Use devices_get for details. For Wi-Fi, start with wifi_list and use wifi_scan, wifi_add, or wifi_remove as needed.
+3. Pick an example from boards_search or use the setup_example returned by devices_create. Edit its pinned source and build the app. For custom firmware, upload the binary with ota_prepare_upload. Enter Bootloader mode with bootloader_enter, call ota_install with kind app or bootloader, and verify the receipt and firmware version after reboot.
    In Launcher mode, use ota_resize_app to grow or shrink the app slot. Ask me before changing its size because this erases all LittleFS files.
-4. Use devices.reissue to replace USB credentials or devices.delete to remove a device. Confirm the target and effect with me first.`,
+4. Use devices_reissue to replace USB credentials or devices_delete to remove a device. Confirm the target and effect with me first.`,
   bind: `Connect to EspHub MCP at ${mcpEndpoint}. Use CIMD OAuth with devices:read and devices:write as needed.
 
-1. Ask me to connect my ESP32 over USB. Identify the manufacturer and model. Search the board ID with boards.search and pick the exact group/project ID and ask me to confirm it if it is unclear.
-2. Register the device with devices.create and follow the returned board-specific instructions for firmware, registration credentials, and Wi-Fi. Ask before erasing existing data. Keep the device credentials private.
-3. Use devices.get to check the registered device. Report it as online only when online is true. If setup stalls, tell me which step needs attention.`,
+1. Ask me to connect my ESP32 over USB. Identify the manufacturer and model. Search the board ID with boards_search and pick the exact group/project ID and ask me to confirm it if it is unclear.
+2. Register the device with devices_create and follow the returned board-specific instructions for firmware, registration credentials, and Wi-Fi. Ask before erasing existing data. Keep the device credentials private.
+3. Use devices_get to check the registered device. Report it as online only when online is true. If setup stalls, tell me which step needs attention.`,
 };
 
 function PromptDialog({
@@ -208,7 +208,7 @@ function Workspace({ clerk }: { clerk: Clerk }) {
         const token = await clerk.session?.getToken();
         if (controller.signal.aborted) return;
         if (!token) return signIn();
-        const response = await fetch("/backend/operations/devices.list", {
+        const response = await fetch("/backend/operations/devices_list", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

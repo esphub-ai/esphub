@@ -22,7 +22,7 @@ test(
             ${tx.json(published)}, 'https://source.example/bootloader'
           FROM esphub.board_sources WHERE is_current`;
         const search = (query) =>
-          operate({ sql: tx }, null, "boards.search", { query });
+          operate({ sql: tx }, null, "boards_search", { query });
         const [preview] = await search(key.slice(0, 18).toUpperCase());
         assert.equal(preview.id, id);
         assert.deepEqual(preview.firmware, {});
@@ -52,7 +52,7 @@ test(
         await tx`DELETE FROM esphub.firmware_releases WHERE board = ${id}`;
         await tx`DELETE FROM esphub.boards WHERE id = ${id}`;
         await assert.rejects(
-          operate({ sql: tx }, null, "devices.create", {
+          operate({ sql: tx }, null, "devices_create", {
             name: "Unknown",
             board: id,
           }),

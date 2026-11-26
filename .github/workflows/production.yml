@@ -34,7 +34,7 @@ jobs:
       - run: npm test && npm run build && node scripts/local-e2e.mjs
       - run: npx wrangler deploy --dry-run -c services/api/wrangler.jsonc && npx wrangler deploy --dry-run -c services/web/wrangler.jsonc
   deploy:
-    if: github.repository == 'okou-ai/esphub' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.repository == 'esphub-ai/esphub' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: verify
     runs-on: ubuntu-latest
     concurrency: {group: esphub-production, cancel-in-progress: false}

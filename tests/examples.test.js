@@ -40,7 +40,7 @@ test("registration returns the exact example from the immutable kit when the cat
     return [{ ...profile, setup_tag: tag }];
   };
   const result = await operate({ sql, env: { FIRMWARE: jsonBucket(files) } }, "owner",
-    "devices.create", { board: id, name: "Watch" });
+    "devices_create", { board: id, name: "Watch" });
   assert.match(result.token, /^eh_dev_/);
   assert.match(result.ble_secret, /^[a-f0-9]{64}$/);
   assert.deepEqual(result.setup_example, manifest.example);
@@ -52,10 +52,10 @@ test("registration returns the exact example from the immutable kit when the cat
 test("OTA accepts either the published app or bootloader or an explicit HTTPS binary", () => {
   const device_id = crypto.randomUUID();
   for (const kind of ["bootloader", "app"]) {
-    validate("ota.install", { device_id, kind });
-    validate("ota.install", { device_id, kind, url: "https://example.com/app.bin" });
+    validate("ota_install", { device_id, kind });
+    validate("ota_install", { device_id, kind, url: "https://example.com/app.bin" });
     for (const url of ["http://example.com/a", "https://user:password@example.com/a",
       "https://example.com/a#b", "https://example.com/" + "a".repeat(1024)])
-      assert.throws(() => validate("ota.install", { device_id, kind, url }));
+      assert.throws(() => validate("ota_install", { device_id, kind, url }));
   }
 });
