@@ -18,7 +18,7 @@ test(
           SELECT ${id}, revision, 'Unlisted name', 'Test Model', 'esp32s3', 16, 'esp32s3-16mb', 'hello', '[{"id":"hello","description":"Print hello","entrypoint":"examples/hello/main.c","upstream":"https://example.com"}]'::jsonb, true
           FROM esphub.board_sources WHERE is_current`;
         const search = (query) =>
-          operate({ sql: tx }, null, "boards.search", { query });
+          operate({ sql: tx }, null, "boards_search", { query });
         const [preview] = await search(key.slice(0, 18).toUpperCase());
         assert.equal(preview.id, id);
         assert.deepEqual(preview.firmware, {});
@@ -46,7 +46,7 @@ test(
         await tx`DELETE FROM esphub.firmware_releases WHERE board = ${id}`;
         await tx`DELETE FROM esphub.boards WHERE id = ${id}`;
         await assert.rejects(
-          operate({ sql: tx }, null, "devices.create", {
+          operate({ sql: tx }, null, "devices_create", {
             name: "Unknown",
             board: id,
           }),

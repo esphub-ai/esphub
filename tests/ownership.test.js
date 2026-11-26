@@ -30,22 +30,22 @@ test(
           },
         };
         const args = { board: "m5stack/cardputer-adv", name: "Cardputer-Adv" },
-          d = await operate(c, users[0].id, "devices.create", args);
+          d = await operate(c, users[0].id, "devices_create", args);
         assert.equal(
           (await tx`SELECT token_hash FROM esphub.devices WHERE id=${d.id}`)[0]
             .token_hash,
           await digest(d.token),
         );
-        for (const n of ["devices.get", "devices.delete", "devices.reissue"])
+        for (const n of ["devices_get", "devices_delete", "devices_reissue"])
           await assert.rejects(
             operate(c, users[1].id, n, { device_id: d.id }),
             (e) => e.status === 404,
           );
-        const next = await operate(c, users[0].id, "devices.reissue", {
+        const next = await operate(c, users[0].id, "devices_reissue", {
           device_id: d.id,
         });
         assert.notEqual(next.token, d.token);
-        await operate(c, users[0].id, "devices.delete", { device_id: d.id });
+        await operate(c, users[0].id, "devices_delete", { device_id: d.id });
         throw rollback;
       }), error => error === rollback);
     } finally {

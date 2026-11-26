@@ -20,9 +20,9 @@ export async function createVirtual(db, owner) {
 }
 
 export async function operateVirtual(db, device, name, args) {
-  if (name === "firmware.get")
+  if (name === "firmware_get")
     return { kind: "virtual", process_id: device.boot_id, ...device.boot_info };
-  if (name === "devices.reboot") {
+  if (name === "devices_reboot") {
     const key = args.request_id ?? crypto.randomUUID();
     // Serialize distinct reboots before allocating their history sequence.
     const [boot] = await db`WITH target AS (

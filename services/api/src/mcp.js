@@ -24,13 +24,13 @@ const options = {
 export const authenticateMcp = mcpAuth(options);
 const writeAccess = requireAdditionalScopes("devices:write");
 const readTools = new Set([
-  "boards.search",
-  "commands.get",
-  "logs.read",
-  "devices.list",
-  "devices.get",
-  "wifi.list",
-  "firmware.get",
+  "boards_search",
+  "commands_get",
+  "logs_read",
+  "devices_list",
+  "devices_get",
+  "wifi_list",
+  "firmware_get",
 ]);
 export function installMcpMetadata(app) {
   const resource = protectedResourceMetadataHandler(options);
@@ -69,7 +69,7 @@ export async function serveMcp(c) {
             try {
               const result = await withDatabase(c.env, async (sql) => {
                 const owner =
-                  name === "boards.search"
+                  name === "boards_search"
                     ? undefined
                     : (await accountForSubject(sql, authInfo.extra.userId)).owner;
                 return operate({ env: c.env, sql }, owner, name, args);
