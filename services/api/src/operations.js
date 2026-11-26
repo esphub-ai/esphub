@@ -3,6 +3,7 @@ import { releaseUrl } from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
 import { newBleSecret, issueBle, normalizeBleAddress } from "./ble.js";
 import { connectedSince, publishDownlink } from "./iot.js";
+import { appAlignment, emptyLittleFS, maxFlashBytes, validLayout } from "./layout.js";
 import { artifactBase, maxUploadBytes } from "./uploads.js";
 import { boardIdPattern, boardImageUrl, getBoard, searchBoards } from "./boards.js";
 import { updateSources } from "./update-sources.js";
@@ -150,6 +151,12 @@ const defs = [
     },
   ],
   [
+    "ota.resize_app",
+    destructive,
+    "Grow or shrink the application slot in Launcher mode. Every size change destroys all LittleFS files. Set erase_littlefs=true only with permission to erase them. Same size is a no-op. A shrink must fit the installed image. Check commands.get for the verified layout after reboot.",
+    { ...id, app_size_bytes: { type: "integer", minimum: appAlignment, maximum: maxFlashBytes, multipleOf: appAlignment }, erase_littlefs: { type: "boolean" } },
+  ],
+  [
     "logs.set",
     additive,
     "Enable or disable remote ESP-IDF console output for this physical device's current boot. Capture starts off. Disabling restores local output and discards unsent bytes in the device's capture buffer. Uploaded logs remain available through logs.read. Check commands.get for the device receipt.",
@@ -194,7 +201,7 @@ export const tools = defs.map(
         ...(queueable(name) ? strings("request_id") : {}),
       },
       required: Object.keys(properties).filter(
-        (k) => name === "logs.read" ? k === "device_id" : !["password", "url", "query"].includes(k),
+        (k) => name === "logs.read" ? k === "device_id" : !["password", "url", "query", "erase_littlefs"].includes(k),
       ),
     },
   }),
@@ -208,6 +215,7 @@ function queueable(name) {
       "bootloader.enter",
       "bootloader.exit",
       "ota.install",
+      "ota.resize_app",
       "logs.set",
       "firmware.get",
     ].includes(name)
@@ -234,7 +242,7 @@ export function validate(name, a) {
       (p.type === "integer" &&
         (!Number.isSafeInteger(v) ||
           v < (p.minimum ?? 0) ||
-          v > (p.maximum ?? Number.MAX_SAFE_INTEGER)))
+          v > (p.maximum ?? Number.MAX_SAFE_INTEGER) || (p.multipleOf && v % p.multipleOf !== 0)))
     )
       fail(400, "Invalid " + k);
   }
@@ -257,6 +265,8 @@ export function validate(name, a) {
       (new TextEncoder().encode(a[k]).length > max || a[k].includes("\0"))
     )
       fail(400, "Invalid " + k);
+  if (name === "ota.prepare_upload" && a.kind === "bootloader" && a.size > 4 * 1024 * 1024)
+    fail(400, "Bootloader upload exceeds 4 MiB");
   if (a.url) {
     let u;
     try {
@@ -307,7 +317,8 @@ async function summary(c, d) {
         ? broker.software
         : softwareInventory(d.boot_info),
     process_id: d.boot_id,
-    info: d.boot_info ? { role: d.boot_info.role, net_mac: d.boot_info.net_mac ?? null } : null,
+    info: d.boot_info ? { role: d.boot_info.role, net_mac: d.boot_info.net_mac ?? null,
+      ...(validLayout(d.boot_info.layout) ? { layout: d.boot_info.layout } : {}) } : null,
   };
 }
 export async function operate(c, owner, name, a) {
@@ -444,18 +455,33 @@ export async function operate(c, owner, name, a) {
     if (info?.role !== "bootloader" || !d.boot_id) fail(409, "Device must be in bootloader mode");
     return queue("reboot", { target: "app" }, d.boot_id);
   }
+  if (name === "ota.resize_app") {
+    if (info?.role !== "bootloader" || !d.boot_id)
+      fail(409, "Enter EspHub Bootloader mode first using bootloader.enter");
+    if (!validLayout(info.layout))
+      fail(409, "Launcher layout unavailable. Update the Launcher or request firmware.get and wait for its status receipt.");
+    const { app_size_bytes: current, data_size_bytes: filesystem } = info.layout;
+    const data = current + filesystem - a.app_size_bytes;
+    if (data < 8192) fail(400, "Target exceeds available app and LittleFS capacity");
+    if (a.app_size_bytes !== current && a.erase_littlefs !== true)
+      fail(400, "Changing the app slot erases LittleFS. Set erase_littlefs=true to authorize.");
+    return queue("resize_app", {
+      app_size_bytes: a.app_size_bytes, data_size_bytes: data, erase_littlefs: a.erase_littlefs === true,
+      empty_fs: emptyLittleFS(data), transfer_id: key,
+    }, d.boot_id);
+  }
   if (name === "ota.install") {
     if (info?.role !== "bootloader")
       fail(409, "Enter EspHub Bootloader mode first using bootloader.enter");
-    let url = a.url;
+    let url = a.url, imageSize;
     if (!url) {
       const tag = await latestReleaseTag(db, d.board, a.kind);
       url = releaseUrl(d.board, a.kind === "bootloader" ? "ota" : "app", tag);
     } else if (url.startsWith(artifactBase)) {
-      await internal(c, d.id, "check-upload", { url, kind: a.kind });
+      ({ size: imageSize } = await internal(c, d.id, "check-upload", { url, kind: a.kind }));
     }
     const args = {
-      url, kind: a.kind, transfer_id: key,
+      url, kind: a.kind, transfer_id: key, ...(imageSize ? { image_size: imageSize } : {}),
     };
     return queue("install", args, d.boot_id);
   }

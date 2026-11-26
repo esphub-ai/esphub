@@ -11,7 +11,7 @@ export async function enqueue(
 ) {
   const db = c.sql;
   const fingerprint = await digest(
-    JSON.stringify([device, key, op, args, boot]),
+    JSON.stringify([device, key, op, args, op === "resize_app" ? null : boot]),
   );
   // The device row serializes sequence allocation.
   const [row] = await db`WITH numbered AS (
@@ -38,7 +38,7 @@ export async function claimCommand(db, device, boot, reconnect = false) {
     WHERE q.state='dispatched' OR (q.state='queued' AND q.expires_at>now() AND (q.boot_id IS NULL OR q.boot_id=${boot}))
     ORDER BY q.seq LIMIT 1
   ) UPDATE esphub.device_commands q SET state='dispatched',dispatched_boot=${boot},
-    delivery_deadline=COALESCE(delivery_deadline,now()+CASE WHEN operation='install' THEN interval '10 minutes' ELSE interval '90 seconds' END),
+    delivery_deadline=COALESCE(delivery_deadline,now()+CASE WHEN operation IN ('install','resize_app') THEN interval '10 minutes' ELSE interval '90 seconds' END),
     next_wake=least(delivery_deadline,now()+interval '15 seconds')
     FROM first WHERE q.id=first.id AND (q.state='queued' OR
       (q.state='dispatched' AND q.dispatched_boot=${boot} AND q.delivery_deadline>now()
@@ -77,6 +77,12 @@ export async function dispatch(
 }
 
 export async function receipt(db, device, boot, frame) {
+  if (frame.ok && frame.data?.rebooting === true) {
+    // A table write is acknowledged by the subsequent boot's durable install event.
+    const [resizing] = await db`SELECT state FROM esphub.device_commands WHERE device_id=${device}
+      AND id=${frame.id} AND dispatched_boot=${boot} AND operation='resize_app'`;
+    if (resizing) return resizing;
+  }
   const state = frame.ok ? "succeeded" : "failed";
   const result = JSON.stringify(
     frame.ok ? (frame.data ?? {}) : { error: String(frame.error ?? "Failed") },

@@ -86,7 +86,7 @@ A local build, a downloaded release or a file supplied by the user can all be in
      "$(jq -r '.upload_url' grant.json)"
    ```
 
-   HTTP 201 confirms the bytes are in private R2 storage. The write credential is valid for 15 minutes and can create one object. The device's download URL is valid for 24 hours. Firmware uploads accept up to 4 MiB. The binary must also fit the board's target partition.
+   HTTP 201 confirms the bytes are in private R2 storage. The write credential is valid for 15 minutes and can create one object. The device's download URL is valid for 24 hours. App uploads accept up to 32 MiB and bootloader uploads up to 4 MiB. The binary must also fit the board's target partition.
 3. Call `bootloader.enter` and wait for Bootloader mode. Pass the upload response's `url` (or an existing direct download URL), `kind` and `device_id` to `ota.install`. Follow the transfer receipt and next boot to verify installation.
 
 ## Console and authentication
@@ -108,3 +108,7 @@ Firmware builds, SDK version automation and release publication live in [esphub-
 ## Origin
 
 The board bring-up and bootloader SDK are adapted from the MIT-licensed e7h4n/esp-bootloader validation project; see [firmware/LICENSE](https://github.com/okou-ai/esphub-firmware/blob/main/firmware/LICENSE). The product reference is https://esphub-device-console.okou.app/. The Instrument Sans font license is included with the web assets.
+
+### Resize the application slot
+
+Enter Launcher mode and read the current boot's `devices.get.info.layout`. Call `ota.resize_app` with the device ID, `app_size_bytes` (a multiple of 65536) and `erase_littlefs: true` to move the boundary in either direction. This erases **all** LittleFS files, retains the installed app and provisioning, and reboots into the Launcher. Repeating the current size preserves files. If the current image is too large to shrink, install a smaller app first. Follow `commands.get` until the next boot confirms the requested capacities, then use ordinary `ota.install`. If power is interrupted while rewriting the primary table, recovery may require USB.

@@ -1,7 +1,7 @@
 // Device-private R2 staging. The download prefix is understood by the EspHub Bootloader.
 import { digest, token } from "./auth.js";
 export const artifactBase = "https://api.esphub.ai/api/device/artifacts/";
-export const maxUploadBytes = 4 * 1024 * 1024;
+export { maxFlashBytes as maxUploadBytes } from "./layout.js";
 const error = (status, message) =>
   Response.json({ error: message }, { status });
 const objectKey = (row) => `devices/${row.device}/artifacts/${row.id}`;
@@ -111,9 +111,9 @@ export class Uploads {
     });
   }
 
-  async ready(url, kind) {
+  async readySize(url, kind) {
     const row = this.row(url.slice(artifactBase.length));
-    return row?.kind === kind && !!(await this.bucket.head(objectKey(row)));
+    return row?.kind === kind ? (await this.bucket.head(objectKey(row)))?.size : null;
   }
 
   async expire() {

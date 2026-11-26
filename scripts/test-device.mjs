@@ -125,6 +125,7 @@ async function testVirtualDevice(read) {
     ["bootloader.enter", vid],
     ["bootloader.exit", vid],
     ["ota.install", { ...vid, kind: "app" }],
+    ["ota.resize_app", { ...vid, app_size_bytes: 0x400000 }],
   ]) {
     const result = await call("tools/call", { name, arguments: args });
     assert.equal(result.isError, true, name);
@@ -491,7 +492,7 @@ try {
     const queued = await op("ota.install", { ...id, kind, url, request_id: key });
     const cmd = await mcu.nextCommand();
     assert.equal(cmd.id, queued.command_id);
-    assert.deepEqual(cmd.args, { url, kind, transfer_id: key });
+    assert.deepEqual(cmd.args, { url, kind, transfer_id: key, image_size: 200000 });
     const ok = kind === "app";
     await mcu.send({ t: "event", name: ok ? "install.done" : "install.failed",
       data: { transfer_id: key, kind } });
@@ -564,6 +565,45 @@ try {
   await mcu.hello({ role: "app", fw: { name: "sample", version: "2.0.4" } });
   assert.equal((await result(exit.command_id)).state, "succeeded");
   await assert.rejects(op("bootloader.exit", id), /bootloader mode/);
+  const originalLayout = { app_size_bytes: 0x400000, data_size_bytes: 0x160000 };
+  const largerLayout = { app_size_bytes: 0x500000, data_size_bytes: 0x60000 };
+  const grow = { ...id, app_size_bytes: largerLayout.app_size_bytes, erase_littlefs: true, request_id: randomUUID() };
+  await assert.rejects(op("ota.resize_app", grow), /bootloader/i);
+  await mcu.hello({ role: "bootloader" });
+  await assert.rejects(op("ota.resize_app", grow), /layout unavailable/i);
+  await mcu.send({ t: "event", name: "ota.layout", data: originalLayout });
+  assert.deepEqual((await op("devices.get", id)).info.layout, originalLayout);
+  await assert.rejects(op("ota.resize_app", { ...grow, erase_littlefs: false }), /erases LittleFS/);
+  await assert.rejects(op("ota.resize_app", { ...grow, app_size_bytes: 0x600000 }), /exceeds available/);
+
+  const request = await op("ota.resize_app", grow);
+  const resize = await mcu.nextCommand();
+  assert.equal(resize.id, request.command_id);
+  assert.equal(resize.op, "resize_app");
+  assert.equal(resize.args.data_size_bytes, largerLayout.data_size_bytes);
+  assert.equal(Buffer.from(resize.args.empty_fs, "base64").length, 256);
+  assert.equal(resize.args.transfer_id, grow.request_id);
+  await mcu.send({ t: "res", id: resize.id, ok: true, data: { ...largerLayout, rebooting: true } });
+  assert.equal((await result(resize.id)).state, "dispatched");
+  await mcu.hello({ role: "bootloader" });
+  const confirmed = { ...largerLayout, kind: "resize_app", transfer_id: grow.request_id };
+  await mcu.send({ t: "event", name: "install.done", data: confirmed });
+  assert.deepEqual((await result(resize.id)).result, confirmed);
+  assert.equal((await result(resize.id)).state, "succeeded");
+  assert.deepEqual((await op("devices.get", id)).info.layout, largerLayout);
+  assert.equal((await op("ota.resize_app", grow)).command_id, resize.id);
+
+  await op("ota.resize_app", { ...id, app_size_bytes: largerLayout.app_size_bytes });
+  const same = await mcu.nextCommand();
+  assert.equal(same.args.erase_littlefs, false);
+  await mcu.send({ t: "res", id: same.id, ok: true, data: largerLayout });
+  assert.equal((await result(same.id)).state, "succeeded");
+  await op("ota.resize_app", { ...id, app_size_bytes: originalLayout.app_size_bytes, erase_littlefs: true });
+  const shrink = await mcu.nextCommand();
+  assert.equal(shrink.args.data_size_bytes, originalLayout.data_size_bytes);
+  await mcu.send({ t: "res", id: shrink.id, ok: false, error: "Installed app exceeds target" });
+  assert.equal((await result(shrink.id)).state, "failed");
+  assert.deepEqual((await op("devices.get", id)).info.layout, largerLayout);
   await op("devices.reissue", id);
   assert.equal(
     (

@@ -1,3 +1,4 @@
+import { validLayout } from "./layout.js";
 import { normalizeBleAddress } from "./ble.js";
 import { withDatabase } from "./database.js";
 import { dispatch, enqueue, receipt, retryDue, nextRetry } from "./commands.js";
@@ -123,10 +124,12 @@ export class Device extends DurableObject {
           throw error;
         }
       });
-    if (path === "/check-upload")
-      return (await this.uploads.ready(args.url, args.kind))
-        ? Response.json({ ready: true })
+    if (path === "/check-upload") {
+      const size = await this.uploads.readySize(args.url, args.kind);
+      return size
+        ? Response.json({ ready: true, size })
         : Response.json({ error: "Upload not ready" }, { status: 409 });
+    }
     if (path === "/uplink") {
       return this.ctx.blockConcurrencyWhile(() => this.uplink(args));
     }
@@ -137,7 +140,7 @@ export class Device extends DurableObject {
     const pid = m.boot_id;
     return withDatabase(this.env, async (db) => {
       const [d] =
-        await db`SELECT board,boot_id FROM esphub.devices WHERE id=${device}
+        await db`SELECT board,boot_id,boot_info FROM esphub.devices WHERE id=${device}
         AND cert_ready AND cert_id=${principal}`;
       if (!d)
         return Response.json({ error: "Stale enrollment" }, { status: 409 });
@@ -168,6 +171,8 @@ export class Device extends DurableObject {
           bootloader_version: m.bootloader_version,
           fw: m.fw,
           sdk_version: m.sdk_version,
+          ...(d.boot_id === pid && m.role === "bootloader" && validLayout(d.boot_info?.layout)
+            ? { layout: d.boot_info.layout } : {}),
         });
         const rows =
           await db`UPDATE esphub.devices SET boot_id=${pid},mqtt_connected_since=${session},boot_info=${info}::text::jsonb,
@@ -194,6 +199,13 @@ export class Device extends DurableObject {
       }
       if (d.boot_id !== pid || this.current()?.pid !== pid)
         return Response.json({ error: "Hello required" }, { status: 409 });
+      const saveLayout = async (layout) => {
+        if (d.boot_info?.role === "bootloader" && validLayout(layout)) {
+          const value = JSON.stringify({ app_size_bytes: layout.app_size_bytes, data_size_bytes: layout.data_size_bytes });
+          await db`UPDATE esphub.devices SET boot_info=jsonb_set(boot_info,'{layout}',${value}::text::jsonb)
+            WHERE id=${device} AND boot_id=${pid}`;
+        }
+      };
       if (m.t === "res") {
         if (
           typeof m.ok !== "boolean" ||
@@ -202,6 +214,12 @@ export class Device extends DurableObject {
           return Response.json({ error: "Invalid receipt" }, { status: 400 });
         try {
           await receipt(db, device, pid, m);
+          if (m.ok && Array.isArray(m.data?.partitions)) {
+            const app = m.data.partitions.find((p) => p?.label === "app");
+            const data = m.data.partitions.find((p) => p?.label === "data");
+            if (app && data && app.offset + app.size === data.offset)
+              await saveLayout({ app_size_bytes: app.size, data_size_bytes: data.size });
+          }
           await dispatch(db, this.env, device);
         } catch (e) {
           if (e.status === 409)
@@ -251,16 +269,23 @@ export class Device extends DurableObject {
       }
       if (m.t !== "event")
         return Response.json({ error: "Unknown frame" }, { status: 400 });
+      if (m.name === "ota.layout") await saveLayout(m.data);
       if (
         ["install.done", "install.failed"].includes(m.name) &&
         /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(
           m.data?.transfer_id,
         )
       ) {
+        const operation = m.data.kind === "resize_app" ? "resize_app" : "install";
+        if (operation === "resize_app" && (d.boot_info?.role !== "bootloader" ||
+            (m.name === "install.done" && !validLayout(m.data))))
+          return Response.json({ error: "Invalid resize receipt" }, { status: 400 });
+        if (operation === "resize_app" && m.name === "install.done") await saveLayout(m.data);
         // The bootloader can resume a saved transfer in a subsequent boot.
         await db`UPDATE esphub.device_commands SET state=${m.name === "install.done" ? "succeeded" : "failed"},
           result=${JSON.stringify(m.data)}::text::jsonb,args='{}',next_wake=NULL
-          WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation='install' AND state IN ('dispatched','unknown')`;
+          WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation=${operation} AND (operation<>'resize_app' OR dispatched_boot<>${pid})
+          AND state IN ('dispatched','unknown')`;
         await dispatch(db, this.env, device);
       }
       if (typeof m.name === "string")
