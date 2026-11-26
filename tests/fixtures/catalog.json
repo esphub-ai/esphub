@@ -1,0 +1,1569 @@
+{
+  "source": {
+    "revision": "ba0288a4943c487060559d1b7f476994c75e78e3",
+    "sdk_version": "8.0.0",
+    "sdk_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/components/eh_agent"
+  },
+  "boards": [
+    {
+      "id": "espressif/esp-mosaico",
+      "name": "ESP-Mosaico",
+      "model": "Espressif ESP-Mosaico",
+      "chip": "esp32s31",
+      "flash_mb": 16,
+      "bootloader": "esp32s31-16mb",
+      "preview": true,
+      "default_example": "hello-world",
+      "examples": [
+        {
+          "id": "hello-world",
+          "description": "Display Hello World and update a counter on touch. Modify the GSP scene and touch controller to build a new interface.",
+          "entrypoint": "examples/hello-world/project/main/main.c",
+          "upstream": "https://github.com/esp-mosaico/esp-mosaico-utils/tree/f58f4f9e5363f908b17a8e1ea8fdf4dd77561ef1/mosaico-tools/templates/hello_world"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "hello-world",
+          "description": "Display Hello World and update a counter on touch. Modify the GSP scene and touch controller to build a new interface.",
+          "upstream": "https://github.com/esp-mosaico/esp-mosaico-utils/tree/f58f4f9e5363f908b17a8e1ea8fdf4dd77561ef1/mosaico-tools/templates/hello_world",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/espressif/esp-mosaico/examples/hello-world",
+          "entrypoint": "project/main/main.c",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py espressif/esp-mosaico --example hello-world"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s31-16mb"
+    },
+    {
+      "id": "m5stack/airq",
+      "name": "Air Quality",
+      "model": "M5Stack Air Quality",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "hello-display",
+      "examples": [
+        {
+          "id": "hello-display",
+          "description": "Show Hello World on the e-paper display and serial console. Edit the text and font size.",
+          "entrypoint": "examples/hello-display/main.cpp",
+          "upstream": "https://docs.m5stack.com/en/arduino/m5air_quality/program"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "hello-display",
+          "description": "Show Hello World on the e-paper display and serial console. Edit the text and font size.",
+          "upstream": "https://docs.m5stack.com/en/arduino/m5air_quality/program",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/airq/examples/hello-display",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/airq --example hello-display"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/atom-psram",
+      "name": "Atom-PSRAM",
+      "model": "M5Stack Atom-PSRAM",
+      "chip": "esp32",
+      "flash_mb": 8,
+      "bootloader": "esp32-8mb",
+      "preview": false,
+      "default_example": "buttons",
+      "examples": [
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "entrypoint": "examples/buttons/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/atom-psram/examples/buttons",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/atom-psram --example buttons"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-8mb"
+    },
+    {
+      "id": "m5stack/atom-voices3r",
+      "name": "Atom VoiceS3R",
+      "model": "M5Stack Atom VoiceS3R",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "tones",
+      "examples": [
+        {
+          "id": "tones",
+          "description": "Play alternating high and low tones on the speaker. Change their frequencies and durations.",
+          "entrypoint": "examples/tones/main.cpp",
+          "upstream": "https://docs.m5stack.com/en/arduino/atom_echos3r/program"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "tones",
+          "description": "Play alternating high and low tones on the speaker. Change their frequencies and durations.",
+          "upstream": "https://docs.m5stack.com/en/arduino/atom_echos3r/program",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/atom-voices3r/examples/tones",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/atom-voices3r --example tones"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/atoms3",
+      "name": "AtomS3",
+      "model": "M5Stack AtomS3",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "display-shapes",
+      "examples": [
+        {
+          "id": "display-shapes",
+          "description": "Draw randomly positioned colored circles and rectangles on the LCD. Change the primitives and colors in the drawing loop.",
+          "entrypoint": "examples/display-shapes/main.cpp",
+          "upstream": "https://github.com/m5stack/M5AtomS3/blob/8accfe68d45ac8b31580e3067a0ecedfbf2d49c7/examples/Basics/display/display.ino"
+        },
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "entrypoint": "examples/buttons/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "display-shapes",
+          "description": "Draw randomly positioned colored circles and rectangles on the LCD. Change the primitives and colors in the drawing loop.",
+          "upstream": "https://github.com/m5stack/M5AtomS3/blob/8accfe68d45ac8b31580e3067a0ecedfbf2d49c7/examples/Basics/display/display.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/atoms3/examples/display-shapes",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/atoms3 --example display-shapes"
+        },
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/atoms3/examples/buttons",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/atoms3 --example buttons"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/atoms3-lite",
+      "name": "AtomS3-Lite",
+      "model": "M5Stack AtomS3-Lite",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "buttons",
+      "examples": [
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "entrypoint": "examples/buttons/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/atoms3-lite/examples/buttons",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/atoms3-lite --example buttons"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/atoms3r",
+      "name": "AtomS3R",
+      "model": "M5Stack AtomS3R",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "bar-graph",
+      "examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "entrypoint": "examples/bar-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/atoms3r/examples/bar-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/atoms3r --example bar-graph"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/atoms3r-cam",
+      "name": "AtomS3R-CAM",
+      "model": "M5Stack AtomS3R-CAM",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "camera-frame",
+      "examples": [
+        {
+          "id": "camera-frame",
+          "description": "Initialize the onboard camera and report the dimensions and byte count of each RGB565 frame. Read pixels in the capture loop to add image processing.",
+          "entrypoint": "examples/camera-frame/main.cpp",
+          "upstream": "https://github.com/m5stack/M5AtomS3/blob/8accfe68d45ac8b31580e3067a0ecedfbf2d49c7/examples/Basics/camera/camera.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "camera-frame",
+          "description": "Initialize the onboard camera and report the dimensions and byte count of each RGB565 frame. Read pixels in the capture loop to add image processing.",
+          "upstream": "https://github.com/m5stack/M5AtomS3/blob/8accfe68d45ac8b31580e3067a0ecedfbf2d49c7/examples/Basics/camera/camera.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/atoms3r-cam/examples/camera-frame",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/atoms3r-cam --example camera-frame"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/atoms3r-ext",
+      "name": "AtomS3R-Ext",
+      "model": "M5Stack AtomS3R-Ext",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "buttons",
+      "examples": [
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "entrypoint": "examples/buttons/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/atoms3r-ext/examples/buttons",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/atoms3r-ext --example buttons"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/atoms3u",
+      "name": "AtomS3U",
+      "model": "M5Stack AtomS3U",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "hello-serial",
+      "examples": [
+        {
+          "id": "hello-serial",
+          "description": "Print a greeting once per second on the serial console. The SDK connects in parallel using the saved Wi-Fi credentials.",
+          "entrypoint": "examples/hello-serial/main.cpp",
+          "upstream": "https://docs.m5stack.com/en/arduino/m5atoms3u/program"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "hello-serial",
+          "description": "Print a greeting once per second on the serial console. The SDK connects in parallel using the saved Wi-Fi credentials.",
+          "upstream": "https://docs.m5stack.com/en/arduino/m5atoms3u/program",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/atoms3u/examples/hello-serial",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/atoms3u --example hello-serial"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/basic-v27",
+      "name": "Basic v2.7",
+      "model": "M5Stack Basic v2.7",
+      "chip": "esp32",
+      "flash_mb": 16,
+      "bootloader": "esp32-16mb",
+      "preview": false,
+      "default_example": "scroll-text",
+      "examples": [
+        {
+          "id": "scroll-text",
+          "description": "Scroll multilingual text on the display with an offscreen canvas. Replace the string or adjust the font and scroll speed.",
+          "entrypoint": "examples/scroll-text/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/LongTextScroll/LongTextScroll.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "scroll-text",
+          "description": "Scroll multilingual text on the display with an offscreen canvas. Replace the string or adjust the font and scroll speed.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/LongTextScroll/LongTextScroll.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/basic-v27/examples/scroll-text",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/basic-v27 --example scroll-text"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+    },
+    {
+      "id": "m5stack/capsule",
+      "name": "Capsule",
+      "model": "M5Stack Capsule",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "buttons",
+      "examples": [
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "entrypoint": "examples/buttons/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/capsule/examples/buttons",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/capsule --example buttons"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/cardputer",
+      "name": "Cardputer",
+      "model": "M5Stack Cardputer",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "display-shapes",
+      "examples": [
+        {
+          "id": "display-shapes",
+          "description": "Draw randomly positioned colored circles and rectangles on the LCD. Change the primitives and colors in the drawing loop.",
+          "entrypoint": "examples/display-shapes/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Cardputer/blob/bf64d3178ab43928fa02365fbe3937cec99716ad/examples/Basic/display/display.ino"
+        },
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "entrypoint": "examples/buttons/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "display-shapes",
+          "description": "Draw randomly positioned colored circles and rectangles on the LCD. Change the primitives and colors in the drawing loop.",
+          "upstream": "https://github.com/m5stack/M5Cardputer/blob/bf64d3178ab43928fa02365fbe3937cec99716ad/examples/Basic/display/display.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/cardputer/examples/display-shapes",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/cardputer --example display-shapes"
+        },
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/cardputer/examples/buttons",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/cardputer --example buttons"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/cardputer-adv",
+      "name": "Cardputer-Adv",
+      "model": "M5Stack Cardputer-Adv",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "display-shapes",
+      "examples": [
+        {
+          "id": "display-shapes",
+          "description": "Draw randomly positioned colored circles and rectangles on the LCD. Change the primitives and colors in the drawing loop.",
+          "entrypoint": "examples/display-shapes/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Cardputer/blob/bf64d3178ab43928fa02365fbe3937cec99716ad/examples/Basic/display/display.ino"
+        },
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "entrypoint": "examples/buttons/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "display-shapes",
+          "description": "Draw randomly positioned colored circles and rectangles on the LCD. Change the primitives and colors in the drawing loop.",
+          "upstream": "https://github.com/m5stack/M5Cardputer/blob/bf64d3178ab43928fa02365fbe3937cec99716ad/examples/Basic/display/display.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/cardputer-adv/examples/display-shapes",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/cardputer-adv --example display-shapes"
+        },
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/cardputer-adv/examples/buttons",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/cardputer-adv --example buttons"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/chain-captain",
+      "name": "Chain Captain",
+      "model": "M5Stack Chain Captain",
+      "chip": "esp32s3",
+      "flash_mb": 16,
+      "bootloader": "esp32s3-16mb",
+      "preview": false,
+      "default_example": "bar-graph",
+      "examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "entrypoint": "examples/bar-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/chain-captain/examples/bar-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/chain-captain --example bar-graph"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+    },
+    {
+      "id": "m5stack/chain-dualkey",
+      "name": "Chain DualKey",
+      "model": "M5Stack Chain DualKey",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "key-press",
+      "examples": [
+        {
+          "id": "key-press",
+          "description": "Read Key 1 and report press and release transitions over serial. Use it as the start of a hardware shortcut.",
+          "entrypoint": "examples/key-press/main.cpp",
+          "upstream": "https://docs.m5stack.com/en/arduino/chain_dualkey/program"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "key-press",
+          "description": "Read Key 1 and report press and release transitions over serial. Use it as the start of a hardware shortcut.",
+          "upstream": "https://docs.m5stack.com/en/arduino/chain_dualkey/program",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/chain-dualkey/examples/key-press",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/chain-dualkey --example key-press"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/core2",
+      "name": "Core2",
+      "model": "M5Stack Core2",
+      "chip": "esp32",
+      "flash_mb": 16,
+      "bootloader": "esp32-16mb",
+      "preview": false,
+      "default_example": "scroll-graph",
+      "examples": [
+        {
+          "id": "scroll-graph",
+          "description": "Scroll six colored traces across the screen. Replace the generated samples with live measurements.",
+          "entrypoint": "examples/scroll-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/ScrollGraph/ScrollGraph.ino"
+        },
+        {
+          "id": "touch-drag",
+          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
+          "entrypoint": "examples/touch-drag/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "scroll-graph",
+          "description": "Scroll six colored traces across the screen. Replace the generated samples with live measurements.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/ScrollGraph/ScrollGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/core2/examples/scroll-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/core2 --example scroll-graph"
+        },
+        {
+          "id": "touch-drag",
+          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/core2/examples/touch-drag",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/core2 --example touch-drag"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+    },
+    {
+      "id": "m5stack/corematrix",
+      "name": "CoreMatrix",
+      "model": "M5Stack CoreMatrix",
+      "chip": "esp32c61",
+      "flash_mb": 16,
+      "bootloader": "esp32c61-16mb",
+      "preview": false,
+      "default_example": "heart",
+      "examples": [
+        {
+          "id": "heart",
+          "description": "Draw a heart from a 16-row bitmap on the LED matrix. Edit the bitmap to design a different icon.",
+          "entrypoint": "examples/heart/main.cpp",
+          "upstream": "https://docs.m5stack.com/en/arduino/corematrix/program"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "heart",
+          "description": "Draw a heart from a 16-row bitmap on the LED matrix. Edit the bitmap to design a different icon.",
+          "upstream": "https://docs.m5stack.com/en/arduino/corematrix/program",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/corematrix/examples/heart",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/corematrix --example heart"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c61-16mb"
+    },
+    {
+      "id": "m5stack/cores3",
+      "name": "CoreS3",
+      "model": "M5Stack CoreS3",
+      "chip": "esp32s3",
+      "flash_mb": 16,
+      "bootloader": "esp32s3-16mb",
+      "preview": false,
+      "default_example": "bar-graph",
+      "examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "entrypoint": "examples/bar-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
+        },
+        {
+          "id": "touch-drag",
+          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
+          "entrypoint": "examples/touch-drag/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/cores3/examples/bar-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/cores3 --example bar-graph"
+        },
+        {
+          "id": "touch-drag",
+          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/cores3/examples/touch-drag",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/cores3 --example touch-drag"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+    },
+    {
+      "id": "m5stack/dial",
+      "name": "Dial",
+      "model": "M5Stack Dial",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "display-shapes",
+      "examples": [
+        {
+          "id": "display-shapes",
+          "description": "Draw randomly placed, colored circles and squares on the LCD. Change the drawing routine to build a display application.",
+          "entrypoint": "examples/display-shapes/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Dial/blob/735eb55beefe6577c646ebf164a19793a01375d4/examples/Basic/display/display.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "display-shapes",
+          "description": "Draw randomly placed, colored circles and squares on the LCD. Change the drawing routine to build a display application.",
+          "upstream": "https://github.com/m5stack/M5Dial/blob/735eb55beefe6577c646ebf164a19793a01375d4/examples/Basic/display/display.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/dial/examples/display-shapes",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/dial --example display-shapes"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/dinmeter",
+      "name": "DinMeter",
+      "model": "M5Stack DinMeter",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "hello-display",
+      "examples": [
+        {
+          "id": "hello-display",
+          "description": "Draw positioned text on the LCD and print the greeting over serial. Adjust the cursor coordinates to change the layout.",
+          "entrypoint": "examples/hello-display/main.cpp",
+          "upstream": "https://docs.m5stack.com/en/arduino/m5dinmeter/program"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "hello-display",
+          "description": "Draw positioned text on the LCD and print the greeting over serial. Adjust the cursor coordinates to change the layout.",
+          "upstream": "https://docs.m5stack.com/en/arduino/m5dinmeter/program",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/dinmeter/examples/hello-display",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/dinmeter --example hello-display"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/fire-v27",
+      "name": "Fire v2.7",
+      "model": "M5Stack Fire v2.7",
+      "chip": "esp32",
+      "flash_mb": 16,
+      "bootloader": "esp32-16mb",
+      "preview": false,
+      "default_example": "bar-graph",
+      "examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "entrypoint": "examples/bar-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/fire-v27/examples/bar-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/fire-v27 --example bar-graph"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+    },
+    {
+      "id": "m5stack/nesso-n1",
+      "name": "Arduino Nesso N1",
+      "model": "Arduino Nesso N1",
+      "chip": "esp32c6",
+      "flash_mb": 16,
+      "bootloader": "esp32c6-16mb",
+      "preview": false,
+      "default_example": "bar-graph",
+      "examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "entrypoint": "examples/bar-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/nesso-n1/examples/bar-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/nesso-n1 --example bar-graph"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb"
+    },
+    {
+      "id": "m5stack/paper-color",
+      "name": "Paper Color",
+      "model": "M5Stack Paper Color",
+      "chip": "esp32s3",
+      "flash_mb": 16,
+      "bootloader": "esp32s3-16mb",
+      "preview": false,
+      "default_example": "color-bands",
+      "examples": [
+        {
+          "id": "color-bands",
+          "description": "Draw six colored bands and a multicolored label on the e-paper display using an offscreen canvas.",
+          "entrypoint": "examples/color-bands/main.cpp",
+          "upstream": "https://docs.m5stack.com/en/arduino/papercolor/program"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "color-bands",
+          "description": "Draw six colored bands and a multicolored label on the e-paper display using an offscreen canvas.",
+          "upstream": "https://docs.m5stack.com/en/arduino/papercolor/program",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/paper-color/examples/color-bands",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/paper-color --example color-bands"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+    },
+    {
+      "id": "m5stack/paper-diy",
+      "name": "PaperDIY",
+      "model": "M5Stack PaperDIY",
+      "chip": "esp32s3",
+      "flash_mb": 16,
+      "bootloader": "esp32s3-16mb",
+      "preview": false,
+      "default_example": "scroll-text",
+      "examples": [
+        {
+          "id": "scroll-text",
+          "description": "Scroll multilingual text on the display with an offscreen canvas. Replace the string or adjust the font and scroll speed.",
+          "entrypoint": "examples/scroll-text/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/LongTextScroll/LongTextScroll.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "scroll-text",
+          "description": "Scroll multilingual text on the display with an offscreen canvas. Replace the string or adjust the font and scroll speed.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/LongTextScroll/LongTextScroll.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/paper-diy/examples/scroll-text",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/paper-diy --example scroll-text"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+    },
+    {
+      "id": "m5stack/paper-v11",
+      "name": "Paper v1.1",
+      "model": "M5Stack Paper v1.1",
+      "chip": "esp32",
+      "flash_mb": 16,
+      "bootloader": "esp32-16mb",
+      "preview": false,
+      "default_example": "bar-graph",
+      "examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "entrypoint": "examples/bar-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/paper-v11/examples/bar-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/paper-v11 --example bar-graph"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+    },
+    {
+      "id": "m5stack/papermono",
+      "name": "PaperMono",
+      "model": "M5Stack PaperMono",
+      "chip": "esp32s3",
+      "flash_mb": 16,
+      "bootloader": "esp32s3-16mb",
+      "preview": false,
+      "default_example": "bar-graph",
+      "examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "entrypoint": "examples/bar-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/papermono/examples/bar-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/papermono --example bar-graph"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+    },
+    {
+      "id": "m5stack/papermono-lite",
+      "name": "PaperMono-Lite",
+      "model": "M5Stack PaperMono-Lite",
+      "chip": "esp32s3",
+      "flash_mb": 16,
+      "bootloader": "esp32s3-16mb",
+      "preview": false,
+      "default_example": "bar-graph",
+      "examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "entrypoint": "examples/bar-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/papermono-lite/examples/bar-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/papermono-lite --example bar-graph"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+    },
+    {
+      "id": "m5stack/papers3",
+      "name": "PaperS3",
+      "model": "M5Stack PaperS3",
+      "chip": "esp32s3",
+      "flash_mb": 16,
+      "bootloader": "esp32s3-16mb",
+      "preview": false,
+      "default_example": "bar-graph",
+      "examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "entrypoint": "examples/bar-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
+        },
+        {
+          "id": "touch-drag",
+          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
+          "entrypoint": "examples/touch-drag/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/papers3/examples/bar-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/papers3 --example bar-graph"
+        },
+        {
+          "id": "touch-drag",
+          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/papers3/examples/touch-drag",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/papers3 --example touch-drag"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+    },
+    {
+      "id": "m5stack/powerhub",
+      "name": "PowerHub",
+      "model": "M5Stack PowerHub",
+      "chip": "esp32s3",
+      "flash_mb": 16,
+      "bootloader": "esp32s3-16mb",
+      "preview": false,
+      "default_example": "blink",
+      "examples": [
+        {
+          "id": "blink",
+          "description": "Blink the onboard LEDs white and black at half-second intervals. Change the brightness or colors.",
+          "entrypoint": "examples/blink/main.cpp",
+          "upstream": "https://docs.m5stack.com/en/arduino/powerhub/program"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "blink",
+          "description": "Blink the onboard LEDs white and black at half-second intervals. Change the brightness or colors.",
+          "upstream": "https://docs.m5stack.com/en/arduino/powerhub/program",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/powerhub/examples/blink",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/powerhub --example blink"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+    },
+    {
+      "id": "m5stack/stackchan",
+      "name": "StackChan",
+      "model": "M5Stack StackChan",
+      "chip": "esp32s3",
+      "flash_mb": 16,
+      "bootloader": "esp32s3-16mb",
+      "preview": false,
+      "default_example": "rgb-led",
+      "examples": [
+        {
+          "id": "rgb-led",
+          "description": "Cycle eight colors across the twelve RGB LEDs on the body, six per side. Edit the palette or animation speed.",
+          "entrypoint": "examples/rgb-led/main.cpp",
+          "upstream": "https://github.com/m5stack/StackChan-BSP/blob/e2f3b02dbe7f28e26a02adc72bef3aa2c545e4a0/examples/RGB_LED/RGB_LED.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "rgb-led",
+          "description": "Cycle eight colors across the twelve RGB LEDs on the body, six per side. Edit the palette or animation speed.",
+          "upstream": "https://github.com/m5stack/StackChan-BSP/blob/e2f3b02dbe7f28e26a02adc72bef3aa2c545e4a0/examples/RGB_LED/RGB_LED.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/stackchan/examples/rgb-led",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/stackchan --example rgb-led"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+    },
+    {
+      "id": "m5stack/stamp-c6lora",
+      "name": "Stamp C6LoRa",
+      "model": "M5Stack Stamp C6LoRa",
+      "chip": "esp32c6",
+      "flash_mb": 16,
+      "bootloader": "esp32c6-16mb",
+      "preview": false,
+      "default_example": "hello-serial",
+      "examples": [
+        {
+          "id": "hello-serial",
+          "description": "Print a greeting once per second on the serial console. The SDK connects in parallel using the saved Wi-Fi credentials.",
+          "entrypoint": "examples/hello-serial/main.cpp",
+          "upstream": "https://docs.m5stack.com/en/arduino/m5stamp_c6lora/program"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "hello-serial",
+          "description": "Print a greeting once per second on the serial console. The SDK connects in parallel using the saved Wi-Fi credentials.",
+          "upstream": "https://docs.m5stack.com/en/arduino/m5stamp_c6lora/program",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/stamp-c6lora/examples/hello-serial",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/stamp-c6lora --example hello-serial"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb"
+    },
+    {
+      "id": "m5stack/stamp-s3",
+      "name": "Stamp-S3",
+      "model": "M5Stack Stamp-S3",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "color-button",
+      "examples": [
+        {
+          "id": "color-button",
+          "description": "Switch the onboard RGB LED color when the Stamp-S3 button is pressed. Edit the palette and event handler.",
+          "entrypoint": "examples/color-button/main.cpp",
+          "upstream": "https://github.com/m5stack/STAMP-S3/blob/6b64d431f930ff5e2bd770a07003ac983c24bc3f/examples/Led/Led.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "color-button",
+          "description": "Switch the onboard RGB LED color when the Stamp-S3 button is pressed. Edit the palette and event handler.",
+          "upstream": "https://github.com/m5stack/STAMP-S3/blob/6b64d431f930ff5e2bd770a07003ac983c24bc3f/examples/Led/Led.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/stamp-s3/examples/color-button",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/stamp-s3 --example color-button"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/stamp-s3bat",
+      "name": "Stamp-S3Bat",
+      "model": "M5Stack Stamp-S3Bat",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "hello-serial",
+      "examples": [
+        {
+          "id": "hello-serial",
+          "description": "Print a greeting once per second on the serial console. The SDK connects in parallel using the saved Wi-Fi credentials.",
+          "entrypoint": "examples/hello-serial/main.cpp",
+          "upstream": "https://docs.m5stack.com/en/arduino/m5stamp_s3bat/program"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "hello-serial",
+          "description": "Print a greeting once per second on the serial console. The SDK connects in parallel using the saved Wi-Fi credentials.",
+          "upstream": "https://docs.m5stack.com/en/arduino/m5stamp_s3bat/program",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/stamp-s3bat/examples/hello-serial",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/stamp-s3bat --example hello-serial"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/stamplc",
+      "name": "StamPLC",
+      "model": "M5Stack StamPLC",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "display",
+      "examples": [
+        {
+          "id": "display",
+          "description": "Cycle the LCD through solid colors, text and basic shapes. Edit the drawing sequence to build a control panel.",
+          "entrypoint": "examples/display/main.cpp",
+          "upstream": "https://github.com/m5stack/M5StamPLC/blob/aebe5711205618ec65e885d6e2d93c5c751c23ef/examples/Basic/Display/Display.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "display",
+          "description": "Cycle the LCD through solid colors, text and basic shapes. Edit the drawing sequence to build a control panel.",
+          "upstream": "https://github.com/m5stack/M5StamPLC/blob/aebe5711205618ec65e885d6e2d93c5c751c23ef/examples/Basic/Display/Display.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/stamplc/examples/display",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/stamplc --example display"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/station",
+      "name": "Station",
+      "model": "M5Stack Station",
+      "chip": "esp32",
+      "flash_mb": 16,
+      "bootloader": "esp32-16mb",
+      "preview": false,
+      "default_example": "buttons",
+      "examples": [
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "entrypoint": "examples/buttons/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/station/examples/buttons",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/station --example buttons"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+    },
+    {
+      "id": "m5stack/stickc-plus2",
+      "name": "StickC-Plus2",
+      "model": "M5Stack StickC-Plus2",
+      "chip": "esp32",
+      "flash_mb": 8,
+      "bootloader": "esp32-8mb",
+      "preview": false,
+      "default_example": "display-shapes",
+      "examples": [
+        {
+          "id": "display-shapes",
+          "description": "Draw randomly placed, colored circles and squares on the LCD. Change the drawing routine to build a display application.",
+          "entrypoint": "examples/display-shapes/main.cpp",
+          "upstream": "https://github.com/m5stack/M5StickCPlus2/blob/921ec0c0634b6b93873fe123f3a8d1714c68b8f4/examples/Basic/display/display.ino"
+        },
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "entrypoint": "examples/buttons/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "display-shapes",
+          "description": "Draw randomly placed, colored circles and squares on the LCD. Change the drawing routine to build a display application.",
+          "upstream": "https://github.com/m5stack/M5StickCPlus2/blob/921ec0c0634b6b93873fe123f3a8d1714c68b8f4/examples/Basic/display/display.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/stickc-plus2/examples/display-shapes",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/stickc-plus2 --example display-shapes"
+        },
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/stickc-plus2/examples/buttons",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/stickc-plus2 --example buttons"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-8mb"
+    },
+    {
+      "id": "m5stack/sticks3",
+      "name": "StickS3",
+      "model": "M5Stack StickS3",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "scroll-graph",
+      "examples": [
+        {
+          "id": "scroll-graph",
+          "description": "Scroll six colored traces across the screen. Replace the generated samples with live measurements.",
+          "entrypoint": "examples/scroll-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/ScrollGraph/ScrollGraph.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "scroll-graph",
+          "description": "Scroll six colored traces across the screen. Replace the generated samples with live measurements.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/ScrollGraph/ScrollGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/sticks3/examples/scroll-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/sticks3 --example scroll-graph"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/stopwatch",
+      "name": "StopWatch",
+      "model": "M5Stack Stopwatch",
+      "chip": "esp32s3",
+      "flash_mb": 16,
+      "bootloader": "esp32s3-16mb",
+      "preview": false,
+      "default_example": "bar-graph",
+      "examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "entrypoint": "examples/bar-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
+        },
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "entrypoint": "examples/buttons/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/stopwatch/examples/bar-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/stopwatch --example bar-graph"
+        },
+        {
+          "id": "buttons",
+          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/stopwatch/examples/buttons",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/stopwatch --example buttons"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+    },
+    {
+      "id": "m5stack/tough",
+      "name": "Tough",
+      "model": "M5Stack Tough",
+      "chip": "esp32",
+      "flash_mb": 16,
+      "bootloader": "esp32-16mb",
+      "preview": false,
+      "default_example": "bar-graph",
+      "examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "entrypoint": "examples/bar-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
+        },
+        {
+          "id": "touch-drag",
+          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
+          "entrypoint": "examples/touch-drag/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/tough/examples/bar-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/tough --example bar-graph"
+        },
+        {
+          "id": "touch-drag",
+          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/tough/examples/touch-drag",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/tough --example touch-drag"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+    },
+    {
+      "id": "m5stack/toughc5",
+      "name": "ToughC5",
+      "model": "M5Stack ToughC5",
+      "chip": "esp32c5",
+      "flash_mb": 16,
+      "bootloader": "esp32c5-16mb",
+      "preview": false,
+      "default_example": "bar-graph",
+      "examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "entrypoint": "examples/bar-graph/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
+        },
+        {
+          "id": "touch-drag",
+          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
+          "entrypoint": "examples/touch-drag/main.cpp",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bar-graph",
+          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/toughc5/examples/bar-graph",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/toughc5 --example bar-graph"
+        },
+        {
+          "id": "touch-drag",
+          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
+          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/toughc5/examples/touch-drag",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/toughc5 --example touch-drag"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c5-16mb"
+    },
+    {
+      "id": "m5stack/triviapod",
+      "name": "TriviaPOD",
+      "model": "M5Stack TriviaPOD",
+      "chip": "esp32s3",
+      "flash_mb": 32,
+      "bootloader": "esp32s3-32mb",
+      "preview": false,
+      "default_example": "chip-info",
+      "examples": [
+        {
+          "id": "chip-info",
+          "description": "Print the ESP32-S3 revision, radio features, flash size and free heap. This ESP-IDF chip example runs without the proprietary TriviaPOD game or peripheral drivers.",
+          "entrypoint": "examples/chip-info/main.cpp",
+          "upstream": "https://github.com/espressif/esp-idf/blob/v5.4.1/examples/get-started/hello_world/main/hello_world_main.c"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "chip-info",
+          "description": "Print the ESP32-S3 revision, radio features, flash size and free heap. This ESP-IDF chip example runs without the proprietary TriviaPOD game or peripheral drivers.",
+          "upstream": "https://github.com/espressif/esp-idf/blob/v5.4.1/examples/get-started/hello_world/main/hello_world_main.c",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/triviapod/examples/chip-info",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/triviapod --example chip-info"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-32mb"
+    },
+    {
+      "id": "m5stack/unit-c6l",
+      "name": "Unit C6L",
+      "model": "M5Stack Unit C6L",
+      "chip": "esp32c6",
+      "flash_mb": 16,
+      "bootloader": "esp32c6-16mb",
+      "preview": false,
+      "default_example": "game-of-life",
+      "examples": [
+        {
+          "id": "game-of-life",
+          "description": "Render Conway’s Game of Life on the display. Change the initial cells or simulation rules.",
+          "entrypoint": "examples/game-of-life/main.cpp",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/GameOfLife/GameOfLife.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "game-of-life",
+          "description": "Render Conway’s Game of Life on the display. Change the initial cells or simulation rules.",
+          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/GameOfLife/GameOfLife.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/unit-c6l/examples/game-of-life",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/unit-c6l --example game-of-life"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb"
+    },
+    {
+      "id": "m5stack/unit-cams3-5mp",
+      "name": "Unit CamS3-5MP",
+      "model": "M5Stack Unit CamS3-5MP",
+      "chip": "esp32s3",
+      "flash_mb": 16,
+      "bootloader": "esp32s3-16mb",
+      "preview": false,
+      "default_example": "button",
+      "examples": [
+        {
+          "id": "button",
+          "description": "Report presses and releases of the user button over serial. Use the input handler to trigger an application action.",
+          "entrypoint": "examples/button/main.cpp",
+          "upstream": "https://github.com/m5stack/UnitCamS3-UserDemo/blob/50410249ece3f92f414a222c859dd48d5958fd97/platforms/unitcam_s3_5mp/main/hal_unitcam_s3_5mp/components/hal_gamepad.cpp"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "button",
+          "description": "Report presses and releases of the user button over serial. Use the input handler to trigger an application action.",
+          "upstream": "https://github.com/m5stack/UnitCamS3-UserDemo/blob/50410249ece3f92f414a222c859dd48d5958fd97/platforms/unitcam_s3_5mp/main/hal_unitcam_s3_5mp/components/hal_gamepad.cpp",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/unit-cams3-5mp/examples/button",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/unit-cams3-5mp --example button"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+    },
+    {
+      "id": "m5stack/unit-poe-cam-w-v11",
+      "name": "Unit PoE CAM-W v1.1",
+      "model": "M5Stack Unit PoE CAM-W v1.1",
+      "chip": "esp32",
+      "flash_mb": 16,
+      "bootloader": "esp32-16mb",
+      "preview": false,
+      "default_example": "button",
+      "examples": [
+        {
+          "id": "button",
+          "description": "Report presses and releases of the user button over serial. Use the input handler to trigger an application action.",
+          "entrypoint": "examples/button/main.cpp",
+          "upstream": "https://github.com/m5stack/M5PoECAM/blob/d9b08c6363084add434dfb211a0e56d0fdcd70a4/examples/button/button.ino"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "button",
+          "description": "Report presses and releases of the user button over serial. Use the input handler to trigger an application action.",
+          "upstream": "https://github.com/m5stack/M5PoECAM/blob/d9b08c6363084add434dfb211a0e56d0fdcd70a4/examples/button/button.ino",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/unit-poe-cam-w-v11/examples/button",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/unit-poe-cam-w-v11 --example button"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+    },
+    {
+      "id": "m5stack/vameter",
+      "name": "VAMeter",
+      "model": "M5Stack VAMeter",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "bus-voltage",
+      "examples": [
+        {
+          "id": "bus-voltage",
+          "description": "Read the onboard INA226 bus voltage and display volts twice per second. Change the sampling interval or add a voltage history view.",
+          "entrypoint": "examples/bus-voltage/main.cpp",
+          "upstream": "https://github.com/m5stack/VAMeter-Firmware/blob/5e8f847bbc771da2d354be7472c6345acb5655ac/platforms/vameter/main/hal_vameter/components/hal_power_monitor.cpp"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "bus-voltage",
+          "description": "Read the onboard INA226 bus voltage and display volts twice per second. Change the sampling interval or add a voltage history view.",
+          "upstream": "https://github.com/m5stack/VAMeter-Firmware/blob/5e8f847bbc771da2d354be7472c6345acb5655ac/platforms/vameter/main/hal_vameter/components/hal_power_monitor.cpp",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/vameter/examples/bus-voltage",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/vameter --example bus-voltage"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    },
+    {
+      "id": "m5stack/xiaozhi-card",
+      "name": "Xiaozhi Card",
+      "model": "M5Stack Xiaozhi Card",
+      "chip": "esp32s3",
+      "flash_mb": 8,
+      "bootloader": "esp32s3-8mb",
+      "preview": false,
+      "default_example": "back-button",
+      "examples": [
+        {
+          "id": "back-button",
+          "description": "Report presses and releases of the user button over serial. Use the input handler to trigger an application action.",
+          "entrypoint": "examples/back-button/main.cpp",
+          "upstream": "https://github.com/m5stack/XiaoZhi-Card/blob/44aa2f2b91c3e938932bb41f670e984cf752b731/main/boards/xiaozhi-card/config.h"
+        }
+      ],
+      "published_examples": [
+        {
+          "id": "back-button",
+          "description": "Report presses and releases of the user button over serial. Use the input handler to trigger an application action.",
+          "upstream": "https://github.com/m5stack/XiaoZhi-Card/blob/44aa2f2b91c3e938932bb41f670e984cf752b731/main/boards/xiaozhi-card/config.h",
+          "source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/board/m5stack/xiaozhi-card/examples/back-button",
+          "entrypoint": "main.cpp",
+          "build_guide_url": "https://github.com/okou-ai/esphub-firmware/blob/ba0288a4943c487060559d1b7f476994c75e78e3/docs/build-examples.md",
+          "build_command": "python3 scripts/build-example.py m5stack/xiaozhi-card --example back-button"
+        }
+      ],
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+    }
+  ]
+}

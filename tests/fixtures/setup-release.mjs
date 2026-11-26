@@ -1,20 +1,25 @@
-import { describeExamples } from "../../firmware-source/shared/board-examples.js";
-import { assetNames, releaseTag } from "../../firmware-source/shared/firmware-releases.js";
-
 export const fixtureVersion = "2.0.7";
 
-export function setupRelease(board, profile, revision) {
-  const tag = releaseTag("setup", board, fixtureVersion);
-  const names = assetNames(board, profile.chip, "setup", fixtureVersion);
-  const example = describeExamples(board, profile.examples, revision).find(
-    (item) => item.id === profile.default_example,
-  );
+// A setup release as the firmware publisher records it. The Hub treats tags and object
+// keys as opaque, so the fixture deliberately uses its own naming.
+export function setupRelease(board, profile, example) {
+  example ??= profile.published_examples.find((item) => item.id === profile.default_example);
+  const tag = `fixture-setup-${board.replace("/", "-")}-${fixtureVersion}`;
   const manifest = { tag, board, version: fixtureVersion, example };
-  const files = new Map([
-    [`releases/${tag}/published.json`, JSON.stringify({ assets: Object.values(names).map(name => ({ name })) })],
-    [`releases/${tag}/${names["setup-manifest"]}`, JSON.stringify(manifest)],
-  ]);
-  return { files, manifest };
+  const keys = { setup: `fixture/${tag}/kit.zip`, "setup-manifest": `fixture/${tag}/kit.json` };
+  const files = new Map([[keys["setup-manifest"], JSON.stringify(manifest)]]);
+  const assets = Object.entries(keys).map(([asset, object_key]) => ({
+    tag, asset, board, kind: "setup", version: fixtureVersion, object_key, size: null,
+  }));
+  return { tag, files, assets, manifest };
+}
+
+export async function recordRelease(sql, { tag, assets }) {
+  const [{ board, kind, version }] = assets;
+  await sql`INSERT INTO esphub.release_assets ${sql(assets)} ON CONFLICT (tag, asset) DO NOTHING`;
+  await sql`INSERT INTO esphub.firmware_releases (board, kind, version, tag)
+    VALUES (${board}, ${kind}, ${version}, ${tag})
+    ON CONFLICT (board, kind) DO UPDATE SET version = excluded.version, tag = excluded.tag`;
 }
 
 export function jsonBucket(files) {

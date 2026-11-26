@@ -1,6 +1,6 @@
 import postgres from "postgres";
 import { getPlatformProxy } from "wrangler";
-import { setupRelease, fixtureVersion } from "../tests/fixtures/setup-release.mjs";
+import { recordRelease, setupRelease } from "../tests/fixtures/setup-release.mjs";
 import { generateKeyPair, exportSPKI, exportPKCS8 } from "jose";
 import { readFile, writeFile, rm } from "node:fs/promises";
 import { spawn, execFile } from "node:child_process";
@@ -17,11 +17,10 @@ const sql = postgres(db, { max: 1 });
 try {
   for (const id of ["m5stack/paper-color", "m5stack/stopwatch", "m5stack/core2"]) {
     const [profile] = await sql`SELECT * FROM esphub.board_profiles WHERE id = ${id}`;
-    const { files } = setupRelease(id, profile, profile.source_revision);
-    for (const [key, body] of files)
+    const release = setupRelease(id, profile);
+    for (const [key, body] of release.files)
       await platform.env.FIRMWARE.put(key, body, { httpMetadata: { contentType: "application/json" } });
-    await sql`INSERT INTO esphub.firmware_releases(board, kind, version) VALUES (${id}, 'setup', ${fixtureVersion})
-      ON CONFLICT (board, kind) DO UPDATE SET version = excluded.version`;
+    await recordRelease(sql, release);
   }
 } finally {
   await platform.dispose();

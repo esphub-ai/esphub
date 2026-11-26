@@ -1,6 +1,9 @@
 import { isDeepStrictEqual } from "node:util";
-import { releaseTag } from "../firmware-source/shared/firmware-releases.js";
 import { releaseUrl } from "../shared/identity.js";
+
+// The release tags published when this migration first ran. The Hub no longer derives tags.
+const releaseTag = (kind, board, version) =>
+  `firmware-${kind}-${board.replace("/", "_")}-v${version}`;
 
 export default async function removeReleaseManifestCopy(tx) {
   // During cutover the version-only publisher may already have advanced a row.

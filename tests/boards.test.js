@@ -13,26 +13,32 @@ test(
       await sql.begin(async (tx) => {
         const key = crypto.randomUUID();
         const id = "catalog-test/" + key;
+        const published = [{ id: "hello", description: "Print hello", upstream: "https://example.com",
+          source_url: "https://source.example/hello", entrypoint: "main.c" }];
         await tx`INSERT INTO esphub.boards
-          (id, source_revision, name, model, chip, flash_mb, bootloader, default_example, examples, preview)
-          SELECT ${id}, revision, 'Unlisted name', 'Test Model', 'esp32s3', 16, 'esp32s3-16mb', 'hello', '[{"id":"hello","description":"Print hello","entrypoint":"examples/hello/main.c","upstream":"https://example.com"}]'::jsonb, true
+          (id, source_revision, name, model, chip, flash_mb, bootloader, default_example, examples, preview,
+           published_examples, bootloader_source_url)
+          SELECT ${id}, revision, 'Unlisted name', 'Test Model', 'esp32s3', 16, 'esp32s3-16mb', 'hello', '[{"id":"hello","description":"Print hello","entrypoint":"examples/hello/main.c","upstream":"https://example.com"}]'::jsonb, true,
+            ${tx.json(published)}, 'https://source.example/bootloader'
           FROM esphub.board_sources WHERE is_current`;
         const search = (query) =>
           operate({ sql: tx }, null, "boards.search", { query });
         const [preview] = await search(key.slice(0, 18).toUpperCase());
         assert.equal(preview.id, id);
         assert.deepEqual(preview.firmware, {});
+        assert.deepEqual(preview.examples, published);
         assert.deepEqual(await search("Unlisted name"), []);
         assert.deepEqual(await search("%"), []);
         assert.deepEqual(await search("_"), []);
 
-        await tx`INSERT INTO esphub.firmware_releases (board, kind, version)
-          VALUES (${id}, 'app', '1.0.9'), (${id}, 'setup', '2.0.1')`;
+        await tx`INSERT INTO esphub.firmware_releases (board, kind, version, tag)
+          VALUES (${id}, 'app', '1.0.9', 'test-app-1.0.9'), (${id}, 'setup', '2.0.1', 'test-setup-2.0.1')`;
         const [before] = await search(id);
         assert.equal(before.firmware.setup.version, "2.0.1");
         assert.equal(before.firmware.app.version, "1.0.9");
         const old = new URL(before.firmware.app.download_url);
-        await tx`UPDATE esphub.firmware_releases SET version = '1.0.10' WHERE board = ${id} AND kind = 'app'`;
+        await tx`UPDATE esphub.firmware_releases SET version = '1.0.10', tag = 'test-app-1.0.10'
+          WHERE board = ${id} AND kind = 'app'`;
         const [after] = await search(id);
         assert.equal(after.firmware.app.version, "1.0.10");
         assert.notEqual(after.firmware.app.download_url, old.href);
@@ -41,7 +47,7 @@ test(
           before.firmware.setup.download_url,
         );
         assert.equal(old.pathname, "/releases/" + id + "/app");
-        assert.ok(old.searchParams.get("tag").endsWith("-v1.0.9"));
+        assert.equal(old.searchParams.get("tag"), "test-app-1.0.9");
 
         await tx`DELETE FROM esphub.firmware_releases WHERE board = ${id}`;
         await tx`DELETE FROM esphub.boards WHERE id = ${id}`;

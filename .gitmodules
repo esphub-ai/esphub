@@ -1,3 +1,0 @@
-[submodule "firmware-source"]
-	path = firmware-source
-	url = https://github.com/okou-ai/esphub-firmware.git

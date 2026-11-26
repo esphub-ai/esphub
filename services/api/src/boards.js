@@ -1,5 +1,3 @@
-import { describeExamples } from "../../../firmware-source/shared/board-examples.js";
-import { releaseTag } from "../../../firmware-source/shared/firmware-releases.js";
 import { boardPhotoOrigin, releaseUrl } from "../../../shared/identity.js";
 import { fail } from "./auth.js";
 
@@ -11,28 +9,24 @@ export const boardImageUrl = (id) => `${boardPhotoOrigin}/boards/${id}/image`;
 export async function searchBoards(sql, query = "") {
   if (query.includes("\0")) fail(400, "Invalid query");
   const rows =
-    await sql`SELECT b.id, b.name, b.model, b.chip, b.flash_mb, b.default_example, b.examples, b.source_revision, b.preview,
-      (SELECT jsonb_object_agg(r.kind, r.version) FROM esphub.firmware_releases r
-       WHERE r.board = b.id) AS versions
+    await sql`SELECT b.id, b.name, b.model, b.chip, b.flash_mb, b.default_example, b.preview, b.published_examples,
+      (SELECT jsonb_object_agg(r.kind, jsonb_build_object('version', r.version, 'tag', r.tag))
+       FROM esphub.firmware_releases r WHERE r.board = b.id) AS releases
     FROM esphub.board_profiles b
     WHERE b.is_current AND strpos(b.id, ${query.trim().toLowerCase()}) > 0
     ORDER BY b.display_order NULLS LAST, b.id`;
-  return rows.map(({ versions, examples, source_revision, ...board }) => ({
+  return rows.map(({ releases, published_examples, ...board }) => ({
     ...board,
-    examples: describeExamples(board.id, examples, source_revision),
+    examples: published_examples,
     image_url: boardImageUrl(board.id),
     firmware: Object.fromEntries(
-      Object.entries(versions ?? {}).map(([kind, version]) => {
-        const asset = kind === "bootloader" ? "ota" : kind;
-        const tag = releaseTag(kind, board.id, version);
-        return [
-          kind,
-          {
-            version,
-            download_url: releaseUrl(board.id, asset, tag),
-          },
-        ];
-      }),
+      Object.entries(releases ?? {}).map(([kind, { version, tag }]) => [
+        kind,
+        {
+          version,
+          download_url: releaseUrl(board.id, kind === "bootloader" ? "ota" : kind, tag),
+        },
+      ]),
     ),
   }));
 }

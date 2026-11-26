@@ -1,6 +1,6 @@
 # EspHub
 
-EspHub provisions ESP32 devices over USB and manages them through the web and MCP. This repository owns the Hub services. Board firmware is pinned in the firmware-source submodule.
+EspHub provisions ESP32 devices over USB and manages them through the web and MCP. This repository owns the Hub services. Board firmware lives in [esphub-firmware](https://github.com/okou-ai/esphub-firmware).
 
 | Host | Component |
 | --- | --- |
@@ -18,10 +18,10 @@ Use `boards.search` to find a board and its examples. Each entry includes a capa
 
 `devices.create` registers the chosen board and returns a pinned USB setup manifest and its `setup_example`. The kit contains the EspHub Bootloader, the partition table and the board’s default application. Its manifest records the SHA-256 of both the kit and the application. Verify the kit hash before flashing. Installation erases the board.
 
-To build the shared bootloader locally, use ESP-IDF 5.4.1 from the selected `firmware/bootloader/<target>-<size>mb/` directory. Use ESP-IDF 5.5.4 for `esp32c5-16mb` and `esp32c61-16mb`. Select the `bootloader` identifier from the board’s `firmware/board/<group>/<project>/board.json`. For example, build the 16 MiB ESP32-S3 variant with the following command.
+To build the shared bootloader locally, check out [esphub-firmware](https://github.com/okou-ai/esphub-firmware) at the revision in the board's `sources.bootloader.directory_url` and use ESP-IDF 5.4.1 from the selected `firmware/bootloader/<target>-<size>mb/` directory. Use ESP-IDF 5.5.4 for `esp32c5-16mb` and `esp32c61-16mb`. Select the `bootloader` identifier from the board’s `firmware/board/<group>/<project>/board.json`. For example, build the 16 MiB ESP32-S3 variant with the following command.
 
 ```sh
-cd firmware-source/firmware/bootloader/esp32s3-16mb
+cd firmware/bootloader/esp32s3-16mb
 idf.py build
 ```
 
@@ -99,11 +99,11 @@ Neon stores registrations, device-token hashes, boot metadata and the command qu
 
 ## Delivery
 
-Initialize the firmware checkout with `git submodule update --init`, then install dependencies with `npm ci`. After `npm run migrate`, seed a fresh local database with `FIRMWARE_DATABASE_URL="$MIGRATION_DATABASE_URL" node firmware-source/scripts/publish-catalog.mjs --if-empty` and import the local R2 gallery with `node scripts/migrate-board-gallery.mjs --local`. `npm run build` bundles the browser code. npm test runs unit tests, and TEST_DATABASE_URL enables the PostgreSQL ownership test. npm run migrate takes MIGRATION_DATABASE_URL and serializes checksum-verified migrations under an advisory lock.
+Install dependencies with `npm ci`. After `npm run migrate`, seed a fresh local database with the test board catalog using `node scripts/seed-catalog.mjs` and import the local R2 gallery with `node scripts/migrate-board-gallery.mjs --local`. `npm run build` bundles the browser code. npm test runs unit tests, and TEST_DATABASE_URL enables the PostgreSQL ownership test. npm run migrate takes MIGRATION_DATABASE_URL and serializes checksum-verified migrations under an advisory lock.
 
 Pushes to main run verification on an ephemeral PostgreSQL instance, migrate production Neon, deploy the Hono API then the website, and check public domains and authentication boundaries. Required repository secrets are CLERK_SECRET_KEY (EspHub production instance), MIGRATION_DATABASE_URL, RUNTIME_DB_PASSWORD (64 lowercase hex characters), and CLOUDFLARE_API_TOKEN. CLOUDFLARE_ACCOUNT_ID is a repository variable. CI ensures the esphub-production R2 bucket exists. The migration role creates a restricted runtime role; the API Worker receives the runtime database URL and the Clerk credential. Configure the production environment to suit the organization's deployment policy.
 
-Firmware builds, SDK version automation and release publication live in [esphub-firmware](https://github.com/okou-ai/esphub-firmware). The firmware repository publishes board profiles to Neon. `GET /boards` and the read-only MCP tool `boards.search` use the same directory. A query such as `{"query":"paper"}` matches the literal substring in board IDs. Each result includes its R2 photo and the latest published version and pinned download URL for each available firmware kind. Upload a board photo as `boards/<group>/<project>.webp` in the `esphub-firmware` bucket. The website loads `GET /boards/gallery`, which joins current boards and their manufacturer product links with the available R2 photos. Set a manufacturer link in `esphub.board_product_pages`. The gallery and device cards request bounded WebP thumbnails from `cdn.esphub.ai` using `?width=`. Cloudflare Images resizes them from R2 on a CDN cache miss. Opening a board shows its original photo. A missing photo returns 404 and is omitted from the wall. The pinned firmware checkout supplies the release naming contract, tests, and the initial seed for empty databases.
+Firmware builds, SDK version automation and release publication live in [esphub-firmware](https://github.com/okou-ai/esphub-firmware). The firmware repository publishes board profiles, example and source links, and an index of every published release file to Neon. The Hub serves the directory and downloads from these records and R2, without contacting GitHub or deriving release names. `GET /boards` and the read-only MCP tool `boards.search` use the same directory. A query such as `{"query":"paper"}` matches the literal substring in board IDs. Each result includes its R2 photo and the latest published version and pinned download URL for each available firmware kind. Upload a board photo as `boards/<group>/<project>.webp` in the `esphub-firmware` bucket. The website loads `GET /boards/gallery`, which joins current boards and their manufacturer product links with the available R2 photos. Set a manufacturer link in `esphub.board_product_pages`. The gallery and device cards request bounded WebP thumbnails from `cdn.esphub.ai` using `?width=`. Cloudflare Images resizes them from R2 on a CDN cache miss. Opening a board shows its original photo. A missing photo returns 404 and is omitted from the wall.
 
 ## Origin
 
