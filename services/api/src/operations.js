@@ -1,20 +1,19 @@
+import { releaseTag } from "../../../firmware-source/shared/firmware-releases.js";
 import { releaseUrl } from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
 import { newBleSecret, issueBle, normalizeBleAddress } from "./ble.js";
 import { connectedSince, publishDownlink } from "./iot.js";
-import { artifactBase } from "./uploads.js";
+import { artifactBase, maxUploadBytes } from "./uploads.js";
 import { boardIdPattern, boardImageUrl, getBoard, searchBoards } from "./boards.js";
-import { maxUploadBytes } from "./uploads.js";
 import { updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
-import { latestReleaseTag } from "./releases.js";
+import { latestReleaseTag, releaseResponse } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
 import { createVirtual, operateVirtual } from "./virtual-device.js";
-const programByteLimit = 32 * 1024;
 const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
 const id = strings("device_id");
-const otaKind = { type: "string", enum: ["bootloader", "micropython", "native", "python"] };
+const otaKind = { type: "string", enum: ["bootloader", "app"] };
 const additive = {
   readOnlyHint: false,
   destructiveHint: false,
@@ -27,14 +26,14 @@ const defs = [
   [
     "boards.search",
     readOnly,
-    "Find supported boards by a literal, case-insensitive substring of their vendor/model ID. Omit query to list all boards. Includes photos and the latest published firmware by kind.",
+    "Find supported boards by a literal, case-insensitive substring of their vendor/model ID. Omit query to list all boards. Includes the default example, example capabilities, pinned source and published downloads.",
     strings("query"),
   ],
   ["devices.list", readOnly, "List your registered devices.", {}],
   [
     "devices.create",
     additive,
-    "Registers a physical device with its name and group/project board ID (for example, m5stack/cardputer-adv). Returns its device ID, provisioning credentials, and board-specific setup information.",
+    "Registers a physical device with its name and group/project board ID (for example, m5stack/cardputer-adv). Returns its device ID, provisioning credentials, a pinned USB setup manifest, and the installed example with its source and build command.",
     {
       ...strings("name"),
       board: { type: "string", description: "Exact board ID returned by boards.search." },
@@ -49,7 +48,7 @@ const defs = [
   [
     "devices.get",
     readOnly,
-    "Show device kind, identity and connection status. Physical boards include EspHub Bootloader, Runtime, and Program update guidance, official downloads, and SDK information, even while offline.",
+    "Show device kind, identity and connection status. For a physical board, also return the reported application identity, bootloader and app downloads, and examples with pinned source and build instructions.",
     id,
   ],
   [
@@ -127,7 +126,7 @@ const defs = [
   [
     "firmware.get",
     readOnly,
-    "Read firmware metadata for a physical or virtual board. Physical boards also include EspHub Bootloader, Runtime, and Program update guidance and SDK information.",
+    "Read device firmware identity, SDK version and board examples with pinned source and build instructions.",
     id,
   ],
   [
@@ -136,14 +135,14 @@ const defs = [
     "Returns a short-lived PUT URL, authorization headers, and an artifact URL for one file of the specified kind and byte size. A successful upload of exactly that size returns HTTP 201. The device can be offline.",
     {
       ...id,
-      kind: { type: "string", enum: ["bootloader", "micropython", "native"] },
+      kind: otaKind,
       size: { type: "integer", minimum: 1, maximum: maxUploadBytes },
     },
   ],
   [
     "ota.install",
     { ...destructive, openWorldHint: true },
-    "Update a registered device. For the latest official EspHub Bootloader, use kind bootloader and omit url. Use bootloader.enter before any OTA installation. For a Python Program, use kind python and a UTF-8 main.py URL. For a Native Program, use kind native and the HTTPS URL of an ESP application binary for your hardware. It replaces the current app partition contents. Confirm completion from the install event and the next boot.",
+    "Install a bootloader or app in EspHub Bootloader mode. Supply an HTTPS image URL or omit it for the board’s latest published image. Verify the command receipt and the next boot.",
     {
       ...id,
       kind: otaKind,
@@ -151,22 +150,9 @@ const defs = [
     },
   ],
   [
-    "programs.publish",
-    additive,
-    "Stage main.py privately for this device for 24 hours. Physical boards can install the returned URL with ota.install. Virtual boards only stage the source.",
-    {
-      ...id,
-      source: {
-        type: "string",
-        maxLength: programByteLimit,
-        description: "UTF-8 MicroPython source, up to 32 KiB.",
-      },
-    },
-  ],
-  [
     "logs.set",
     additive,
-    "Enable or disable remote ESP_LOG and MicroPython stdout for this physical device's current boot. Capture starts off. Disabling restores local output and discards buffered bytes. Check commands.get for the device receipt.",
+    "Enable or disable remote ESP-IDF console output for this physical device's current boot. Capture starts off. Disabling restores local output and discards buffered bytes. Check commands.get for the device receipt.",
     { ...id, enabled: { type: "boolean" } },
   ],
   [
@@ -187,12 +173,6 @@ const defs = [
       after: { type: "integer", minimum: 0 },
       limit: { type: "integer", minimum: 1, maximum: 64 },
     },
-  ],
-  [
-    "programs.get",
-    readOnly,
-    "Read the transfer ID, SHA-256 and byte count of the last confirmed cloud main.py installation, including offline devices.",
-    id,
   ],
   [
     "commands.get",
@@ -269,7 +249,6 @@ export function validate(name, a) {
   if (a.name?.trim().length === 0 || a.name?.length > 64)
     fail(400, "Invalid name");
   for (const [k, max] of [
-    ["source", programByteLimit],
     ["ssid", 32],
     ["password", 63],
   ])
@@ -278,8 +257,6 @@ export function validate(name, a) {
       (new TextEncoder().encode(a[k]).length > max || a[k].includes("\0"))
     )
       fail(400, "Invalid " + k);
-  if (name === "ota.install" && !a.url && a.kind !== "bootloader")
-    fail(400, "Artifact URL required");
   if (a.url) {
     let u;
     try {
@@ -339,23 +316,27 @@ export async function operate(c, owner, name, a) {
   if (name === "boards.search") return searchBoards(db, a.query);
   if (name === "devices.create_virtual") return createVirtual(db, owner);
   if (name === "devices.create") {
-    const secret = token("okl_dev_");
+    const [profile] = await db`SELECT b.*, r.version AS setup_version FROM esphub.board_profiles b
+      LEFT JOIN esphub.firmware_releases r ON r.board = b.id AND r.kind = 'setup'
+      WHERE b.id = ${a.board} AND b.is_current`;
+    if (!profile) fail(400, "Unknown board");
+    if (!profile.setup_version) fail(404, "No published setup kit for this board");
+    const tag = releaseTag("setup", a.board, profile.setup_version);
+    const response = await releaseResponse(a.board, "setup-manifest", tag, db, c.env.FIRMWARE);
+    const manifest = await response.json();
+    if (manifest.board !== a.board || manifest.tag !== tag || !manifest.example?.source_url)
+      fail(503, "Board setup example unavailable");
+    const secret = token("eh_dev_");
     const bleSecret = newBleSecret();
-    const [d] = await db`WITH profile AS (
-        SELECT * FROM esphub.board_profiles WHERE id = ${a.board} AND is_current
-      ), registered AS (
-        INSERT INTO esphub.devices(owner, name, board, token_hash, ble_secret)
-        SELECT ${owner}, ${a.name.trim()}, id, ${await digest(secret)}, ${bleSecret} FROM profile
-        RETURNING id, name, board, kind)
-      SELECT registered.*, to_jsonb(profile) AS profile FROM registered JOIN profile ON profile.id = registered.board`;
-    if (!d) fail(400, "Unknown board");
-    const { profile, ...device } = d;
+    const [device] = await db`INSERT INTO esphub.devices(owner, name, board, token_hash, ble_secret)
+      VALUES (${owner}, ${a.name.trim()}, ${a.board}, ${await digest(secret)}, ${bleSecret})
+      RETURNING id, name, board, kind`;
     return {
       ...device,
       token: secret,
       ble_secret: bleSecret,
       hub: "api.esphub.ai",
-      ...provisioning(profile),
+      ...provisioning(profile, tag, manifest.example),
       ...updateSources(profile),
     };
   }
@@ -381,7 +362,6 @@ export async function operate(c, owner, name, a) {
   }
   const [d] = ds;
   if (!d) fail(404, "Device not found");
-  const withSources = async (result) => ({ ...result, ...updateSources(await getBoard(db, d.board)) });
   if (name === "devices.get")
     return {
       id: d.id,
@@ -396,15 +376,6 @@ export async function operate(c, owner, name, a) {
     if (d.kind === "physical")
       await internal(c, d.id, "revoke", { device: d.id });
     return { deleted: true };
-  }
-  if (name === "programs.publish") {
-    const staged = await internal(c, d.id, "publish", {
-      device_id: d.id,
-      source: a.source,
-    });
-    return d.kind === "virtual"
-      ? { ...staged, kind: "virtual", status: "staged", executable: false }
-      : withSources(staged);
   }
   if (name === "devices.send") {
     const payload = JSON.stringify(a.payload);
@@ -441,13 +412,6 @@ export async function operate(c, owner, name, a) {
   }
   if (name === "wifi.ble_credential") return issueBle(db, owner, d.id);
   if (name === "logs.read") return internal(c, d.id, "logs", a);
-  if (name === "programs.get") {
-    const [installed] = await db`SELECT request_id AS transfer_id,result->>'sha256' AS sha256,
-      (result->>'bytes')::integer AS bytes FROM esphub.device_commands
-      WHERE device_id=${d.id} AND operation='install' AND state='succeeded' AND result->>'kind'='python'
-      ORDER BY seq DESC LIMIT 1`;
-    return installed ? { status: "installed", ...installed } : { status: "unreported" };
-  }
   if (name === "commands.get") {
     const [row] =
       await db`SELECT id AS command_id,state,result,dispatched_boot AS process_id FROM esphub.device_commands WHERE device_id=${d.id} AND id=${a.command_id}`;
@@ -455,7 +419,7 @@ export async function operate(c, owner, name, a) {
     return row;
   }
   if (name === "devices.reissue") {
-    const secret = token("okl_dev_");
+    const secret = token("eh_dev_");
     const bleSecret = newBleSecret();
     await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,mqtt_connected_since=NULL,boot_id=NULL,boot_info=NULL,
       ble_secret=${bleSecret} WHERE owner=${owner} AND id=${d.id}`;
@@ -463,7 +427,7 @@ export async function operate(c, owner, name, a) {
     return { id: d.id, hub: "api.esphub.ai", token: secret, ble_secret: bleSecret };
   }
   if (name === "ota.prepare_upload")
-    return withSources(await internal(c, d.id, "prepare-upload", a));
+    return internal(c, d.id, "prepare-upload", a);
   const key = a.request_id ?? crypto.randomUUID();
   const queue = (op, args, boot = null) =>
     internal(c, d.id, "enqueue", { device: d.id, op, args, boot, key });
@@ -485,13 +449,12 @@ export async function operate(c, owner, name, a) {
       fail(409, "Enter EspHub Bootloader mode first using bootloader.enter");
     let url = a.url;
     if (!url) {
-      const tag = await latestReleaseTag(db, d.board, "bootloader");
-      url = releaseUrl(d.board, "ota", tag);
+      const tag = await latestReleaseTag(db, d.board, a.kind);
+      url = releaseUrl(d.board, a.kind === "bootloader" ? "ota" : "app", tag);
     } else if (url.startsWith(artifactBase)) {
       await internal(c, d.id, "check-upload", { url, kind: a.kind });
     }
     const args = {
-      ...(a.kind === "micropython" || a.kind === "python" ? { board: d.board } : {}),
       url, kind: a.kind, transfer_id: key,
     };
     return queue("install", args, d.boot_id);
@@ -513,6 +476,9 @@ export async function operate(c, owner, name, a) {
     args = { target: "self" };
   }
   if (name === "devices.reset") op = "provision.reset";
-  if (name === "firmware.get") return withSources(await queue("status", {}));
+  if (name === "firmware.get") {
+    const [profile, state] = await Promise.all([getBoard(db, d.board), summary(c, d)]);
+    return { ...await queue("status", {}), software: state.software, ...updateSources(profile) };
+  }
   return queue(op, args);
 }

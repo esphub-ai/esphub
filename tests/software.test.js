@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { softwareInventory } from "../services/api/src/software.js";
 
-test("minimal app hello uses the launcher version from the previous boot", () => {
-  const app = { role: "app", runtime_type: "micropython", runtime_version: "1.2.4" };
-  const launcher = { role: "bootloader", bootloader_version: "1.2.3" };
-  const result = softwareInventory(app, launcher);
-  assert.equal(result.bootloader_version, "1.2.3");
-  assert.equal(result.application.kind, "micropython");
-  assert.equal(result.application.runtime_version, "1.2.4");
+test("device inventory identifies the running app and the previous maintenance session", () => {
+  const app = { role: "app", fw: { name: "bar-graph", version: "2.0.4" }, sdk_version: "8.0.0" };
+  const boot = { role: "bootloader", bootloader_version: "2.0.3" };
+  assert.deepEqual(softwareInventory(app, boot), {
+    bootloader_version: "2.0.3", bootloader_last_seen: true,
+    application: { ...app.fw, sdk_version: "8.0.0", last_seen: false },
+  });
+  assert.equal(softwareInventory(boot, app).application.last_seen, true);
+  assert.equal(softwareInventory(boot).application, null);
 });

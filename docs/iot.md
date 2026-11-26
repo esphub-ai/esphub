@@ -1,18 +1,17 @@
 # Physical device protocol
 
-In the MQTT hello, the EspHub Bootloader reports role `bootloader` and Runtime and Native Program builds report role `app`. Every physical device hello identifies the boot and reports its Bluetooth and network-interface MACs and the launcher version when available. An app also reports its runtime type and build version. Extra diagnostics are returned by the on-demand status operation.
+In the MQTT hello, the EspHub Bootloader reports role `bootloader` and applications report role `app`. Every physical device hello identifies the boot and reports its Bluetooth and network-interface MACs and the launcher version when available. An app also reports its ESP-IDF application name and version in `fw`, and the SDK version in `sdk_version`. Extra diagnostics are returned by the on-demand status operation.
 
-The bootloader and MicroPython share one device agent. Firmware keeps a single authenticated MQTT session with AWS IoT Core in us-west-2. A device needs its registration token and P-256 key to enroll. USB installs the initial registration token and BLE bootstrap key. The SDK stores a plain ASCII hostname in `okl/hub` (up to 99 bytes). It builds HTTPS request URLs internally. The virtual ESP32 has no device credentials or network transport.
+The bootloader and applications share one device agent. Firmware keeps a single authenticated MQTT session with AWS IoT Core in us-west-2. A device needs its registration token and P-256 key to enroll. USB installs the initial registration token and BLE bootstrap key. The SDK stores a plain ASCII hostname in `eh/hub` (up to 99 bytes). It builds HTTPS request URLs internally. The virtual ESP32 has no device credentials or network transport.
 
 | Operation | Device path | Evidence of completion |
 | --- | --- | --- |
-| Connect to a Wi-Fi network on site | `OKL-WIFI` over USB or a BLE session using an MCP-issued credential | The board reports the join result on the same connection |
+| Connect to a Wi-Fi network on site | `EH-WIFI` over USB or a BLE session using an MCP-issued credential | The board reports the join result on the same connection |
 | Save a network remotely | Cloud `wifi.add` via MQTT | Receipt after the NVS write. The queue erases the password on completion or timeout |
 | Obtain MQTT credentials | HTTPS `POST /api/device/iot/enroll` with `{csr}` | NVS stores the certificate, broker endpoint and device ID, bound to the registration and hub. The private key stays on the board |
 | Receive a command | QoS 1 MQTT downlink `{boot_id, command: {id, seq, op, args}}` | The device executes it and returns `{t:"res", id, ok, data}` or an error |
 | Report device state and execution | QoS 1 MQTT publish to `devices/<uuid>/up` | The hub processes hello, receipts and events, including drawing events and final OTA results |
 | Download an OTA artifact | The bootloader persists the job, destroys its MQTT client and streams an HTTPS GET | After HTTPS cleanup, a terminal MQTT event reports success or failure. Its receipt survives a reboot |
-| Inspect the last cloud-installed main.py | `programs.get` looks up the latest confirmed Python transfer | Transfer ID, SHA-256 of installed bytes, byte count. USB edits are outside this inventory |
 
 ## Command delivery and receipts
 
@@ -32,7 +31,7 @@ Hello, command receipts and install outcomes request an application acknowledgem
 
 ### Remote console
 
-ESP-IDF task logs (`ESP_LOGx`) and MicroPython stdout use the original console at boot. To redirect them, call `logs.set` with `device_id` and `enabled: true` (requires `devices:write`). Check `commands.get` for the device's receipt. The setting lasts for the current boot, including temporary network outages. Setting `enabled: false`, rebooting, or reloading the device registration discards the buffered tail. The SDK stores nothing in flash. Early ROM and panic output follow their native paths.
+ESP-IDF task logs (`ESP_LOGx`) use the original console at boot. To redirect them, call `logs.set` with `device_id` and `enabled: true` (requires `devices:write`). Check `commands.get` for the device's receipt. The setting lasts for the current boot, including temporary network outages. Setting `enabled: false`, rebooting, or reloading the device registration discards the buffered tail. The SDK stores nothing in flash. Early ROM and panic output follow their native paths.
 
 Use `logs.read` with `devices:read` to get console batches and structured events, including after the device goes offline. To continue a page, pass its `process_id` and its `cursor` as `after`. R2 records use Hub arrival time and order. New records include the wire `mid` to recover send order within the boot. `dropped_bytes` counts device-side truncation, ring overruns and known send failures. A QoS 0 message can also be lost after publication.
 
@@ -42,7 +41,7 @@ Enabling capture allocates one session with a 2 KiB byte ring, a 384-byte drain 
 
 1. Apply `deploy/iot.yaml` in us-west-2. Set the stack’s `RelaySecret` and the GitHub production environment’s `IOT_RELAY_SECRET` to the same high-entropy secret. The stack uses IAM resources and outputs the managed policy to attach to the Worker AWS principal. Set `UplinkUrl` to the Worker endpoint for that environment.
 2. Configure `IOT_ACCOUNT_ID`, `IOT_DATA_ENDPOINT`, `IOT_ACCESS_KEY_ID` and `IOT_SECRET_ACCESS_KEY`. The data endpoint is the regional `iot:Data-ATS` hostname. Use an IAM access key pair for the API Worker.
-3. Test the stack, migration, Worker, bootloader and MicroPython together in a separate environment. Enroll two devices, check isolation across topics, verify a cloud Wi-Fi save and repeated BLE provisioning, then install an image and observe the next boot.
+3. Test the stack, migration, Worker, bootloader and an example application together in a separate environment. Enroll two devices, check isolation across topics, verify a cloud Wi-Fi save and repeated BLE provisioning, then install an image and observe the next boot.
 
 ## Local verification
 

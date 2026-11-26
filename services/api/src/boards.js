@@ -1,3 +1,4 @@
+import { describeExamples } from "../../../firmware-source/shared/board-examples.js";
 import { releaseTag } from "../../../firmware-source/shared/firmware-releases.js";
 import { apiOrigin, releaseUrl } from "../../../shared/identity.js";
 import { fail } from "./auth.js";
@@ -10,14 +11,15 @@ export const boardImageUrl = (id) => `${apiOrigin}/boards/${id}/image`;
 export async function searchBoards(sql, query = "") {
   if (query.includes("\0")) fail(400, "Invalid query");
   const rows =
-    await sql`SELECT b.id, b.name, b.model, b.chip, b.flash_mb, b.runtime, b.preview,
+    await sql`SELECT b.id, b.name, b.model, b.chip, b.flash_mb, b.default_example, b.examples, b.source_revision, b.preview,
       (SELECT jsonb_object_agg(r.kind, r.version) FROM esphub.firmware_releases r
-       WHERE r.board = b.id AND (r.kind IN ('bootloader', 'setup') OR r.kind = b.runtime)) AS versions
+       WHERE r.board = b.id) AS versions
     FROM esphub.board_profiles b
     WHERE b.is_current AND strpos(b.id, ${query.trim().toLowerCase()}) > 0
     ORDER BY b.display_order NULLS LAST, b.id`;
-  return rows.map(({ versions, ...board }) => ({
+  return rows.map(({ versions, examples, source_revision, ...board }) => ({
     ...board,
+    examples: describeExamples(board.id, examples, source_revision),
     image_url: boardImageUrl(board.id),
     firmware: Object.fromEntries(
       Object.entries(versions ?? {}).map(([kind, version]) => {

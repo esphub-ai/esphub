@@ -69,7 +69,7 @@ api.put("/uploads/:device/:artifact", async (c) => {
   )
     fail(404, "Unknown upload");
   if (
-    !/^Bearer esh_upload_[A-Za-z0-9_-]{43}$/.test(
+    !/^Bearer eh_upload_[A-Za-z0-9_-]{43}$/.test(
       c.req.header("Authorization") ?? "",
     )
   )
@@ -106,7 +106,7 @@ api.get("/auth/me", async (c) =>
 async function authenticatedDevice(c) {
   const t = c.req
     .header("Authorization")
-    ?.match(/^Bearer (okl_dev_[A-Za-z0-9_-]+)$/)?.[1];
+    ?.match(/^Bearer (eh_dev_[A-Za-z0-9_-]+)$/)?.[1];
   if (!t) fail(401, "Device token required");
   const hash = await digest(t);
   const sql = c.get("sql"),
@@ -154,7 +154,7 @@ api.post("/internal/iot/uplink", async (c) => {
     });
   return c.json({ ok: true });
 });
-api.get("/api/device/programs/:artifact", async (c) => {
+api.get("/api/device/artifacts/:artifact", async (c) => {
   const { stub } = await authenticatedDevice(c);
   return stub.fetch(
     "https://device/artifacts/" + encodeURIComponent(c.req.param("artifact")),

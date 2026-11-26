@@ -28,7 +28,6 @@ const readTools = new Set([
   "commands.get",
   "logs.read",
   "devices.list",
-  "programs.get",
   "devices.get",
   "wifi.list",
   "firmware.get",
