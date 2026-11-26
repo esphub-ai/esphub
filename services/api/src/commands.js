@@ -1,5 +1,6 @@
 import { digest, fail } from "./auth.js";
 import { connectedSince, publishDownlink, revokeCertificate } from "./iot.js";
+import { validLayout } from "./layout.js";
 
 export async function enqueue(
   c,
@@ -11,7 +12,7 @@ export async function enqueue(
 ) {
   const db = c.sql;
   const fingerprint = await digest(
-    JSON.stringify([device, key, op, args, boot]),
+    JSON.stringify([device, key, op, args, op === "resize_app" ? null : boot]),
   );
   // The device row serializes sequence allocation.
   const [row] = await db`WITH numbered AS (
@@ -38,7 +39,9 @@ export async function claimCommand(db, device, boot, reconnect = false) {
     WHERE q.state='dispatched' OR (q.state='queued' AND q.expires_at>now() AND (q.boot_id IS NULL OR q.boot_id=${boot}))
     ORDER BY q.seq LIMIT 1
   ) UPDATE esphub.device_commands q SET state='dispatched',dispatched_boot=${boot},
-    delivery_deadline=COALESCE(delivery_deadline,now()+CASE WHEN operation='install' THEN interval '10 minutes' ELSE interval '90 seconds' END),
+    result=CASE WHEN operation='resize_app' THEN jsonb_build_object(
+      'app_size_bytes',args->'app_size_bytes','data_size_bytes',args->'data_size_bytes') ELSE result END,
+    delivery_deadline=COALESCE(delivery_deadline,now()+CASE WHEN operation IN ('install','resize_app') THEN interval '10 minutes' ELSE interval '90 seconds' END),
     next_wake=least(delivery_deadline,now()+interval '15 seconds')
     FROM first WHERE q.id=first.id AND (q.state='queued' OR
       (q.state='dispatched' AND q.dispatched_boot=${boot} AND q.delivery_deadline>now()
@@ -77,6 +80,15 @@ export async function dispatch(
 }
 
 export async function receipt(db, device, boot, frame) {
+  if (frame.ok && (frame.data?.rebooting === true || frame.data?.unchanged === true)) {
+    const [resize] = await db`SELECT state,result FROM esphub.device_commands WHERE device_id=${device}
+      AND id=${frame.id} AND dispatched_boot=${boot} AND operation='resize_app'`;
+    if (resize && (resize.result?.app_size_bytes !== frame.data.app_size_bytes ||
+        resize.result?.data_size_bytes !== frame.data.data_size_bytes))
+      fail(409, "Resize receipt does not match the requested layout");
+    // A real boundary change is complete only after the next boot reads its table.
+    if (resize && frame.data.rebooting === true) return resize;
+  }
   const state = frame.ok ? "succeeded" : "failed";
   const result = JSON.stringify(
     frame.ok ? (frame.data ?? {}) : { error: String(frame.error ?? "Failed") },
@@ -88,6 +100,7 @@ export async function receipt(db, device, boot, frame) {
     WHERE device_id=${device} AND id=${frame.id} AND dispatched_boot=${boot}
     AND state IN ('dispatched','unknown') AND receipt_hash IS NULL
     AND (operation<>'install' OR NOT ${frame.ok})
+    AND (operation<>'resize_app' OR NOT ${frame.ok} OR ${frame.data?.unchanged === true})
     RETURNING state`;
   if (row) return row;
   const [existing] =
@@ -95,6 +108,28 @@ export async function receipt(db, device, boot, frame) {
     AND id=${frame.id} AND dispatched_boot=${boot} AND receipt_hash=${ack}`;
   if (!existing) fail(409, "Unknown or conflicting receipt");
   return existing;
+}
+
+export async function finishResize(db, device, boot, done, data) {
+  const layout = validLayout(data) ? JSON.stringify({
+    app_size_bytes: data.app_size_bytes, data_size_bytes: data.data_size_bytes,
+  }) : null;
+  // A cold boot expires the old command's args. Its requested sizes survive in
+  // result until this receipt atomically settles the command and updates the device.
+  await db`WITH observed AS (
+    SELECT ${layout}::text::jsonb AS layout, ${JSON.stringify(data)}::text::jsonb AS detail
+  ), requested AS (
+    SELECT q.id, o.layout, o.detail, ${done} AND o.layout IS NOT NULL AND q.result @> o.layout AS matches
+    FROM esphub.device_commands q CROSS JOIN observed o WHERE q.device_id=${device}
+    AND q.request_id=${data.transfer_id} AND q.operation='resize_app' AND q.dispatched_boot<>${boot}
+    AND q.state IN ('dispatched','unknown')
+  ), finished AS (
+    UPDATE esphub.device_commands q SET state=CASE WHEN r.matches THEN 'succeeded' ELSE 'failed' END,
+      result=CASE WHEN ${done} AND NOT r.matches THEN r.detail ||
+        '{"error":"Active layout does not match the requested capacities"}'::jsonb ELSE r.detail END,
+      args='{}',next_wake=NULL FROM requested r WHERE q.id=r.id RETURNING r.matches,r.layout
+  ) UPDATE esphub.devices SET boot_info=jsonb_set(boot_info,'{layout}',f.layout)
+    FROM finished f WHERE f.matches AND id=${device} AND boot_id=${boot}`;
 }
 
 export async function retryDue(db, env, device = null) {

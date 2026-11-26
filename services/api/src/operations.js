@@ -3,11 +3,12 @@ import { releaseUrl } from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
 import { newBleSecret, issueBle, normalizeBleAddress } from "./ble.js";
 import { connectedSince, publishDownlink } from "./iot.js";
+import { appAlignment, emptyLittleFS, maxAppSize, maxFlashBytes, minLittleFSBytes, validLayout } from "./layout.js";
 import { artifactBase, maxUploadBytes } from "./uploads.js";
 import { boardIdPattern, boardImageUrl, getBoard, searchBoards } from "./boards.js";
 import { updateSources } from "./update-sources.js";
 import { provisioning } from "./provisioning.js";
-import { latestReleaseTag, releaseResponse } from "./releases.js";
+import { latestReleaseTag, publishedAsset, releaseResponse } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
 import { createVirtual, operateVirtual } from "./virtual-device.js";
 const strings = (...names) =>
@@ -147,7 +148,15 @@ const defs = [
       ...id,
       kind: otaKind,
       url: { type: "string", maxLength: 1024 },
+      image_size_bytes: { type: "integer", minimum: 1, maximum: 0xffffffff,
+        description: "Byte length of a third-party HTTPS image, if known. EspHub measures its own uploads and releases." },
     },
+  ],
+  [
+    "ota_resize_app",
+    destructive,
+    "Grow or shrink the application slot in Launcher mode. Every size change destroys all LittleFS files. Set erase_littlefs=true only with permission to erase them. Same size is a no-op. A shrink must fit the installed image. Check the command receipt for the verified layout after reboot.",
+    { ...id, app_size_bytes: { type: "integer", minimum: appAlignment, maximum: maxFlashBytes, multipleOf: appAlignment }, erase_littlefs: { type: "boolean" } },
   ],
   [
     "logs_set",
@@ -194,7 +203,7 @@ export const tools = defs.map(
         ...(queueable(name) ? strings("request_id") : {}),
       },
       required: Object.keys(properties).filter(
-        (k) => name === "logs_read" ? k === "device_id" : !["password", "url", "query"].includes(k),
+        (k) => name === "logs_read" ? k === "device_id" : !["password", "url", "query", "erase_littlefs", "image_size_bytes"].includes(k),
       ),
     },
   }),
@@ -208,6 +217,7 @@ function queueable(name) {
       "bootloader_enter",
       "bootloader_exit",
       "ota_install",
+      "ota_resize_app",
       "logs_set",
       "firmware_get",
     ].includes(name)
@@ -234,7 +244,7 @@ export function validate(name, a) {
       (p.type === "integer" &&
         (!Number.isSafeInteger(v) ||
           v < (p.minimum ?? 0) ||
-          v > (p.maximum ?? Number.MAX_SAFE_INTEGER)))
+          v > (p.maximum ?? Number.MAX_SAFE_INTEGER) || (p.multipleOf && v % p.multipleOf !== 0)))
     )
       fail(400, "Invalid " + k);
   }
@@ -257,6 +267,8 @@ export function validate(name, a) {
       (new TextEncoder().encode(a[k]).length > max || a[k].includes("\0"))
     )
       fail(400, "Invalid " + k);
+  if (name === "ota_prepare_upload" && a.kind === "bootloader" && a.size > 4 * 1024 * 1024)
+    fail(400, "Bootloader upload exceeds 4 MiB");
   if (a.url) {
     let u;
     try {
@@ -307,7 +319,8 @@ async function summary(c, d) {
         ? broker.software
         : softwareInventory(d.boot_info),
     process_id: d.boot_id,
-    info: d.boot_info ? { role: d.boot_info.role, net_mac: d.boot_info.net_mac ?? null } : null,
+    info: d.boot_info ? { role: d.boot_info.role, net_mac: d.boot_info.net_mac ?? null,
+      ...(validLayout(d.boot_info.layout) ? { layout: d.boot_info.layout } : {}) } : null,
   };
 }
 export async function operate(c, owner, name, a) {
@@ -444,18 +457,39 @@ export async function operate(c, owner, name, a) {
     if (info?.role !== "bootloader" || !d.boot_id) fail(409, "Device must be in bootloader mode");
     return queue("reboot", { target: "app" }, d.boot_id);
   }
+  if (name === "ota_resize_app") {
+    if (info?.role !== "bootloader" || !d.boot_id)
+      fail(409, "Enter EspHub Bootloader mode before resizing the app slot");
+    if (!validLayout(info.layout))
+      fail(409, "Launcher layout unavailable. Update the Launcher or query its firmware status and wait for the receipt.");
+    const { app_size_bytes: current, data_size_bytes: filesystem } = info.layout;
+    const data = current + filesystem - a.app_size_bytes;
+    if (data < minLittleFSBytes) fail(400, "Target exceeds available app and LittleFS capacity");
+    if (a.app_size_bytes !== current && a.erase_littlefs !== true)
+      fail(400, "Changing the app slot erases LittleFS. Set erase_littlefs=true to authorize.");
+    return queue("resize_app", {
+      app_size_bytes: a.app_size_bytes, data_size_bytes: data, erase_littlefs: a.erase_littlefs === true,
+      empty_fs: emptyLittleFS(data), transfer_id: key,
+    }, d.boot_id);
+  }
   if (name === "ota_install") {
     if (info?.role !== "bootloader")
       fail(409, "Enter EspHub Bootloader mode first using bootloader_enter");
-    let url = a.url;
-    if (!url) {
-      const tag = await latestReleaseTag(db, d.board, a.kind);
-      url = releaseUrl(d.board, a.kind === "bootloader" ? "ota" : "app", tag);
-    } else if (url.startsWith(artifactBase)) {
-      await internal(c, d.id, "check-upload", { url, kind: a.kind });
+    const asset = a.kind === "bootloader" ? "ota" : "app";
+    const official = releaseUrl(d.board, asset);
+    let url = a.url, imageSize = a.image_size_bytes;
+    if (url?.startsWith(artifactBase)) {
+      ({ size: imageSize } = await internal(c, d.id, "check-upload", { url, kind: a.kind }));
+    } else if (!url || url.split("?")[0] === official) {
+      const tag = (url && new URL(url).searchParams.get("tag")) || await latestReleaseTag(db, d.board, a.kind);
+      const file = await publishedAsset(d.board, a.kind, asset, tag, c.env.FIRMWARE);
+      imageSize = file.size ?? (await c.env.FIRMWARE.head(file.key))?.size;
+      url = releaseUrl(d.board, asset, tag);
     }
+    if (a.kind === "app" && validLayout(info.layout) && imageSize > info.layout.app_size_bytes)
+      fail(409, `Image ${imageSize} bytes, app slot ${info.layout.app_size_bytes}, maximum after resize ${maxAppSize(info.layout)}`);
     const args = {
-      url, kind: a.kind, transfer_id: key,
+      url, kind: a.kind, transfer_id: key, ...(imageSize ? { image_size: imageSize } : {}),
     };
     return queue("install", args, d.boot_id);
   }

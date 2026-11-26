@@ -32,6 +32,7 @@ const prompts = {
 1. Use devices_list to list my physical devices and their online status. Ask which device I want to manage and what I want to do.
 2. Use devices_get for details. For Wi-Fi, start with wifi_list and use wifi_scan, wifi_add, or wifi_remove as needed.
 3. Pick an example from boards_search or use the setup_example returned by devices_create. Edit its pinned source and build the app. For custom firmware, upload the binary with ota_prepare_upload. Enter Bootloader mode with bootloader_enter, call ota_install with kind app or bootloader, and verify the receipt and firmware version after reboot.
+   In Launcher mode, use ota_resize_app to grow or shrink the app slot. Ask me before changing its size because this erases all LittleFS files.
 4. Use devices_reissue to replace USB credentials or devices_delete to remove a device. Confirm the target and effect with me first.`,
   bind: `Connect to EspHub MCP at ${mcpEndpoint}. Use CIMD OAuth with devices:read and devices:write as needed.
 

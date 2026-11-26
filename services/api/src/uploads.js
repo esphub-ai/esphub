@@ -1,7 +1,7 @@
 // Device-private R2 staging. The download prefix is understood by the EspHub Bootloader.
 import { digest, token } from "./auth.js";
 export const artifactBase = "https://api.esphub.ai/api/device/artifacts/";
-export const maxUploadBytes = 4 * 1024 * 1024;
+export { maxFlashBytes as maxUploadBytes } from "./layout.js";
 const error = (status, message) =>
   Response.json({ error: message }, { status });
 const objectKey = (row) => `devices/${row.device}/artifacts/${row.id}`;
@@ -76,8 +76,12 @@ export class Uploads {
     if (
       !request.body ||
       request.headers.get("Content-Length") !== String(row.size)
-    )
+    ) {
+      // The API forwards this stream to the Durable Object. Consume a rejected
+      // body without buffering it so the forwarding Worker can return the 400.
+      if (request.body) await request.body.pipeTo(new WritableStream()).catch(() => {});
       return error(400, "Send the file bytes with the declared Content-Length");
+    }
     return this.save(row, request.body);
   }
 
@@ -111,9 +115,9 @@ export class Uploads {
     });
   }
 
-  async ready(url, kind) {
+  async readySize(url, kind) {
     const row = this.row(url.slice(artifactBase.length));
-    return row?.kind === kind && !!(await this.bucket.head(objectKey(row)));
+    return row?.kind === kind ? (await this.bucket.head(objectKey(row)))?.size : null;
   }
 
   async expire() {

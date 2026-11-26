@@ -232,6 +232,7 @@ try {
         "devices_get",
         "bootloader_enter",
         "ota_install",
+        "ota_resize_app",
         "devices_delete",
       ],
     ],
