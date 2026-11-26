@@ -207,7 +207,6 @@ try {
     "devices.create_virtual",
     "devices.send",
     "ota.prepare_upload",
-    "logs.set",
   ]);
   const openWorldTools = new Set([
     "wifi.scan",

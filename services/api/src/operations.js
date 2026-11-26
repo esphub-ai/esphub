@@ -151,7 +151,7 @@ const defs = [
   ],
   [
     "logs.set",
-    additive,
+    destructive,
     "Enable or disable remote ESP-IDF console output for this physical device's current boot. Capture starts off. Disabling restores local output and discards buffered bytes. Check commands.get for the device receipt.",
     { ...id, enabled: { type: "boolean" } },
   ],
