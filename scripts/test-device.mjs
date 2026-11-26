@@ -64,7 +64,7 @@ async function op(name, args, accessToken) {
   return JSON.parse(r.content[0].text);
 }
 async function testVirtualDevice(read) {
-  const createVirtual = () => op("devices.create_virtual", {});
+  const createVirtual = () => op("devices_create_virtual", {});
   const [virtual, duplicate] = await Promise.all([
     createVirtual(),
     createVirtual(),
@@ -73,8 +73,8 @@ async function testVirtualDevice(read) {
   assert.equal(virtual.kind, "virtual");
   assert.equal(virtual.board, "esphub/virtual-esp32");
   const vid = { device_id: virtual.id };
-  const firmware = await op("firmware.get", vid, read);
-  const [listedVirtual] = await op("devices.list", {}, read);
+  const firmware = await op("firmware_get", vid, read);
+  const [listedVirtual] = await op("devices_list", {}, read);
   assert.equal(listedVirtual.kind, "virtual");
   assert.equal(listedVirtual.process_id, firmware.process_id);
   assert.equal(listedVirtual.info.fw.name, "EspHub virtual firmware");
@@ -87,27 +87,27 @@ async function testVirtualDevice(read) {
   );
   const rebootArgs = { ...vid, request_id: randomUUID() };
   const [restart, retry] = await Promise.all([
-    op("devices.reboot", rebootArgs),
-    op("devices.reboot", rebootArgs),
+    op("devices_reboot", rebootArgs),
+    op("devices_reboot", rebootArgs),
   ]);
   assert.deepEqual(retry, restart);
   assert.notEqual(restart.process_id, firmware.process_id);
-  const later = await op("devices.reboot", vid);
+  const later = await op("devices_reboot", vid);
   assert.deepEqual(await createVirtual(), virtual);
-  assert.deepEqual(await op("devices.reboot", rebootArgs), restart);
+  assert.deepEqual(await op("devices_reboot", rebootArgs), restart);
   const reconnected = await issue("devices:read");
-  const current = await op("devices.get", vid, reconnected);
+  const current = await op("devices_get", vid, reconnected);
   assert.equal(current.process_id, later.process_id);
   const secondAccount = await issue("devices:read devices:write", {
     sub: otherSubject,
   });
-  assert.deepEqual(await op("devices.list", {}, secondAccount), []);
-  const secondBoard = await op("devices.create_virtual", {}, secondAccount);
+  assert.deepEqual(await op("devices_list", {}, secondAccount), []);
+  const secondBoard = await op("devices_create_virtual", {}, secondAccount);
   assert.notEqual(secondBoard.id, virtual.id);
   for (const name of [
-    "devices.get",
-    "devices.reboot",
-    "devices.delete",
+    "devices_get",
+    "devices_reboot",
+    "devices_delete",
   ]) {
     const result = await call(
       "tools/call",
@@ -118,20 +118,20 @@ async function testVirtualDevice(read) {
     assert.match(result.content[0].text, /Device not found/, name);
   }
   for (const [name, args] of [
-    ["devices.bind_ble_address", { ...vid, ble_address: "02:11:22:33:44:55" }],
-    ["wifi.scan", vid],
-    ["wifi.ble_credential", vid],
-    ["devices.reissue", vid],
-    ["bootloader.enter", vid],
-    ["bootloader.exit", vid],
-    ["ota.install", { ...vid, kind: "app" }],
+    ["devices_bind_ble_address", { ...vid, ble_address: "02:11:22:33:44:55" }],
+    ["wifi_scan", vid],
+    ["wifi_ble_credential", vid],
+    ["devices_reissue", vid],
+    ["bootloader_enter", vid],
+    ["bootloader_exit", vid],
+    ["ota_install", { ...vid, kind: "app" }],
   ]) {
     const result = await call("tools/call", { name, arguments: args });
     assert.equal(result.isError, true, name);
     assert.match(result.content[0].text, /requires a physical device/, name);
   }
-  await op("devices.delete", vid);
-  assert.deepEqual(await op("devices.list", {}, read), []);
+  await op("devices_delete", vid);
+  assert.deepEqual(await op("devices_list", {}, read), []);
   assert.equal(
     (
       await sql`SELECT 1 FROM esphub.virtual_boots WHERE device_id=${virtual.id}`
@@ -155,7 +155,7 @@ try {
   const read = await issue("devices:read");
   const anonymousCall = await request(
     "tools/call",
-    { name: "devices.list", arguments: {} },
+    { name: "devices_list", arguments: {} },
     null,
   );
   assert.equal(anonymousCall.status, 401);
@@ -178,7 +178,7 @@ try {
   }
   const list = await request(
     "tools/call",
-    { name: "devices.list", arguments: {} },
+    { name: "devices_list", arguments: {} },
     read,
   );
   assert.equal(list.status, 200);
@@ -189,34 +189,34 @@ try {
   const listed = (await call("tools/list", {})).tools;
   assert.deepEqual((await call("tools/list", {}, null)).tools, listed);
   const readOnly = new Set([
-    "boards.search",
-    "commands.get",
-    "devices.list",
-    "devices.get",
-    "wifi.list",
-    "firmware.get",
-    "logs.read",
+    "boards_search",
+    "commands_get",
+    "devices_list",
+    "devices_get",
+    "wifi_list",
+    "firmware_get",
+    "logs_read",
   ]);
-  const matches = await op("boards.search", { query: "CaRdPuTeR" }, read);
+  const matches = await op("boards_search", { query: "CaRdPuTeR" }, read);
   const publicMatches = await (await fetch(base + "/backend/boards?q=CaRdPuTeR")).json();
   assert.deepEqual(matches, publicMatches);
   assert.deepEqual(publicMatches.map(b => b.id).sort(), ["m5stack/cardputer", "m5stack/cardputer-adv"]);
   const additiveTools = new Set([
-    "wifi.ble_credential",
-    "devices.create",
-    "devices.create_virtual",
-    "devices.send",
-    "ota.prepare_upload",
-    "logs.set",
+    "wifi_ble_credential",
+    "devices_create",
+    "devices_create_virtual",
+    "devices_send",
+    "ota_prepare_upload",
+    "logs_set",
   ]);
   const openWorldTools = new Set([
-    "wifi.scan",
-    "wifi.add",
-    "ota.install",
+    "wifi_scan",
+    "wifi_add",
+    "ota_install",
   ]);
   for (const { name, annotations } of listed) {
     // Active Wi-Fi discovery observes nearby networks but still requires write scope.
-    const observesOnly = readOnly.has(name) || name === "wifi.scan";
+    const observesOnly = readOnly.has(name) || name === "wifi_scan";
     assert.equal(annotations?.readOnlyHint, observesOnly, name);
     assert.equal(
       annotations?.destructiveHint,
@@ -249,7 +249,7 @@ try {
     "esphub",
   );
   await testVirtualDevice(read);
-  const d = await op("devices.create", {
+  const d = await op("devices_create", {
       board: "m5stack/paper-color",
       name: "Simulator",
     }),
@@ -259,15 +259,15 @@ try {
   const usbAddress = "02:AA:BB:CC:DD:EE";
   const reportedAddress = "02:11:22:AA:BB:CC";
   const bindArgs = { ...id, ble_address: usbAddress };
-  assert.equal((await op("devices.get", id)).ble_address, null);
+  assert.equal((await op("devices_get", id)).ble_address, null);
   for (let i = 0; i < 2; i++) {
-    assert.deepEqual(await op("devices.bind_ble_address", bindArgs), {
+    assert.deepEqual(await op("devices_bind_ble_address", bindArgs), {
       id: d.id, ble_address: usbAddress.toLowerCase(),
     });
   }
-  await assert.rejects(op("devices.bind_ble_address", { ...id, ble_address: "wrong" }), /Invalid ble_address/);
-  assert.equal((await op("devices.list", {}, read))[0].ble_address, usbAddress.toLowerCase());
-  const firstBle = await op("wifi.ble_credential", id);
+  await assert.rejects(op("devices_bind_ble_address", { ...id, ble_address: "wrong" }), /Invalid ble_address/);
+  assert.equal((await op("devices_list", {}, read))[0].ble_address, usbAddress.toLowerCase());
+  const firstBle = await op("wifi_ble_credential", id);
   assert.deepEqual(firstBle, {
     psk: createHmac("sha256", Buffer.from(d.ble_secret, "hex"))
       .update("esphub/wifi/tls-psk").digest("hex"),
@@ -279,11 +279,11 @@ try {
   assert.deepEqual(d.setup_example, manifest.example);
   assert.ok(d.setup_example.build_command.includes(d.board));
   assert.deepEqual(Object.keys(d.sources).sort(), ["bootloader", "sdk"]);
-  const offline = await op("devices.get", id, read);
+  const offline = await op("devices_get", id, read);
   assert.equal(offline.online, false);
   assert.equal(offline.kind, "physical");
   assert.deepEqual(offline.sources, d.sources);
-  const watch = await op("devices.create", {
+  const watch = await op("devices_create", {
     board: "m5stack/stopwatch",
     name: "Watch",
   });
@@ -295,7 +295,7 @@ try {
   const localFiles = {};
   for (const kind of ["bootloader", "app"]) {
     const file = Buffer.alloc(200000, 0xe9);
-    const grant = await op("ota.prepare_upload", {
+    const grant = await op("ota_prepare_upload", {
       ...id,
       kind,
       size: file.length,
@@ -326,7 +326,7 @@ try {
     assert.ok(Buffer.from(await downloaded.arrayBuffer()).equals(file));
     localFiles[kind] = grant.url;
   }
-  const pending = await op("ota.prepare_upload", {
+  const pending = await op("ota_prepare_upload", {
     ...id,
     kind: "bootloader",
     size: 100,
@@ -335,8 +335,8 @@ try {
   const other = await issue("devices:read devices:write", {
     sub: otherSubject,
   });
-  await assert.rejects(op("devices.bind_ble_address", bindArgs, other), /not found/i);
-  for (const name of ["devices.get", "devices.delete", "wifi.ble_credential"]) {
+  await assert.rejects(op("devices_bind_ble_address", bindArgs, other), /not found/i);
+  for (const name of ["devices_get", "devices_delete", "wifi_ble_credential"]) {
     const response = await request(
       "tools/call",
       { name, arguments: id },
@@ -354,11 +354,11 @@ try {
     role: "bootloader",
     bootloader_version: "1.2.3",
   });
-  const connected = await op("devices.get", id);
+  const connected = await op("devices_get", id);
   assert.equal(connected.online, true);
   assert.equal(connected.board, d.board);
   assert.deepEqual(connected.info, { role: "bootloader", net_mac: addresses.net_mac });
-  assert.equal((await op("devices.list", {}, read))[0].ble_address, reportedAddress.toLowerCase());
+  assert.equal((await op("devices_list", {}, read))[0].ble_address, reportedAddress.toLowerCase());
   const ingress = (auth, principal, frame) =>
     fetch(base + "/backend/internal/iot/uplink", {
       method: "POST",
@@ -384,13 +384,13 @@ try {
     ).status,
     409,
   );
-  assert.deepEqual(await op("wifi.ble_credential", id), firstBle);
+  assert.deepEqual(await op("wifi_ble_credential", id), firstBle);
 
   const result = (idValue) =>
-    op("commands.get", { ...id, command_id: idValue }, read);
-  await assert.rejects(op("logs.read", id, other), /not found/i);
-  assert.equal((await op("logs.read", id, read)).last, 0);
-  const toggled = await op("logs.set", { ...id, enabled: true });
+    op("commands_get", { ...id, command_id: idValue }, read);
+  await assert.rejects(op("logs_read", id, other), /not found/i);
+  assert.equal((await op("logs_read", id, read)).last, 0);
+  const toggled = await op("logs_set", { ...id, enabled: true });
   const toggle = await mcu.nextCommand();
   assert.equal(toggle.op, "logs.set");
   assert.deepEqual(toggle.args, { enabled: true });
@@ -402,7 +402,7 @@ try {
   // The simulated device sends no application ACK request for QoS 0. Wait for
   // the relay/Worker commit before disconnecting and checking offline reads.
   for (let i = 0; i < 100; i++) {
-    if ((await op("logs.read", id, read)).last) break;
+    if ((await op("logs_read", id, read)).last) break;
     await delay(20);
   }
   const wifi = {
@@ -412,7 +412,7 @@ try {
     request_id: randomUUID(),
   };
   await mcu.disconnect();
-  const page = await op("logs.read", { ...id, process_id: boot, limit: 1 }, read);
+  const page = await op("logs_read", { ...id, process_id: boot, limit: 1 }, read);
   assert.equal(page.process_id, boot);
   assert.equal(page.records.length, 1);
   assert.equal(page.records[0].text, text);
@@ -424,17 +424,17 @@ try {
   assert.equal((await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
     ...log, bytes: "!".repeat(512),
   })).status, 400);
-  assert.deepEqual((await op("logs.read", { ...id, process_id: boot, after: page.cursor }, read)).records, []);
-  assert.equal((await op("devices.get", id)).online, false);
+  assert.deepEqual((await op("logs_read", { ...id, process_id: boot, after: page.cursor }, read)).records, []);
+  assert.equal((await op("devices_get", id)).online, false);
   await mcu.subscribe(); // New broker session, before this boot has introduced itself.
-  assert.equal((await op("devices.get", id)).online, false);
+  assert.equal((await op("devices_get", id)).online, false);
   await assert.rejects(
-    op("devices.send", { ...id, payload: "offline" }),
+    op("devices_send", { ...id, payload: "offline" }),
     /offline/i,
   );
   await mcu.reconnect();
   const payload = { text: "Hello", flags: [true, null] };
-  const { message_id } = await op("devices.send", { ...id, payload });
+  const { message_id } = await op("devices_send", { ...id, payload });
   assert.deepEqual(await mcu.nextMessage(), { id: message_id, payload });
   await mcu.sendBestEffort({
     t: "message",
@@ -444,7 +444,7 @@ try {
   let reply;
   for (let i = 0; i < 100 && !reply; i++) {
     const pageAfter = await op(
-      "logs.read",
+      "logs_read",
       { ...id, after: page.cursor },
       read,
     );
@@ -454,10 +454,10 @@ try {
   assert.deepEqual(reply?.payload, [23.4]);
   assert.equal(reply?.reply_to, message_id);
   await mcu.disconnect();
-  const added = await op("wifi.add", wifi);
+  const added = await op("wifi_add", wifi);
   assert.equal((await result(added.command_id)).state, "queued");
   await mcu.reconnect();
-  assert.equal((await op("wifi.add", wifi)).command_id, added.command_id);
+  assert.equal((await op("wifi_add", wifi)).command_id, added.command_id);
   const save = await mcu.nextCommand();
   assert.ok(Number.isSafeInteger(save.seq));
   assert.deepEqual(save.args, {
@@ -482,13 +482,13 @@ try {
   assert.ok(!JSON.stringify(stored).includes(wifi.password));
   await mcu.send({ t: "event", name: "draw.done", data: { rotation: 1 } });
 
-  assert.equal((await op("bootloader.enter", id)).mode, "bootloader");
+  assert.equal((await op("bootloader_enter", id)).mode, "bootloader");
   for (const url of [localFiles.app, pending.url]) {
-    await assert.rejects(op("ota.install", { ...id, kind: "bootloader", url }), /Upload not ready/);
+    await assert.rejects(op("ota_install", { ...id, kind: "bootloader", url }), /Upload not ready/);
   }
   for (const [kind, url] of Object.entries(localFiles)) {
     const key = randomUUID();
-    const queued = await op("ota.install", { ...id, kind, url, request_id: key });
+    const queued = await op("ota_install", { ...id, kind, url, request_id: key });
     const cmd = await mcu.nextCommand();
     assert.equal(cmd.id, queued.command_id);
     assert.deepEqual(cmd.args, { url, kind, transfer_id: key });
@@ -498,7 +498,7 @@ try {
     assert.equal((await result(cmd.id)).state, ok ? "succeeded" : "failed");
   }
 
-  const reboot = await op("devices.reboot", id);
+  const reboot = await op("devices_reboot", id);
   assert.equal((await mcu.nextCommand()).id, reboot.command_id);
   const app = await mcu.hello({
     ...addresses,
@@ -507,14 +507,14 @@ try {
     sdk_version: "8.0.0",
   });
   assert.equal((await result(reboot.command_id)).state, "succeeded");
-  const currentApp = await op("devices.get", id);
+  const currentApp = await op("devices_get", id);
   assert.equal(currentApp.board, d.board);
   assert.deepEqual(currentApp.info, { role: "app", net_mac: addresses.net_mac });
   assert.equal(currentApp.ble_address, reportedAddress.toLowerCase());
   const inventory = currentApp.software;
   assert.equal(inventory.bootloader_version, "1.2.3");
   assert.deepEqual(inventory.application, { name: "color-bands", version: "2.0.4", sdk_version: "8.0.0", last_seen: false });
-  const firmware = await op("firmware.get", id, read);
+  const firmware = await op("firmware_get", id, read);
   assert.deepEqual(firmware.software, inventory);
   assert.deepEqual(firmware.examples, currentApp.examples);
   const status = await mcu.nextCommand();
@@ -532,39 +532,39 @@ try {
     ).status,
     409,
   );
-  assert.equal((await op("devices.get", id)).ble_address, reportedAddress.toLowerCase());
+  assert.equal((await op("devices_get", id)).ble_address, reportedAddress.toLowerCase());
   await assert.rejects(
-    op("ota.install", { ...id, kind: "app" }),
+    op("ota_install", { ...id, kind: "app" }),
     /bootloader/i,
   );
   assert.deepEqual(mcu.httpsRequests, ["iot/enroll"]);
   // A request dispatched in the bootloader is completed by a different boot.
   const installBootloader = { ...id, kind: "bootloader", url: localFiles.bootloader };
-  await assert.rejects(op("ota.install", installBootloader), /bootloader/i);
+  await assert.rejects(op("ota_install", installBootloader), /bootloader/i);
   await mcu.hello({ role: "bootloader" });
-  const handoff = await op("ota.install", installBootloader);
+  const handoff = await op("ota_install", installBootloader);
   const firstAttempt = await mcu.nextCommand();
   assert.equal(firstAttempt.id, handoff.command_id);
   await mcu.hello({ role: "app", fw: { name: "sample", version: "2.0.4" } });
   await mcu.send({ t: "event", name: "install.failed",
     data: { transfer_id: firstAttempt.args.transfer_id, error: "HTTPS read failed" } });
   assert.equal((await result(firstAttempt.id)).state, "failed");
-  await assert.rejects(op("ota.install", installBootloader), /bootloader/i);
+  await assert.rejects(op("ota_install", installBootloader), /bootloader/i);
   await mcu.hello({ role: "bootloader" });
-  const retry = await op("ota.install", installBootloader);
+  const retry = await op("ota_install", installBootloader);
   const nextAttempt = await mcu.nextCommand();
   assert.equal(nextAttempt.id, retry.command_id);
   await mcu.send({ t: "event", name: "install.done",
     data: { transfer_id: nextAttempt.args.transfer_id, kind: "bootloader" } });
   assert.equal((await result(nextAttempt.id)).state, "succeeded");
-  const exit = await op("bootloader.exit", id);
+  const exit = await op("bootloader_exit", id);
   const exitCommand = await mcu.nextCommand();
   assert.equal(exitCommand.id, exit.command_id);
   assert.deepEqual(exitCommand.args, { target: "app" });
   await mcu.hello({ role: "app", fw: { name: "sample", version: "2.0.4" } });
   assert.equal((await result(exit.command_id)).state, "succeeded");
-  await assert.rejects(op("bootloader.exit", id), /bootloader mode/);
-  await op("devices.reissue", id);
+  await assert.rejects(op("bootloader_exit", id), /bootloader mode/);
+  await op("devices_reissue", id);
   assert.equal(
     (
       await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
@@ -574,8 +574,8 @@ try {
     ).status,
     409,
   );
-  await op("devices.delete", { device_id: watch.id });
-  await op("devices.delete", id);
+  await op("devices_delete", { device_id: watch.id });
+  await op("devices_delete", id);
   console.log(
     "PASS Clerk, virtual devices, broker enrollment, command dispatch, duplicate receipts, cloud Wi-Fi, BLE credentials, MQTT events, OTA, private file transfer and revocation",
   );

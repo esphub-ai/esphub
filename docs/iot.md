@@ -7,7 +7,7 @@ The bootloader and applications share one device agent. Firmware keeps a single 
 | Operation | Device path | Evidence of completion |
 | --- | --- | --- |
 | Connect to a Wi-Fi network on site | `EH-WIFI` over USB or a BLE session using an MCP-issued credential | The board reports the join result on the same connection |
-| Save a network remotely | Cloud `wifi.add` via MQTT | Receipt after the NVS write. The queue erases the password on completion or timeout |
+| Save a network remotely | Cloud `wifi_add` via MQTT | Receipt after the NVS write. The queue erases the password on completion or timeout |
 | Obtain MQTT credentials | HTTPS `POST /api/device/iot/enroll` with `{csr}` | NVS stores the certificate, broker endpoint and device ID, bound to the registration and hub. The private key stays on the board |
 | Receive a command | QoS 1 MQTT downlink `{boot_id, command: {id, seq, op, args}}` | The device executes it and returns `{t:"res", id, ok, data}` or an error |
 | Report device state and execution | QoS 1 MQTT publish to `devices/<uuid>/up` | The hub processes hello, receipts and events, including drawing events and final OTA results |
@@ -23,7 +23,7 @@ The queue expires undelivered commands after five minutes. A dispatched command 
 
 ## MQTT reports
 
-The shared agent reports the public Bluetooth controller address as `ble_address` in the MQTT hello on each connection. The hub uses the authenticated device ID to update the same binding as USB provisioning. An absent or malformed address leaves the stored value intact. `devices.list` and `devices.get` expose the address for physical registrations.
+The shared agent reports the public Bluetooth controller address as `ble_address` in the MQTT hello on each connection. The hub uses the authenticated device ID to update the same binding as USB provisioning. An absent or malformed address leaves the stored value intact. `devices_list` and `devices_get` expose the address for physical registrations.
 
 Each uplink contains a `frame` with a per-boot message ID. The AWS rule attaches the device UUID from the topic and the certificate ID from the broker principal. A Lambda relay forwards the envelope to the Worker. The Worker checks the registered certificate and the active boot. The device policy scopes publish and subscribe to the attached thing.
 
@@ -31,9 +31,9 @@ Hello, command receipts and install outcomes request an application acknowledgem
 
 ### Remote console
 
-ESP-IDF task logs (`ESP_LOGx`) use the original console at boot. To redirect them, call `logs.set` with `device_id` and `enabled: true` (requires `devices:write`). Check `commands.get` for the device's receipt. The setting lasts for the current boot, including temporary network outages. Setting `enabled: false`, rebooting, or reloading the device registration discards the buffered tail. The SDK stores nothing in flash. Early ROM and panic output follow their native paths.
+ESP-IDF task logs (`ESP_LOGx`) use the original console at boot. To redirect them, call `logs_set` with `device_id` and `enabled: true` (requires `devices:write`). Check `commands_get` for the device's receipt. The setting lasts for the current boot, including temporary network outages. Setting `enabled: false`, rebooting, or reloading the device registration discards the buffered tail. The SDK stores nothing in flash. Early ROM and panic output follow their native paths.
 
-Use `logs.read` with `devices:read` to get console batches and structured events, including after the device goes offline. To continue a page, pass its `process_id` and its `cursor` as `after`. R2 records use Hub arrival time and order. New records include the wire `mid` to recover send order within the boot. `dropped_bytes` counts device-side truncation, ring overruns and known send failures. A QoS 0 message can also be lost after publication.
+Use `logs_read` with `devices:read` to get console batches and structured events, including after the device goes offline. To continue a page, pass its `process_id` and its `cursor` as `after`. R2 records use Hub arrival time and order. New records include the wire `mid` to recover send order within the boot. `dropped_bytes` counts device-side truncation, ring overruns and known send failures. A QoS 0 message can also be lost after publication.
 
 Enabling capture allocates one session with a 2 KiB byte ring, a 384-byte drain buffer and a 672-byte wire buffer. The session uses PSRAM when available, with a heap fallback. Formatting an ESP-IDF log uses a 256-byte buffer on the caller's stack. Python writes go straight into the ring. Producers never publish. The agent handles control first, then drains at most one batch every 250 ms. Each `t: "log"` frame carries Base64 bytes on the existing uplink. Synchronous QoS 0 uses ESP-MQTT's existing transmit buffer, bypassing the JSON event queue and the QoS 1 retransmission outbox. The C library formatter, TLS and network stack have their own working memory.
 
@@ -49,6 +49,6 @@ Enabling capture allocates one session with a 2 KiB byte ring, a 384-byte drain 
 
 ## Application messages
 
-Call `devices.send(device_id, payload)` to send an application-defined JSON value (up to 1024 UTF-8 bytes). The tool requires write access and an online physical device. It returns a `message_id` after the broker accepts publication.
+Call `devices_send(device_id, payload)` to send an application-defined JSON value (up to 1024 UTF-8 bytes). The tool requires write access and an online physical device. It returns a `message_id` after the broker accepts publication.
 
-The downlink carries `{"boot_id":"…","message":{"id":"…","payload":{}}}` on the existing wake topic. Devices can publish uplink frames with `t:"message"`, `payload`, and an optional `reply_to` containing the downlink ID. Read those messages as structured records from `logs.read`. Both directions use QoS 0 without retention, dispatch retries, or an offline delivery queue.
+The downlink carries `{"boot_id":"…","message":{"id":"…","payload":{}}}` on the existing wake topic. Devices can publish uplink frames with `t:"message"`, `payload`, and an optional `reply_to` containing the downlink ID. Read those messages as structured records from `logs_read`. Both directions use QoS 0 without retention, dispatch retries, or an offline delivery queue.

@@ -24,113 +24,113 @@ const destructive = { ...additive, destructiveHint: true };
 
 const defs = [
   [
-    "boards.search",
+    "boards_search",
     readOnly,
     "Find supported boards by a literal, case-insensitive substring of their vendor/model ID. Omit query to list all boards. Includes the default example, example capabilities, pinned source and published downloads.",
     strings("query"),
   ],
-  ["devices.list", readOnly, "List your registered devices.", {}],
+  ["devices_list", readOnly, "List your registered devices.", {}],
   [
-    "devices.create",
+    "devices_create",
     additive,
     "Registers a physical device with its name and group/project board ID (for example, m5stack/cardputer-adv). Returns its device ID, provisioning credentials, a pinned USB setup manifest, and the installed example with its source and build command.",
     {
       ...strings("name"),
-      board: { type: "string", description: "Exact board ID returned by boards.search." },
+      board: { type: "string", description: "Exact board ID returned by boards_search." },
     },
   ],
   [
-    "devices.create_virtual",
+    "devices_create_virtual",
     additive,
     "Create or return the account’s private Virtual ESP32 for simulated reboots and firmware inspection.",
     {},
   ],
   [
-    "devices.get",
+    "devices_get",
     readOnly,
     "Show device kind, identity and connection status. For a physical board, also return the reported application identity, bootloader and app downloads, and examples with pinned source and build instructions.",
     id,
   ],
   [
-    "devices.bind_ble_address",
+    "devices_bind_ble_address",
     destructive,
     "Bind the Bluetooth address reported over USB to your physical device registration. Replaces an earlier address.",
     { ...id, ...strings("ble_address") },
   ],
   [
-    "devices.reissue",
+    "devices_reissue",
     destructive,
     "Issue a replacement device token and BLE bootstrap key for USB setup and close the previous connection.",
     id,
   ],
   [
-    "devices.delete",
+    "devices_delete",
     destructive,
     "Delete the registration and revoke the device token.",
     id,
   ],
   [
-    "devices.reboot",
+    "devices_reboot",
     destructive,
-    "Request a restart. Some physical devices need a manual power cycle to reconnect. Check devices.get for a new online boot session.",
+    "Request a restart. Some physical devices need a manual power cycle to reconnect. Check devices_get for a new online boot session.",
     id,
   ],
   [
-    "devices.reset",
+    "devices_reset",
     destructive,
     "Erase provisioning and saved networks on the device; USB setup is required again.",
     id,
   ],
   [
-    "wifi.ble_credential",
+    "wifi_ble_credential",
     additive,
     "Issues a private BLE Wi-Fi provisioning credential for a registered physical device with a BLE bootstrap key. Returns the reusable TLS pre-shared key in the psk field.",
     id,
   ],
   [
-    "wifi.list",
+    "wifi_list",
     readOnly,
     "Read saved Wi-Fi networks and the active connection.",
     id,
   ],
   [
-    "wifi.scan",
+    "wifi_scan",
     { ...readOnly, openWorldHint: true },
     "Scan Wi-Fi networks visible to the device.",
     id,
   ],
   [
-    "wifi.add",
+    "wifi_add",
     { ...destructive, openWorldHint: true },
     "Save a network. Omit the password for an open network.",
     { ...id, ...strings("ssid", "password") },
   ],
   [
-    "wifi.remove",
+    "wifi_remove",
     destructive,
     "Forget a saved network.",
     { ...id, ...strings("ssid") },
   ],
   [
-    "bootloader.enter",
+    "bootloader_enter",
     destructive,
-    "Enter EspHub Bootloader mode for OTA updates. If already in Bootloader mode, returns the current boot session. Check devices.get for online=true and info.role=bootloader before OTA. Some boards may need a manual power cycle and may return to the app.",
+    "Enter EspHub Bootloader mode for OTA updates. If already in Bootloader mode, returns the current boot session. Check devices_get for online=true and info.role=bootloader before OTA. Some boards may need a manual power cycle and may return to the app.",
     id,
   ],
   [
-    "bootloader.exit",
+    "bootloader_exit",
     destructive,
-    "Start the installed app from EspHub Bootloader mode. Verify the new app boot with devices.get.",
+    "Start the installed app from EspHub Bootloader mode. Verify the new app boot with devices_get.",
     id,
   ],
   [
-    "firmware.get",
+    "firmware_get",
     readOnly,
     "Read device firmware identity, SDK version and board examples with pinned source and build instructions.",
     id,
   ],
   [
-    "ota.prepare_upload",
+    "ota_prepare_upload",
     additive,
     "Returns a short-lived PUT URL, authorization headers, and an artifact URL for one file of the specified kind and byte size. A successful upload of exactly that size returns HTTP 201. The device can be offline.",
     {
@@ -140,7 +140,7 @@ const defs = [
     },
   ],
   [
-    "ota.install",
+    "ota_install",
     { ...destructive, openWorldHint: true },
     "Install a bootloader or app in EspHub Bootloader mode. Supply an HTTPS image URL or omit it for the board’s latest published image. Verify the command receipt and the next boot.",
     {
@@ -150,22 +150,22 @@ const defs = [
     },
   ],
   [
-    "logs.set",
+    "logs_set",
     additive,
-    "Enable or disable remote ESP-IDF console output for this physical device's current boot. Capture starts off. Disabling restores local output and discards unsent bytes in the device's capture buffer. Uploaded logs remain available through logs.read. Check commands.get for the device receipt.",
+    "Enable or disable remote ESP-IDF console output for this physical device's current boot. Capture starts off. Disabling restores local output and discards unsent bytes in the device's capture buffer. Uploaded logs remain available through logs_read. Check commands_get for the device receipt.",
     { ...id, enabled: { type: "boolean" } },
   ],
   [
-    "devices.send",
+    "devices_send",
     additive,
-    "Send an application-defined JSON message to an online physical device. Best effort, no offline queue. Use logs.read for device messages and optional replies.",
+    "Send an application-defined JSON message to an online physical device. Best effort, no offline queue. Use logs_read for device messages and optional replies.",
     {
       ...id,
       payload: { description: "Any JSON value, up to 1024 UTF-8 bytes." },
     },
   ],
   [
-    "logs.read",
+    "logs_read",
     readOnly,
     "Read console output and device events in arrival order, including offline. Defaults to the latest boot. Pass the returned process_id and cursor as after to continue.",
     {
@@ -175,7 +175,7 @@ const defs = [
     },
   ],
   [
-    "commands.get",
+    "commands_get",
     readOnly,
     "Read the state and execution receipt of a queued device command.",
     { ...id, ...strings("command_id") },
@@ -194,22 +194,22 @@ export const tools = defs.map(
         ...(queueable(name) ? strings("request_id") : {}),
       },
       required: Object.keys(properties).filter(
-        (k) => name === "logs.read" ? k === "device_id" : !["password", "url", "query"].includes(k),
+        (k) => name === "logs_read" ? k === "device_id" : !["password", "url", "query"].includes(k),
       ),
     },
   }),
 );
 function queueable(name) {
   return (
-    (name.startsWith("wifi.") && name !== "wifi.ble_credential") ||
+    (name.startsWith("wifi_") && name !== "wifi_ble_credential") ||
     [
-      "devices.reboot",
-      "devices.reset",
-      "bootloader.enter",
-      "bootloader.exit",
-      "ota.install",
-      "logs.set",
-      "firmware.get",
+      "devices_reboot",
+      "devices_reset",
+      "bootloader_enter",
+      "bootloader_exit",
+      "ota_install",
+      "logs_set",
+      "firmware_get",
     ].includes(name)
   );
 }
@@ -313,9 +313,9 @@ async function summary(c, d) {
 export async function operate(c, owner, name, a) {
   validate(name, a);
   const db = c.sql;
-  if (name === "boards.search") return searchBoards(db, a.query);
-  if (name === "devices.create_virtual") return createVirtual(db, owner);
-  if (name === "devices.create") {
+  if (name === "boards_search") return searchBoards(db, a.query);
+  if (name === "devices_create_virtual") return createVirtual(db, owner);
+  if (name === "devices_create") {
     const [profile] = await db`SELECT b.*, r.version AS setup_version FROM esphub.board_profiles b
       LEFT JOIN esphub.firmware_releases r ON r.board = b.id AND r.kind = 'setup'
       WHERE b.id = ${a.board} AND b.is_current`;
@@ -345,9 +345,9 @@ export async function operate(c, owner, name, a) {
       CASE WHEN d.kind='virtual' THEN (
         SELECT process_id FROM esphub.virtual_boots WHERE device_id=d.id ORDER BY sequence DESC LIMIT 1
       ) ELSE d.boot_id END AS boot_id
-    FROM esphub.devices d WHERE d.owner=${owner} AND (${name === "devices.list"}::boolean OR d.id=${a.device_id ?? null})
+    FROM esphub.devices d WHERE d.owner=${owner} AND (${name === "devices_list"}::boolean OR d.id=${a.device_id ?? null})
     ORDER BY d.created_at`;
-  if (name === "devices.list") {
+  if (name === "devices_list") {
     return await Promise.all(
       ds.map(async (d) => ({
         id: d.id,
@@ -362,7 +362,7 @@ export async function operate(c, owner, name, a) {
   }
   const [d] = ds;
   if (!d) fail(404, "Device not found");
-  if (name === "devices.get")
+  if (name === "devices_get")
     return {
       id: d.id,
       name: d.name,
@@ -371,13 +371,13 @@ export async function operate(c, owner, name, a) {
       ...(await summary(c, d)),
       ...(d.kind === "physical" ? updateSources(await getBoard(db, d.board)) : {}),
     };
-  if (name === "devices.delete") {
+  if (name === "devices_delete") {
     await db`DELETE FROM esphub.devices WHERE id=${d.id} AND owner=${owner}`;
     if (d.kind === "physical")
       await internal(c, d.id, "revoke", { device: d.id });
     return { deleted: true };
   }
-  if (name === "devices.send") {
+  if (name === "devices_send") {
     const payload = JSON.stringify(a.payload);
     if (
       payload === undefined ||
@@ -402,7 +402,7 @@ export async function operate(c, owner, name, a) {
     return { message_id };
   }
   if (d.kind === "virtual") return operateVirtual(db, d, name, a);
-  if (name === "devices.bind_ble_address") {
+  if (name === "devices_bind_ble_address") {
     const address = normalizeBleAddress(a.ble_address);
     if (!address) fail(400, "Invalid ble_address. Use six colon-separated hex octets.");
     const [bound] = await db`UPDATE esphub.devices SET ble_address=${address}::macaddr
@@ -410,15 +410,15 @@ export async function operate(c, owner, name, a) {
     if (!bound) fail(404, "Device not found");
     return bound;
   }
-  if (name === "wifi.ble_credential") return issueBle(db, owner, d.id);
-  if (name === "logs.read") return internal(c, d.id, "logs", a);
-  if (name === "commands.get") {
+  if (name === "wifi_ble_credential") return issueBle(db, owner, d.id);
+  if (name === "logs_read") return internal(c, d.id, "logs", a);
+  if (name === "commands_get") {
     const [row] =
       await db`SELECT id AS command_id,state,result,dispatched_boot AS process_id FROM esphub.device_commands WHERE device_id=${d.id} AND id=${a.command_id}`;
     if (!row) fail(404, "Unknown command");
     return row;
   }
-  if (name === "devices.reissue") {
+  if (name === "devices_reissue") {
     const secret = token("eh_dev_");
     const bleSecret = newBleSecret();
     await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,mqtt_connected_since=NULL,boot_id=NULL,boot_info=NULL,
@@ -426,27 +426,27 @@ export async function operate(c, owner, name, a) {
     await internal(c, d.id, "revoke", { device: d.id });
     return { id: d.id, hub: "api.esphub.ai", token: secret, ble_secret: bleSecret };
   }
-  if (name === "ota.prepare_upload")
+  if (name === "ota_prepare_upload")
     return internal(c, d.id, "prepare-upload", a);
   const key = a.request_id ?? crypto.randomUUID();
   const queue = (op, args, boot = null) =>
     internal(c, d.id, "enqueue", { device: d.id, op, args, boot, key });
-  if (name === "logs.set") {
+  if (name === "logs_set") {
     if (!d.boot_id) fail(409, "A device boot is required for log capture");
     return queue("logs.set", { enabled: a.enabled }, d.boot_id);
   }
   const info = d.boot_info;
-  if (name === "bootloader.enter")
+  if (name === "bootloader_enter")
     return info?.role === "bootloader"
       ? { mode: "bootloader", process_id: d.boot_id }
       : queue("reboot", { target: "bootloader" }, d.boot_id);
-  if (name === "bootloader.exit") {
+  if (name === "bootloader_exit") {
     if (info?.role !== "bootloader" || !d.boot_id) fail(409, "Device must be in bootloader mode");
     return queue("reboot", { target: "app" }, d.boot_id);
   }
-  if (name === "ota.install") {
+  if (name === "ota_install") {
     if (info?.role !== "bootloader")
-      fail(409, "Enter EspHub Bootloader mode first using bootloader.enter");
+      fail(409, "Enter EspHub Bootloader mode first using bootloader_enter");
     let url = a.url;
     if (!url) {
       const tag = await latestReleaseTag(db, d.board, a.kind);
@@ -461,22 +461,22 @@ export async function operate(c, owner, name, a) {
   }
   let op,
     args = {};
-  if (name.startsWith("wifi.")) {
+  if (name.startsWith("wifi_")) {
     op = "cmd";
     args = {
       name: "wifi",
       argv: [
-        name === "wifi.remove" ? "forget" : name.slice(5),
+        name === "wifi_remove" ? "forget" : name.slice(5),
         ...[a.ssid, a.password].filter((x) => x !== undefined),
       ],
     };
   }
-  if (name === "devices.reboot") {
+  if (name === "devices_reboot") {
     op = "reboot";
     args = { target: "self" };
   }
-  if (name === "devices.reset") op = "provision.reset";
-  if (name === "firmware.get") {
+  if (name === "devices_reset") op = "provision.reset";
+  if (name === "firmware_get") {
     const [profile, state] = await Promise.all([getBoard(db, d.board), summary(c, d)]);
     return { ...await queue("status", {}), software: state.software, ...updateSources(profile) };
   }
