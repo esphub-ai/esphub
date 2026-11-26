@@ -154,8 +154,7 @@ function DeviceCards({ devices }: { devices: Device[] }) {
             <BoardPhoto
               imageUrl={image_url}
               className="aspect-square w-20 shrink-0 object-contain"
-              width={400}
-              height={400}
+              size="device"
             />
             <div className="grid min-w-0 flex-1 gap-2">
               <div>
@@ -285,7 +284,7 @@ const root = createRoot(document.getElementById("root")!);
 const path = location.pathname.replace(/\/$/, "") || "/";
 if (path === "/") {
   root.render(<Landing />);
-  fetch("/backend/boards")
+  fetch("/backend/boards/gallery")
     .then(async (response) => {
       if (!response.ok) throw Error("Board directory unavailable");
       const boards: Board[] = await response.json();

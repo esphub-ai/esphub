@@ -7,6 +7,7 @@ EspHub provisions ESP32 devices over USB and manages them through the web and MC
 | esphub.ai and www.esphub.ai | Website Worker, landing and setup |
 | app.esphub.ai | Same website Worker, authenticated device console |
 | api.esphub.ai | Hono Worker, MQTT uplink processing and authenticated API |
+| cdn.esphub.ai | Board photos from R2, resized and cached at the Cloudflare edge |
 | api.esphub.ai/mcp | Streamable HTTP JSON-RPC using Clerk OAuth |
 
 See the [firmware glossary and partition mapping](docs/firmware-terminology.md) for the EspHub Bootloader, SDK, and applications.
@@ -102,7 +103,7 @@ Initialize the firmware checkout with `git submodule update --init`, then instal
 
 Pushes to main run verification on an ephemeral PostgreSQL instance, migrate production Neon, deploy the Hono API then the website, and check public domains and authentication boundaries. Required repository secrets are CLERK_SECRET_KEY (EspHub production instance), MIGRATION_DATABASE_URL, RUNTIME_DB_PASSWORD (64 lowercase hex characters), and CLOUDFLARE_API_TOKEN. CLOUDFLARE_ACCOUNT_ID is a repository variable. CI ensures the esphub-production R2 bucket exists. The migration role creates a restricted runtime role; the API Worker receives the runtime database URL and the Clerk credential. Configure the production environment to suit the organization's deployment policy.
 
-Firmware builds, SDK version automation and release publication live in [esphub-firmware](https://github.com/okou-ai/esphub-firmware). The firmware repository publishes board profiles to Neon. `GET /boards` and the read-only MCP tool `boards.search` use the same directory. A query such as `{"query":"paper"}` matches the literal substring in board IDs. Each result includes its R2 photo and the latest published version and pinned download URL for each available firmware kind. Upload a board photo as `boards/<group>/<project>.webp` in the `esphub-firmware` bucket. A missing photo returns 404 and the gallery and device cards show a generic icon. The pinned firmware checkout supplies the release naming contract, tests, and the initial seed for empty databases.
+Firmware builds, SDK version automation and release publication live in [esphub-firmware](https://github.com/okou-ai/esphub-firmware). The firmware repository publishes board profiles to Neon. `GET /boards` and the read-only MCP tool `boards.search` use the same directory. A query such as `{"query":"paper"}` matches the literal substring in board IDs. Each result includes its R2 photo and the latest published version and pinned download URL for each available firmware kind. Upload a board photo as `boards/<group>/<project>.webp` in the `esphub-firmware` bucket. The website loads `GET /boards/gallery`, which joins current boards and their manufacturer product links with the available R2 photos. Set a manufacturer link in `esphub.board_product_pages`. The gallery and device cards request bounded WebP thumbnails from `cdn.esphub.ai` using `?width=`. Cloudflare Images resizes them from R2 on a CDN cache miss. Opening a board shows its original photo. A missing photo returns 404 and is omitted from the wall. The pinned firmware checkout supplies the release naming contract, tests, and the initial seed for empty databases.
 
 ## Origin
 

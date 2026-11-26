@@ -1,12 +1,12 @@
 import { describeExamples } from "../../../firmware-source/shared/board-examples.js";
 import { releaseTag } from "../../../firmware-source/shared/firmware-releases.js";
-import { apiOrigin, releaseUrl } from "../../../shared/identity.js";
+import { boardPhotoOrigin, releaseUrl } from "../../../shared/identity.js";
 import { fail } from "./auth.js";
 
 export const boardIdPattern =
   /^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-export const boardImageUrl = (id) => `${apiOrigin}/boards/${id}/image`;
+export const boardImageUrl = (id) => `${boardPhotoOrigin}/boards/${id}/image`;
 
 export async function searchBoards(sql, query = "") {
   if (query.includes("\0")) fail(400, "Invalid query");
@@ -44,17 +44,28 @@ export async function getBoard(sql, id) {
   return profile;
 }
 
-export async function boardImage(bucket, id) {
-  if (!boardIdPattern.test(id)) fail(404, "Unknown board image");
-  const object = await bucket.get(`boards/${id}.webp`);
-  if (!object) fail(404, "Board image not found");
-  return new Response(object.body, {
-    headers: {
-      "Content-Type": "image/webp",
-      "Content-Length": String(object.size),
-      ETag: object.httpEtag,
-      "Cache-Control": "public, max-age=300",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
+async function photographedBoards(bucket) {
+  const ids = new Set();
+  let cursor;
+  do {
+    const page = await bucket.list({ prefix: "boards/", cursor });
+    for (const { key } of page.objects) {
+      if (key.endsWith(".webp")) ids.add(key.slice("boards/".length, -5));
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return ids;
+}
+
+export async function boardGallery(sql, bucket) {
+  const [boards, photos] = await Promise.all([
+    sql`SELECT b.id, b.name, b.model, b.chip, b.flash_mb, p.product_url
+        FROM esphub.board_profiles b LEFT JOIN esphub.board_product_pages p ON p.board = b.id
+        WHERE b.is_current ORDER BY b.display_order NULLS LAST, b.id`,
+    photographedBoards(bucket),
+  ]);
+  return boards.filter(({ id }) => photos.has(id)).map((board) => ({
+    ...board,
+    image_url: boardImageUrl(board.id),
+  }));
 }

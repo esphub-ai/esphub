@@ -1,7 +1,9 @@
 import { enroll, publishDownlink } from "./iot.js";
 import { retryDue } from "./commands.js";
 import { maxUploadBytes } from "./uploads.js";
-import { boardImage, searchBoards } from "./boards.js";
+import { boardGallery, searchBoards } from "./boards.js";
+import { boardPhotos } from "./board-photos.js";
+import { boardPhotoOrigin } from "../../../shared/identity.js";
 import { releaseResponse } from "./releases.js";
 import { Hono } from "hono";
 import { withDatabase } from "./database.js";
@@ -34,8 +36,14 @@ api.get("/releases/:group/:project/:asset", (c) => {
     releaseResponse(board, asset, tag, sql, c.env.FIRMWARE),
   );
 });
-api.get("/boards/:group/:project/image", (c) =>
-  boardImage(c.env.FIRMWARE, `${c.req.param("group")}/${c.req.param("project")}`),
+// Keep the original image route available to existing API clients.
+api.route("/", boardPhotos);
+api.get("/boards/gallery", (c) =>
+  withDatabase(c.env, async (sql) =>
+    c.json(await boardGallery(sql, c.env.FIRMWARE), 200, {
+      "Cache-Control": "public, max-age=60",
+    }),
+  ),
 );
 api.use(
   "*",
@@ -174,7 +182,10 @@ api.post("/operations/:name", async (c) => {
   );
 });
 export default {
-  fetch: api.fetch,
+  fetch(request, env, ctx) {
+    const router = new URL(request.url).origin === boardPhotoOrigin ? boardPhotos : api;
+    return router.fetch(request, env, ctx);
+  },
   async scheduled(_event, env) {
     await withDatabase(env, (db) => retryDue(db, env));
   },

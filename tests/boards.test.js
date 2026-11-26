@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import postgres from "postgres";
+import { boardGallery } from "../services/api/src/boards.js";
 import { operate } from "../services/api/src/operations.js";
 
 test(
@@ -57,3 +58,40 @@ test(
     }
   },
 );
+
+test("the gallery includes current boards with an R2 photo across every listing page", async () => {
+  const boards = [
+    { id: "new-maker/new-board", product_url: null },
+    { id: "new-maker/no-photo", product_url: null },
+    { id: "new-maker/second-board", product_url: "https://example.com/board" },
+  ];
+  const bucket = {
+    list({ prefix, cursor }) {
+      assert.equal(prefix, "boards/");
+      return cursor
+        ? {
+            objects: [{ key: "boards/new-maker/second-board.webp" }],
+            truncated: false,
+          }
+        : {
+            objects: [
+              { key: "boards/new-maker/new-board.webp" },
+              { key: "boards/new-maker/retired.webp" },
+              { key: "boards/new-maker/no-photo.png" },
+            ],
+            truncated: true,
+            cursor: "next",
+          };
+    },
+  };
+  const gallery = await boardGallery(async () => boards, bucket);
+  assert.deepEqual(
+    gallery.map((b) => b.id),
+    [boards[0].id, boards[2].id],
+  );
+  assert.equal(
+    gallery[0].image_url,
+    "https://cdn.esphub.ai/boards/new-maker/new-board/image",
+  );
+  assert.equal(gallery[1].product_url, boards[2].product_url);
+});
