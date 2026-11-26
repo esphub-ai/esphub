@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Stream } from "../services/api/src/streams.js";
-import { validate } from "../services/api/src/operations.js";
+import { tools, validate } from "../services/api/src/operations.js";
 class Bucket {
   data = new Map();
   head(k) {
@@ -47,13 +47,19 @@ test("a failed manifest commit cannot expose or duplicate abandoned input", asyn
 });
 test("reject invalid boards and insecure firmware URLs", () => {
   assert.throws(() =>
-    validate("devices.create", { name: "x", board: "esp32s3" }),
+    validate("devices_create", { name: "x", board: "esp32s3" }),
   );
   assert.throws(() =>
-    validate("ota.install", {
+    validate("ota_install", {
       device_id: crypto.randomUUID(),
       url: "http://e.test/a",
       kind: "bootloader",
     }),
   );
+});
+test("MCP tool names use characters accepted by strict clients", () => {
+  for (const { name } of tools) {
+    assert.match(name, /^[a-zA-Z0-9_-]{1,64}$/, name);
+    assert.ok(("mcp_esphub_" + name).length <= 64, name);
+  }
 });
