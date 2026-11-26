@@ -232,7 +232,7 @@ try {
         "devices.get",
         "bootloader.enter",
         "ota.install",
-        "ota.resize_app",
+        "ota_resize_app",
         "devices.delete",
       ],
     ],

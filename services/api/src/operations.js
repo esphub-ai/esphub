@@ -153,9 +153,9 @@ const defs = [
     },
   ],
   [
-    "ota.resize_app",
+    "ota_resize_app",
     destructive,
-    "Grow or shrink the application slot in Launcher mode. Every size change destroys all LittleFS files. Set erase_littlefs=true only with permission to erase them. Same size is a no-op. A shrink must fit the installed image. Check commands.get for the verified layout after reboot.",
+    "Grow or shrink the application slot in Launcher mode. Every size change destroys all LittleFS files. Set erase_littlefs=true only with permission to erase them. Same size is a no-op. A shrink must fit the installed image. Check the command receipt for the verified layout after reboot.",
     { ...id, app_size_bytes: { type: "integer", minimum: appAlignment, maximum: maxFlashBytes, multipleOf: appAlignment }, erase_littlefs: { type: "boolean" } },
   ],
   [
@@ -217,7 +217,7 @@ function queueable(name) {
       "bootloader.enter",
       "bootloader.exit",
       "ota.install",
-      "ota.resize_app",
+      "ota_resize_app",
       "logs.set",
       "firmware.get",
     ].includes(name)
@@ -457,11 +457,11 @@ export async function operate(c, owner, name, a) {
     if (info?.role !== "bootloader" || !d.boot_id) fail(409, "Device must be in bootloader mode");
     return queue("reboot", { target: "app" }, d.boot_id);
   }
-  if (name === "ota.resize_app") {
+  if (name === "ota_resize_app") {
     if (info?.role !== "bootloader" || !d.boot_id)
-      fail(409, "Enter EspHub Bootloader mode first using bootloader.enter");
+      fail(409, "Enter EspHub Bootloader mode before resizing the app slot");
     if (!validLayout(info.layout))
-      fail(409, "Launcher layout unavailable. Update the Launcher or request firmware.get and wait for its status receipt.");
+      fail(409, "Launcher layout unavailable. Update the Launcher or query its firmware status and wait for the receipt.");
     const { app_size_bytes: current, data_size_bytes: filesystem } = info.layout;
     const data = current + filesystem - a.app_size_bytes;
     if (data < minLittleFSBytes) fail(400, "Target exceeds available app and LittleFS capacity");
