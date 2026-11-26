@@ -13,16 +13,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/okou-ai/esphub.git"
+    "url": "git+https://github.com/esphub-ai/esphub.git"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "type": "module",
   "bugs": {
-    "url": "https://github.com/okou-ai/esphub/issues"
+    "url": "https://github.com/esphub-ai/esphub/issues"
   },
-  "homepage": "https://github.com/okou-ai/esphub#readme",
+  "homepage": "https://github.com/esphub-ai/esphub#readme",
   "private": true,
   "dependencies": {
     "@clerk/backend": "^3.31.4",
