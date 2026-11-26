@@ -1,7 +1,7 @@
 import { maxAppSize, validLayout } from "./layout.js";
 import { normalizeBleAddress } from "./ble.js";
 import { withDatabase } from "./database.js";
-import { dispatch, enqueue, receipt, retryDue, nextRetry } from "./commands.js";
+import { dispatch, enqueue, finishResize, receipt, retryDue, nextRetry } from "./commands.js";
 import { DurableObject } from "cloudflare:workers";
 import { connectedSince } from "./iot.js";
 import { Uploads } from "./uploads.js";
@@ -276,33 +276,23 @@ export class Device extends DurableObject {
           m.data?.transfer_id,
         )
       ) {
-        let succeeded = m.name === "install.done";
-        const resizing = m.data.kind === "resize_app";
-        let outcome = m.data;
-        if (!succeeded && m.data.kind === "app" && m.data.error === "Download exceeds target size" &&
-            validLayout(d.boot_info?.layout)) {
-          const { app_size_bytes } = d.boot_info.layout;
-          const max_app_size_bytes = maxAppSize(d.boot_info.layout);
-          outcome = { ...m.data, app_size_bytes, max_app_size_bytes, image_size_at_least: app_size_bytes + 1 };
-        }
-        if (resizing) {
+        const done = m.name === "install.done";
+        if (m.data.kind === "resize_app") {
           if (d.boot_info?.role !== "bootloader")
             return Response.json({ error: "Launcher required" }, { status: 409 });
-          const [command] = await db`SELECT result,dispatched_boot FROM esphub.device_commands
-            WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation='resize_app'`;
-          if (!command || command.dispatched_boot === pid) return Response.json({});
-          if (succeeded && (!validLayout(m.data) ||
-              command.result?.app_size_bytes !== m.data.app_size_bytes ||
-              command.result?.data_size_bytes !== m.data.data_size_bytes)) {
-            succeeded = false;
-            outcome = { ...m.data, error: "Active layout does not match the requested capacities" };
+          await finishResize(db, device, pid, done, m.data);
+        } else {
+          let outcome = m.data;
+          const layout = d.boot_info?.layout;
+          if (!done && m.data.kind === "app" && m.data.error === "Download exceeds target size" && validLayout(layout)) {
+            outcome = { ...m.data, app_size_bytes: layout.app_size_bytes, max_app_size_bytes: maxAppSize(layout),
+              image_size_at_least: layout.app_size_bytes + 1 };
           }
+          await db`UPDATE esphub.device_commands SET state=${done ? "succeeded" : "failed"},
+            result=${JSON.stringify(outcome)}::text::jsonb,args='{}',next_wake=NULL
+            WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation='install'
+            AND state IN ('dispatched','unknown')`;
         }
-        const updated = await db`UPDATE esphub.device_commands SET state=${succeeded ? "succeeded" : "failed"},
-          result=${JSON.stringify(outcome)}::text::jsonb,args='{}',next_wake=NULL
-          WHERE device_id=${device} AND request_id=${m.data.transfer_id} AND operation=${resizing ? "resize_app" : "install"}
-          AND state IN ('dispatched','unknown') RETURNING id`;
-        if (resizing && succeeded && updated.length) await saveLayout(m.data);
         await dispatch(db, this.env, device);
       }
       if (typeof m.name === "string")

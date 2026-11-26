@@ -294,8 +294,9 @@ try {
   assert.match(watch.prompt, /Bootloader mode for the BLE connection/);
   const local = (url) => base + "/backend" + new URL(url).pathname;
   const localFiles = {};
+  const imageSizes = { app: 4 * 1024 * 1024 + 1, bootloader: 200000 };
   for (const kind of ["bootloader", "app"]) {
-    const file = Buffer.alloc(200000, 0xe9);
+    const file = Buffer.alloc(imageSizes[kind], 0xe9);
     const grant = await op("ota.prepare_upload", {
       ...id,
       kind,
@@ -492,7 +493,7 @@ try {
     const queued = await op("ota.install", { ...id, kind, url, request_id: key });
     const cmd = await mcu.nextCommand();
     assert.equal(cmd.id, queued.command_id);
-    assert.deepEqual(cmd.args, { url, kind, transfer_id: key, image_size: 200000 });
+    assert.deepEqual(cmd.args, { url, kind, transfer_id: key, image_size: imageSizes[kind] });
     const ok = kind === "app";
     await mcu.send({ t: "event", name: ok ? "install.done" : "install.failed",
       data: { transfer_id: key, kind } });
@@ -620,6 +621,14 @@ try {
   assert.equal(tooLarge.result.max_app_size_bytes, 0x550000);
   assert.equal(tooLarge.result.image_size_at_least, largerLayout.app_size_bytes + 1);
 
+  await op("ota.resize_app", { ...id, app_size_bytes: originalLayout.app_size_bytes, erase_littlefs: true });
+  const mismatch = await mcu.nextCommand();
+  await mcu.hello({ role: "bootloader" });
+  await mcu.send({ t: "event", name: "install.done", data: {
+    ...largerLayout, kind: "resize_app", transfer_id: mismatch.args.transfer_id,
+  } });
+  assert.equal((await result(mismatch.id)).state, "failed");
+  assert.match((await result(mismatch.id)).result.error, /does not match/);
   await op("devices.reissue", id);
   assert.equal(
     (
