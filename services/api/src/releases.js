@@ -14,17 +14,7 @@ export async function latestReleaseTag(sql, board, kind) {
   return releaseTag(kind, board, row.version);
 }
 
-export async function releaseResponse(board, asset, tag, sql, bucket) {
-  if (!boardIdPattern.test(board)) fail(404, "Unknown board");
-  const latest = tag === undefined;
-  const kind = asset === "app"
-    ? asset
-    : ["setup", "setup-manifest"].includes(asset)
-      ? "setup"
-      : "bootloader";
-  if (!Object.hasOwn(assetNames(board, "", kind, ""), asset))
-    fail(404, "Unknown download");
-  if (latest) tag = await latestReleaseTag(sql, board, kind);
+export async function publishedAsset(board, kind, asset, tag, bucket) {
   const version = releaseVersion(tag, kind, board);
   if (!version) fail(404, "Unknown " + kind + " release");
   const prefix = `releases/${tag}/`;
@@ -34,13 +24,25 @@ export async function releaseResponse(board, asset, tag, sql, bucket) {
   const [start, end] = assetNames(board, "{chip}", kind, version)[
     asset
   ].split("{chip}");
-  const filename = receipt.assets.find(({ name }) =>
+  const file = receipt.assets.find(({ name }) =>
     end === undefined
       ? name === start
       : name.startsWith(start) && name.endsWith(end) && !name.includes("/"),
-  )?.name;
-  if (!filename) fail(503, "Published firmware asset unavailable");
-  const object = await bucket.get(prefix + filename);
+  );
+  if (!file) fail(503, "Published firmware asset unavailable");
+  return { key: prefix + file.name, size: file.size };
+}
+
+export async function releaseResponse(board, asset, tag, sql, bucket) {
+  if (!boardIdPattern.test(board)) fail(404, "Unknown board");
+  const latest = tag === undefined;
+  const kind = asset === "app" ? asset :
+    ["setup", "setup-manifest"].includes(asset) ? "setup" : "bootloader";
+  if (!Object.hasOwn(assetNames(board, "", kind, ""), asset))
+    fail(404, "Unknown download");
+  if (latest) tag = await latestReleaseTag(sql, board, kind);
+  const file = await publishedAsset(board, kind, asset, tag, bucket);
+  const object = await bucket.get(file.key);
   if (!object) fail(503, "Published firmware asset unavailable");
   const headers = new Headers();
   object.writeHttpMetadata(headers);
