@@ -183,12 +183,12 @@ try {
     return response.json();
   };
 
-  await operate("devices.create_virtual");
-  const board = await operate("devices.create", {
+  await operate("devices_create_virtual");
+  const board = await operate("devices_create", {
     name: "Paper Color integration",
     board: "m5stack/paper-color",
   });
-  await operate("devices.create", {
+  await operate("devices_create", {
     name: "Core2 integration",
     board: "m5stack/core2",
   });
@@ -228,15 +228,15 @@ try {
     [
       "Manage devices",
       [
-        "devices.list",
-        "devices.get",
-        "bootloader.enter",
-        "ota.install",
+        "devices_list",
+        "devices_get",
+        "bootloader_enter",
+        "ota_install",
         "ota_resize_app",
-        "devices.delete",
+        "devices_delete",
       ],
     ],
-    ["Bind my ESP32", ["group/project", "devices.create", "devices.get"]],
+    ["Bind my ESP32", ["group/project", "devices_create", "devices_get"]],
   ]) {
     await page.getByRole("button", { name, exact: true }).click();
     const dialog = page.getByRole("dialog", { name });
