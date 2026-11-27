@@ -16,15 +16,9 @@ Use `boards_search` to find a board and its examples. Each entry includes a capa
 
 `devices_create` registers the chosen board and returns a pinned USB setup manifest and its `setup_example`. The kit contains the EspHub Bootloader, the partition table and the board’s default application. Its manifest records the SHA-256 of both the kit and the application. Verify the kit hash before flashing. Installation erases the board.
 
-Connect the board over USB and call `devices_create`. Download and flash the matching setup kit. Pipe the private registration result into `python3 provision_usb.py PORT` from the kit (requires pyserial and an authenticated Okou CLI). This sends the token and BLE bootstrap key at 115200 baud and binds the returned Bluetooth address to the registration through MCP. The USB request is:
+Connect the board over USB and call `devices_create`. Besides the setup manifest, the response contains a private `nvs` download: an ESP-IDF NVS image with the Hub hostname, the device token, the BLE key and, when supplied through the setup API, Wi-Fi credentials. Download it from `nvs.url` with `nvs.headers` before `nvs.expires_at` (15 minutes), verify `nvs.sha256`, and flash it at `nvs.offset` together with the kit, as the kit's INSTALL.txt shows: `esptool.py --chip <chip> --port PORT write_flash --erase-all @flash_args <nvs.offset> nvs.bin`. The board then starts in the EspHub Bootloader and connects. `POST /setup/<device>/reissue` rotates the device credentials and returns a fresh image.
 
-```text
-EH-PROVISION {"hub":"api.esphub.ai","token":"<token>","ble_secret":"<ble_secret>"}
-```
-
-The USB `hub` setting takes a plain hostname such as `api.esphub.ai`. OTA artifacts use full HTTPS URLs.
-
-After `EH-PROVISION-OK`, run the Mac BLE tool while the board is in the bootloader and choose a network or enter a hidden SSID and password locally. Then call `bootloader_exit`, type `app` on USB, or power-cycle the board to start the application. Confirm that `devices_get` reports an online app and the version in the manifest. Check the behavior described in `setup_example.description`.
+To add Wi-Fi over Bluetooth, keep the board in the bootloader and pass `wifi_ble_credential` to `tools/ble-wifi/macos.py` on a Mac. Then call `bootloader_exit`, type `app` on USB, or power-cycle the board to start the application. Confirm that `devices_get` reports an online app and the version in the manifest. Check the behavior described in `setup_example.description`.
 
 From the signed-in EspHub workspace, select **Bind my ESP32** and paste the prompt into your coding agent. The agent can guide board registration, USB setup and Wi-Fi, then confirm the device is online. Use **Manage devices** to open the management prompt.
 

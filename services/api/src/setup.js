@@ -116,7 +116,6 @@ export async function createDeviceSetup(c, owner, input) {
     hub: "api.esphub.ai",
     token: secret,
     bleSecret,
-    name: device.name,
     wifi,
     size: nvsPartition.size,
   });
@@ -162,7 +161,6 @@ export async function reissueDeviceSetup(c, owner, deviceId, input = {}) {
     hub: "api.esphub.ai",
     token: secret,
     bleSecret,
-    name: device.name,
     wifi,
     size: nvsPartition.size,
   });
