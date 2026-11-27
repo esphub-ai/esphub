@@ -1,32 +1,32 @@
 # EspHub
 
-EspHub provisions ESP32 devices over USB and manages them through the web and MCP. This repository owns the Hub services. Board firmware lives in [esphub-firmware](https://github.com/esphub-ai/esphub-firmware).
+EspHub provisions ESP32 devices over USB and manages them through the web and MCP. This repository owns the Hub services. Board hardware specs live in [esphub-boards](https://github.com/esphub-ai/esphub-boards), shared bootloaders live in [esphub-bootloader](https://github.com/esphub-ai/esphub-bootloader), and application firmware projects are published through the `/v1/*` Projects API.
 
 | Host | Component |
 | --- | --- |
 | esphub.ai and www.esphub.ai | Website Worker, landing and setup |
 | app.esphub.ai | Same website Worker, authenticated device console |
 | api.esphub.ai | Hono Worker, MQTT uplink processing and authenticated API |
-| cdn.esphub.ai | Board photos from R2, resized and cached at the Cloudflare edge |
+| cdn.esphub.ai | Board photos and project images from R2, resized and cached at the Cloudflare edge |
 | api.esphub.ai/mcp | Streamable HTTP JSON-RPC using Clerk OAuth |
 
 ## Devices and releases
 
-Use `boards_search` to find a board and its examples. Each entry includes a capability description, the upstream reference, a revision-pinned source URL, an entrypoint and a build command.
+Use `boards_search` to find a board's ID, hardware `spec`, `bootloader` ID, and latest promoted bootloader download. Use `projects_search` and `projects_get` to discover published applications and their per-board `download_url`.
 
-A first install writes three parts:
+A first install writes two required parts and one optional part:
 
-- **Bootloader set.** Boards with the same bootloader ID (for example `esp32s3-16mb`) share one set: the ESP-IDF second-stage `bootloader.bin`, `partition-table.bin` and the EspHub Launcher. The publisher records each version in `esphub.bootloaders`, and `GET /bootloaders/<id>/<version>/<bootloader|partition-table|launcher>` serves the files with immutable caching.
-- **App.** The board's default example, built as one `app.bin` and served from `GET /releases/<board>/app`.
+- **Bootloader set.** Boards with the same bootloader ID (for example `esp32s3-16mb`) share one set: the ESP-IDF second-stage `bootloader.bin`, `partition-table.bin` and the EspHub Launcher. The bootloader publisher records each version in `esphub.bootloaders` and promotes the active pointer in `esphub.bootloader_releases`; `GET /bootloaders/<id>/<version>/<bootloader|partition-table|launcher>` serves the files with immutable caching.
 - **Private NVS image.** The Hub generates it per device with the Hub hostname, the device token, the BLE key and the Wi-Fi network. It is downloadable for 15 minutes with its bearer header.
+- **Optional Project App (`app.bin`).** By default, first install flashes only the bootloader set and NVS so the board boots directly into the EspHub Launcher and awaits OTA. Pass `project_id` (and optional `version`) to `devices_create` / `POST /setup` / `POST /setup/<device>/reissue` to include a published project's `app.bin` (served from `GET /projects/<id>/boards/<vendor>/<slug>/releases/<version>/app`) in the same USB flash.
 
-Ask the user for the Wi-Fi SSID and password, connect the board over USB and call `devices_create` with `wifi`. The response's `flash` object lists every file with its offset, URL and sha256 (the NVS entry also carries its headers and `expires_at`), and the matching esptool command. Install esptool with `pip install esptool`, download and verify the files, then run the command, for example:
+Ask the user for the Wi-Fi SSID and password, connect the board over USB and call `devices_create` with `wifi` (and optionally `project_id`). The response's `flash` object lists every file with its offset, URL and sha256 (the NVS entry also carries its headers and `expires_at`), and the matching esptool command. Install esptool with `pip install esptool`, download and verify the files, then run the command, for example:
 
 ```sh
-esptool.py --chip esp32s3 --port PORT write_flash --erase-all --flash_mode dio --flash_size 16MB --flash_freq 80m 0x0 bootloader.bin 0x8000 partition-table.bin 0x9000 nvs.bin 0x20000 launcher.bin 0x2a0000 app.bin
+esptool.py --chip esp32s3 --port PORT write_flash --erase-all --flash_mode dio --flash_size 16MB --flash_freq 80m 0x0 bootloader.bin 0x8000 partition-table.bin 0x9000 nvs.bin 0x20000 launcher.bin
 ```
 
-The board starts in the EspHub Bootloader and connects. Call `bootloader_exit`, type `app` on USB, or power-cycle the board to start the application. Confirm that `devices_get` reports an online app and `flash.app_version`, and check the behavior described in `setup_example.description`. `POST /setup` does the same for the web console, and `POST /setup/<device>/reissue` rotates the device credentials and returns a fresh plan.
+The board starts in the EspHub Bootloader and connects. Confirm `online=true` and `info.role=bootloader` with `devices_get`. If you included a `project_id` in the initial flash, call `bootloader_exit`, type `app` on USB, or power-cycle the board to start the application; otherwise install an app over OTA via `ota_install`. `POST /setup` does the same for the web console, and `POST /setup/<device>/reissue` rotates the device credentials and returns a fresh plan.
 
 From the signed-in EspHub workspace, select **Bind my ESP32** and paste the prompt into your coding agent. The agent can guide board registration, USB setup and Wi-Fi, then confirm the device is online. Use **Manage devices** to open the management prompt.
 
@@ -57,14 +57,16 @@ Call `devices_create_virtual` from an authorized MCP client. Each account can cr
 ## OTA
 
 1. Use `bootloader_enter` and wait for `devices_get` to show an online device in the bootloader role.
-2. Call `ota_install` with kind `app` or `bootloader`. Omit `url` to install the board’s published image. For custom firmware, pass an HTTPS URL or upload the image as described below.
+2. Call `ota_install` with kind `app` or `bootloader`.
+   - For `kind="app"`, `url` is required: pass a `download_url` or `latest_url` from `projects_get`, an artifact URL from `ota_prepare_upload`, or a direct HTTPS URL.
+   - For `kind="bootloader"`, pass an HTTPS URL or omit `url` to install the board’s latest promoted Launcher.
 3. Follow the receipt with `commands_get`. Confirm the new process ID and the application version in `devices_get` after reboot.
 
 The EspHub Bootloader checks TLS, the image header and chip, and checks its own variant when updating a bootloader. A bootloader update writes the inactive bootloader slot. An application update writes the single application slot. An interrupted application write can be retried in Bootloader mode. Firmware that crashes after a valid boot can require USB recovery.
 
-### Build your own update
+### Discover and install a published project
 
-Use `setup_example` for the sources of a newly installed app. For another example use `boards_search` or `devices_get`, pick an entry by description, check out the revision in its `source_url` and edit its `entrypoint`. Run its `build_command` from the firmware repository root. The [build guide](https://github.com/esphub-ai/esphub-firmware/blob/main/docs/build-examples.md) describes the toolchain. Use kind `app` for the resulting image.
+Use `projects_search` (optionally filtered by `board`) to browse public projects, then call `projects_get` with the project's UUID to inspect its description, `repo_url` / `repo_path`, preview images, and per-board releases. Pass the board entry's `download_url` (or `latest_url`) directly to `ota_install` with `kind="app"`.
 
 ### Upload a local file
 
@@ -84,7 +86,7 @@ A local build, a downloaded release or a file supplied by the user can all be in
 
 ### Resize the application slot
 
-Enter Launcher mode and read `info.layout` from the device’s current boot. Call `ota_resize_app` with the device ID, `app_size_bytes` (a multiple of 65536) and `erase_littlefs: true` to move the boundary in either direction. This erases **all** LittleFS files, retains the installed app and provisioning, and reboots into the Launcher. Repeating the current size preserves files. If the current image is too large to shrink, install a smaller app first. Follow the command receipt until the next boot confirms the requested capacities, then install the image. If power is interrupted while rewriting the primary table, recovery may require USB. EspHub supplies the image size for private uploads and official releases. For other HTTPS sources, pass `image_size_bytes` at installation when known. If the source has an unknown length and the stream exceeds the slot, the receipt gives the minimum image size, the current slot, and the maximum supported slot.
+Enter Launcher mode and read `info.layout` from the device’s current boot. Call `ota_resize_app` with the device ID, `app_size_bytes` (a multiple of 65536) and `erase_littlefs: true` to move the boundary in either direction. This erases **all** LittleFS files, retains the installed app and provisioning, and reboots into the Launcher. Repeating the current size preserves files. If the current image is too large to shrink, install a smaller app first. Follow the command receipt until the next boot confirms the requested capacities, then install the image. If power is interrupted while rewriting the primary table, recovery may require USB. EspHub supplies the image size for private uploads, official bootloaders, and published project releases. For other HTTPS sources, pass `image_size_bytes` at installation when known. If the source has an unknown length and the stream exceeds the slot, the receipt gives the minimum image size, the current slot, and the maximum supported slot.
 
 ## Console and authentication
 
@@ -96,11 +98,11 @@ Neon stores registrations, device-token hashes, boot metadata and the command qu
 
 ## Delivery
 
-Install dependencies with `npm ci`. After `npm run migrate`, seed a fresh local database and local R2 with the test board catalog and photos using `node scripts/seed-catalog.mjs`. `npm run build` bundles the browser code. npm test runs unit tests, and TEST_DATABASE_URL enables the PostgreSQL tests. npm run migrate takes MIGRATION_DATABASE_URL and serializes checksum-verified migrations under an advisory lock.
+Install dependencies with `npm ci`. After `npm run migrate`, seed a fresh local database and local R2 with the test board catalog, photos, and bootloader sets using `node scripts/seed-catalog.mjs`. `npm run build` bundles the browser code. npm test runs unit tests, and TEST_DATABASE_URL enables the PostgreSQL tests. npm run migrate takes MIGRATION_DATABASE_URL and serializes checksum-verified migrations under an advisory lock.
 
 Pushes to main run verification on an ephemeral PostgreSQL instance, migrate production Neon, deploy the Hono API then the website, and check public domains and authentication boundaries. Required repository secrets are CLERK_SECRET_KEY (EspHub production instance), CLERK_MACHINE_SECRET_KEY (for the `esphub-api` Clerk Machine), FIRMWARE_R2_ACCESS_KEY_ID and FIRMWARE_R2_SECRET_ACCESS_KEY (Object Read & Write on `esphub-firmware`), MIGRATION_DATABASE_URL, RUNTIME_DB_PASSWORD (64 lowercase hex characters), CLOUDFLARE_API_TOKEN, IOT_RELAY_SECRET (at least 32 characters), IOT_ACCESS_KEY_ID and IOT_SECRET_ACCESS_KEY. CLOUDFLARE_ACCOUNT_ID, IOT_ACCOUNT_ID and IOT_DATA_ENDPOINT are repository variables. The API Worker stores uploads and logs in the esphub-production R2 bucket and reads/publishes releases and board photos in the esphub-firmware bucket (with a 1-day lifecycle rule on `staging/uploads/`). Both buckets must exist before the first deploy. Internal bootloader publishing (`POST /internal/uploads`, `POST /internal/bootloaders`, `PUT /internal/bootloaders/:id/current`) is authenticated with Clerk M2M tokens scoped to `esphub-api` from the configured bootloader machine ID. The migration role creates a restricted runtime role; the API Worker receives the runtime database URL and the Clerk credential. Configure the production environment to suit the organization's deployment policy.
 
-Board hardware definitions and photos live in [esphub-boards](https://github.com/esphub-ai/esphub-boards), which syncs `photo.webp` files to `boards/<vendor>/<slug>.webp` in the `esphub-firmware` R2 bucket and upserts structured board records into `esphub.boards` using a least-privilege database role (`esphub_boards_publisher`). Firmware builds, examples and app release publication live in [esphub-firmware](https://github.com/esphub-ai/esphub-firmware), which publishes example/source links to `esphub.board_examples` and release file records to `esphub.firmware_releases` / `esphub.release_assets`. The Hub serves the directory and downloads from these records and R2, without contacting GitHub or deriving release names. `GET /boards` and the read-only MCP tool `boards_search` return active boards with `spec`, `bootloader`, `product_url`, examples and latest published downloads. `GET /boards/<vendor>/<slug>` returns a single board's hardware spec, bootloader binding and active bootloader version. `GET /boards/gallery` reads active photographed boards directly from `esphub.boards`. The gallery and device cards request bounded WebP thumbnails from `cdn.esphub.ai` using `?width=`. Cloudflare Images resizes them from R2 on a CDN cache miss. Opening a board shows its original photo. A missing photo returns 404 and is omitted from the wall.
+Board hardware definitions and photos live in [esphub-boards](https://github.com/esphub-ai/esphub-boards), which syncs `photo.webp` files to `boards/<vendor>/<slug>.webp` in the `esphub-firmware` R2 bucket and upserts structured board records into `esphub.boards` using a least-privilege database role (`esphub_boards_publisher`). Shared bootloader sets are built and published by [esphub-bootloader](https://github.com/esphub-ai/esphub-bootloader) into `esphub.bootloaders` and `esphub.bootloader_releases`. `GET /boards` and the read-only MCP tool `boards_search` read active boards directly from `esphub.boards` and `esphub.bootloader_releases`, returning `spec`, `bootloader`, `product_url`, `image_url`, and the active bootloader download. `GET /boards/<vendor>/<slug>` returns a single board's hardware spec, bootloader binding and active bootloader version. `GET /boards/gallery` reads active photographed boards directly from `esphub.boards`. The gallery and device cards request bounded WebP thumbnails from `cdn.esphub.ai` using `?width=`. Cloudflare Images resizes them from R2 on a CDN cache miss. Opening a board shows its original photo. A missing photo returns 404 and is omitted from the wall.
 
 ## Projects API (`/v1/*`)
 
@@ -110,4 +112,4 @@ Multi-board firmware projects are owned by personal EspHub accounts (`esphub.pro
 - `POST /v1/projects`, `GET /v1/projects`, `GET /v1/projects/:id`, `PUT /v1/projects/:id`, `DELETE /v1/projects/:id` — allocate a project UUID, list/inspect owned projects (including unpublished drafts), update metadata and up to 10 preview images (with optional cover selection), and soft-archive.
 - `POST /v1/projects/:id/releases`, `PUT /v1/projects/:id/boards/:vendor/:slug/current`, `DELETE /v1/projects/:id/boards/:vendor/:slug` — publish immutable per-board `app.bin` releases (with optional `app_elf_sha256`, `idf_version`, `source_revision`), switch/roll back the active version pointer, or unlink a board while keeping historical release downloads intact.
 - Public read and CDN routes (no prefix): `GET /projects`, `GET /projects/:id`, `GET /projects/:id/boards/:vendor/:slug/app`, `GET /projects/:id/boards/:vendor/:slug/releases/:version/app`, and `https://cdn.esphub.ai/projects/:id/images/:sha256.:ext` (immutable, supports `?width=` WebP resizing).
-- MCP tools: `projects_list`, `projects_create`, `projects_get`, `projects_search`; `ota_install` also resolves `app_size` and verifies target board compatibility automatically for `https://api.esphub.ai/projects/...` URLs.
+- MCP tools: `projects_list`, `projects_create`, `projects_get`, `projects_search`; `ota_install` resolves `app_size` and verifies target board compatibility automatically for `https://api.esphub.ai/projects/...` URLs.

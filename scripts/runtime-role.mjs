@@ -13,7 +13,7 @@ try {
       await tx.unsafe(
         "CREATE ROLE esphub_runtime LOGIN PASSWORD '" + password + "'",
       );
-    await tx.unsafe("GRANT SELECT ON esphub.firmware_releases, esphub.release_assets, esphub.boards, esphub.board_examples, esphub.board_profiles TO esphub_runtime");
+    await tx.unsafe("GRANT SELECT ON esphub.boards TO esphub_runtime");
     await tx.unsafe("GRANT SELECT, INSERT ON esphub.bootloaders, esphub.project_releases TO esphub_runtime");
     await tx.unsafe("GRANT SELECT, INSERT, UPDATE ON esphub.bootloader_releases TO esphub_runtime");
     await tx.unsafe("GRANT USAGE ON SCHEMA esphub TO esphub_runtime");

@@ -955,6 +955,15 @@ test(
           );
           assert.equal(enqueued[0].args.image_size, 256);
 
+          // Omitting url for kind="app" is rejected (url is mandatory for app OTA)
+          await assert.rejects(
+            operate(otaCtx, alice.id, "ota_install", {
+              device_id: devA.id,
+              kind: "app",
+            }),
+            (e) => e.status === 400 && /url/.test(e.message),
+          );
+
           throw rollback;
         }),
         (err) => err === rollback,

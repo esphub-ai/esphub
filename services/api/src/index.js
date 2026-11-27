@@ -5,7 +5,6 @@ import { boardGallery, getBoardDetail, searchBoards } from "./boards.js";
 import { boardPhotos } from "./board-photos.js";
 import { boardPhotoOrigin } from "../../../shared/identity.js";
 import { uuidPattern } from "./ids.js";
-import { releaseResponse } from "./releases.js";
 import { bootloaderResponse } from "./firmware.js";
 import { Hono } from "hono";
 import { withDatabase } from "./database.js";
@@ -57,14 +56,6 @@ api.get("/.well-known/openai-apps-challenge", (c) =>
   c.text("oQ1H5PIXgb4CmexhOlNNaTL2PkqnNppa17GSplpdaPY"),
 );
 api.get("/health", (c) => c.json({ service: "esphub-api", ok: true }));
-api.get("/releases/:group/:project/:asset", (c) => {
-  const { group, project, asset } = c.req.param();
-  const board = `${group}/${project}`;
-  const tag = c.req.query("tag");
-  return withDatabase(c.env, (sql) =>
-    releaseResponse(board, asset, tag, sql, c.env.FIRMWARE),
-  );
-});
 api.get("/bootloaders/:id/:version/:file", (c) => {
   const { id, version, file } = c.req.param();
   return withDatabase(c.env, (sql) =>

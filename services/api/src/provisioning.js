@@ -3,8 +3,8 @@ export const reconnectGuidance =
 
 // Shell instructions for a first install with esptool. The private NVS image carries the
 // device credentials and, when supplied, the Wi-Fi network.
-export function provisioning(profile, flash, example, wifi) {
-  const identify = `Identify the USB board. If the port or model is ambiguous, ask the user. Check the physical model as well as the ${profile.soc} chip. Proceed with the registered ${profile.model}.`;
+export function provisioning(board, flash, { wifi, hasApp = false } = {}) {
+  const identify = `Identify the USB board. If the port or model is ambiguous, ask the user. Check the physical model as well as the ${board.soc} chip. Proceed with the registered ${board.model}.`;
   const network = wifi
     ? "The private NVS image already contains the Wi-Fi network the user gave you."
     : "This NVS image has no Wi-Fi network, so the board cannot come online after flashing. Ask the user for the Wi-Fi SSID and password, delete this registration with devices_delete and call devices_create again with wifi before flashing.";
@@ -15,17 +15,18 @@ export function provisioning(profile, flash, example, wifi) {
     "Verify each file with `shasum -a 256 <name>` against its sha256 and stop on any mismatch.",
   ].join(" ");
   const write = `Put the board in ROM download mode if needed, then run, with the board's serial port in place of PORT: \`${flash.command}\`. This erases all flash. Back up any device data first.`;
+  const nextStep = hasApp
+    ? "The board starts in the EspHub Bootloader and connects. Confirm online=true with devices_get, then call bootloader_exit or power-cycle the board to start the flashed project app and verify the new online app session."
+    : "The board starts in the EspHub Bootloader and connects. Confirm online=true and info.role=bootloader with devices_get. No application is flashed yet; use projects_search and projects_get to pick a project download URL (or upload a custom binary with ota_prepare_upload) and install it with ota_install.";
   return {
-    setup_example: example,
     prompt: [
       identify,
       network,
       download,
       write,
       "Keep the NVS download credential and nvs.bin private and delete nvs.bin after flashing.",
-      "The board starts in the EspHub Bootloader and connects. Call bootloader_exit or power-cycle the board to start the app.",
+      nextStep,
       reconnectGuidance,
-      "Confirm a new online app session with devices_get and compare its version with flash.app_version. Observe the example behavior, then use its pinned source_url, entrypoint and build_guide_url for development.",
     ].join("\n"),
   };
 }

@@ -169,7 +169,7 @@ async function testVirtualDevice(read) {
     ["wifi_ble_credential", vid],
     ["bootloader_enter", vid],
     ["bootloader_exit", vid],
-    ["ota_install", { ...vid, kind: "app" }],
+    ["ota_install", { ...vid, kind: "app", url: "https://example.com/app.bin" }],
     ["ota_resize_app", { ...vid, app_size_bytes: 0x400000 }],
   ]) {
     const result = await call("tools/call", { name, arguments: args });
@@ -334,7 +334,7 @@ try {
   assert.ok(d.prompt.includes(d.flash.command));
   assert.match(d.flash.command, /^esptool\.py --chip esp32s3 --port PORT write_flash --erase-all /);
   assert.deepEqual(d.flash.files.map(({ name }) => name),
-    ["bootloader.bin", "partition-table.bin", "nvs.bin", "launcher.bin", "app.bin"]);
+    ["bootloader.bin", "partition-table.bin", "nvs.bin", "launcher.bin"]);
   await checkFlashFiles(d);
   assert.equal("token" in d, false);
   assert.equal("ble_secret" in d, false);
@@ -352,13 +352,20 @@ try {
     psk: createHmac("sha256", Buffer.from(deviceBleSecret, "hex"))
       .update("esphub/wifi/tls-psk").digest("hex"),
   });
-  assert.equal(d.setup_example.id, "color-bands");
-  assert.ok(d.setup_example.build_command.includes(d.board));
-  assert.deepEqual(Object.keys(d.sources).sort(), ["bootloader", "sdk"]);
+  assert.equal("setup_example" in d, false);
+  assert.equal("examples" in d, false);
+  assert.equal("sources" in d, false);
+  assert.equal(d.spec.soc, "esp32s3");
+  assert.ok(d.firmware.bootloader.download_url.includes("/bootloaders/"));
+  assert.equal("app" in d.firmware, false);
+  assert.equal((await fetch(base + "/backend/releases/m5stack/stopwatch/app")).status, 404);
   const offline = await op("devices_get", id, read);
   assert.equal(offline.online, false);
   assert.equal(offline.kind, "physical");
-  assert.deepEqual(offline.sources, d.sources);
+  assert.deepEqual(offline.spec, d.spec);
+  assert.deepEqual(offline.firmware, d.firmware);
+  assert.equal("examples" in offline, false);
+  assert.equal("sources" in offline, false);
   const setupRes = await fetch(base + "/backend/setup", {
     method: "POST",
     headers: {
@@ -382,8 +389,9 @@ try {
   assert.deepEqual(JSON.parse(watchNvs.eh.wifis), [
     { s: "LabWiFi", p: "lab-password", h: true },
   ]);
-  assert.equal(watch.setup_example.id, "bar-graph");
-  assert.ok(watch.examples.some(e => e.id === "buttons"));
+  assert.equal("setup_example" in watch, false);
+  assert.equal("examples" in watch, false);
+  assert.equal(watch.spec.soc, "esp32s3");
   assert.match(watch.prompt, /already contains the Wi-Fi network/);
   assert.doesNotMatch(watch.prompt, /lab-password/);
   const mcpWifi = await op("devices_create", {
@@ -622,7 +630,9 @@ try {
   assert.deepEqual(inventory.application, { name: "color-bands", version: "2.0.4", sdk_version: "8.0.0", last_seen: false });
   const firmware = await op("firmware_get", id, read);
   assert.deepEqual(firmware.software, inventory);
-  assert.deepEqual(firmware.examples, currentApp.examples);
+  assert.deepEqual(firmware.spec, currentApp.spec);
+  assert.deepEqual(firmware.firmware, currentApp.firmware);
+  assert.equal("examples" in firmware, false);
   const status = await mcu.nextCommand();
   assert.equal(status.id, firmware.command_id);
   assert.equal(status.op, "status");
@@ -639,8 +649,14 @@ try {
     409,
   );
   assert.equal((await op("devices_get", id)).ble_address, reportedAddress.toLowerCase());
+  const missingUrl = await call("tools/call", {
+    name: "ota_install",
+    arguments: { ...id, kind: "app" },
+  });
+  assert.equal(missingUrl.isError, true);
+  assert.match(missingUrl.content[0].text, /url is required/i);
   await assert.rejects(
-    op("ota_install", { ...id, kind: "app" }),
+    op("ota_install", { ...id, kind: "app", url: "https://example.com/app.bin" }),
     /bootloader/i,
   );
   assert.deepEqual(mcu.httpsRequests, ["iot/enroll"]);
@@ -1081,6 +1097,52 @@ try {
     assert.equal(pinnedDl.status, 200);
     assert.match(pinnedDl.headers.get("Cache-Control"), /immutable/);
     assert.ok(Buffer.from(await pinnedDl.arrayBuffer()).equals(appBytes));
+
+    // First-install setup and reissue with optional project_id include app.bin in flash.files
+    const projSetupRes = await fetch(base + "/backend/setup", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + sessionJwt,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        board: "m5stack/cardputer-adv",
+        name: "Cardputer Project Flash",
+        project_id: createdProjectId,
+      }),
+    });
+    assert.equal(projSetupRes.status, 200, await projSetupRes.clone().text());
+    const projDevice = await projSetupRes.json();
+    assert.deepEqual(
+      projDevice.flash.files.map(({ name }) => name),
+      ["bootloader.bin", "partition-table.bin", "nvs.bin", "launcher.bin", "app.bin"],
+    );
+    assert.equal(projDevice.flash.project.id, createdProjectId);
+    assert.equal(projDevice.flash.project.version, "1.0.0");
+    assert.equal(
+      projDevice.flash.files.find((f) => f.name === "app.bin").sha256,
+      appSha,
+    );
+    await checkFlashFiles(projDevice);
+    const projReissueRes = await fetch(
+      `${base}/backend/setup/${projDevice.id}/reissue`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + sessionJwt,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          project_id: createdProjectId,
+          version: "1.0.0",
+        }),
+      },
+    );
+    assert.equal(projReissueRes.status, 200);
+    const projReissued = await projReissueRes.json();
+    assert.equal(projReissued.flash.files.length, 5);
+    assert.equal(projReissued.flash.project.version, "1.0.0");
+    await op("devices_delete", { device_id: projDevice.id });
 
     // Unlink board keeps historical release downloadable; archiving hides everything
     assert.equal(

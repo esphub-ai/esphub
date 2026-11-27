@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import postgres from "postgres";
-import { appRelease, bootloaderSet, fixtureBucket, recordFirmware } from "./fixtures/firmware.mjs";
+import { bootloaderSet, fixtureBucket, recordFirmware } from "./fixtures/firmware.mjs";
 import { operate } from "../services/api/src/operations.js";
 import { reissueDeviceSetup } from "../services/api/src/setup.js";
 import { parseNvs } from "../services/api/src/nvs.js";
 import { digest } from "../services/api/src/auth.js";
+
 test(
   "new registrations store only a token hash, stage NVS privately, and cannot cross account boundaries",
   { skip: !process.env.TEST_DATABASE_URL },
@@ -17,11 +18,11 @@ test(
       await assert.rejects(sql.begin(async (tx) => {
         const users =
           await tx`INSERT INTO esphub.accounts(clerk_subject) SELECT 'user_' || md5(random()::text) FROM generate_series(1, 2) RETURNING id`;
-        const board = "m5stack/cardputer-adv";
-        const [profile] = await tx`SELECT * FROM esphub.board_profiles WHERE id = ${board}`;
-        const set = bootloaderSet(profile.bootloader), app = appRelease(board);
-        for (const firmware of [set, app]) await recordFirmware(tx, firmware);
-        const files = new Map([...set.files, ...app.files]);
+        const boardId = "m5stack/cardputer-adv";
+        const [board] = await tx`SELECT * FROM esphub.boards WHERE id = ${boardId}`;
+        const set = bootloaderSet(board.bootloader);
+        await recordFirmware(tx, set);
+        const files = new Map(set.files);
         let lastStaged = null;
         const c = {
           sql: tx,
@@ -49,10 +50,14 @@ test(
             },
           },
         };
-        const args = { board: "m5stack/cardputer-adv", name: "Cardputer-Adv" },
+        const args = { board: boardId, name: "Cardputer-Adv" },
           d = await operate(c, users[0].id, "devices_create", args);
         assert.equal("token" in d, false);
         assert.equal("ble_secret" in d, false);
+        assert.deepEqual(
+          d.flash.files.map(({ name }) => name),
+          ["bootloader.bin", "partition-table.bin", "nvs.bin", "launcher.bin"],
+        );
         const firstNvs = parseNvs(lastStaged);
         assert.equal(
           (await tx`SELECT token_hash FROM esphub.devices WHERE id=${d.id}`)[0]
@@ -76,7 +81,7 @@ test(
         assert.notEqual(nextNvs.eh.ble_key, firstNvs.eh.ble_key);
         await operate(c, users[0].id, "devices_delete", { device_id: d.id });
         throw rollback;
-      }), error => error === rollback);
+      }), (error) => error === rollback);
     } finally {
       await sql.end();
     }

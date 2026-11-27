@@ -4,27 +4,37 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { operate, validate } from "../services/api/src/operations.js";
 import { parseNvs } from "../services/api/src/nvs.js";
-import { bootloaderUrl, releaseUrl } from "../shared/identity.js";
-import { appRelease, bootloaderSet, fixtureBucket } from "./fixtures/firmware.mjs";
+import { bootloaderUrl, projectAppUrl } from "../shared/identity.js";
+import { bootloaderSet, fixtureBucket } from "./fixtures/firmware.mjs";
 
-const { source, boards } = JSON.parse(await readFile(new URL("./fixtures/catalog.json", import.meta.url), "utf8"));
-const profiles = Object.fromEntries(boards.map((board) => [board.id,
-  { ...board, retired: false, source_revision: source.revision, sdk_version: source.sdk_version, sdk_source_url: source.sdk_source_url, is_current: true }]));
+const { boards } = JSON.parse(await readFile(new URL("./fixtures/catalog.json", import.meta.url), "utf8"));
+const byId = Object.fromEntries(boards.map((board) => [board.id, { ...board, vendor: board.id.split("/")[0], retired: false }]));
 
-// Answers the setup queries from a fixture bootloader set and app release.
-function setupContext(board, { bootloader = true } = {}) {
-  const profile = profiles[board];
-  const set = bootloaderSet(profile.bootloader);
-  const app = appRelease(board);
+// Answers the setup queries from a fixture bootloader set and optional project release.
+function setupContext(board, { bootloader = true, projectRelease = null } = {}) {
+  const row = byId[board];
+  const set = bootloaderSet(row.bootloader);
   const staged = [];
-  const sql = async (query) => {
+  let inserted = 0;
+  const sql = async (query, ...values) => {
     const text = query.join("?");
-    if (text.includes("INSERT INTO esphub.devices"))
+    if (text.includes("INSERT INTO esphub.devices")) {
+      inserted++;
       return [{ id: "test-id", board, name: "Watch", kind: "physical" }];
+    }
     if (text.includes("esphub.bootloaders")) return bootloader ? [set.row] : [];
-    if (text.includes("esphub.firmware_releases"))
-      return [{ ...app.release, object_key: app.asset.object_key, size: app.asset.size }];
-    return [profile];
+    if (text.includes("esphub.project_releases")) {
+      if (!projectRelease) return [];
+      const [projectId, boardId, version] = values;
+      if (
+        projectId === projectRelease.project_id &&
+        boardId === projectRelease.board_id &&
+        (version === undefined || version === projectRelease.version)
+      )
+        return [projectRelease];
+      return [];
+    }
+    return [row];
   };
   const DEVICE = {
     idFromName: (deviceId) => deviceId,
@@ -44,38 +54,48 @@ function setupContext(board, { bootloader = true } = {}) {
       },
     }),
   };
-  const files = new Map([...set.files, ...app.files]);
-  return { c: { sql, env: { FIRMWARE: fixtureBucket(files), DEVICE } }, profile, set, app, staged };
+  const files = new Map(set.files);
+  if (projectRelease?.body) files.set(projectRelease.app_key, projectRelease.body);
+  return {
+    c: { sql, env: { FIRMWARE: fixtureBucket(files), DEVICE } },
+    row,
+    set,
+    staged,
+    get inserted() { return inserted; },
+  };
 }
 
-test("registration returns a flash plan for the shared bootloader, the app and a private NVS image", async () => {
+test("default registration returns a 4-file flash plan for the shared bootloader set and private NVS image", async () => {
   const board = "m5stack/stopwatch";
-  const { c, profile, set, app, staged } = setupContext(board);
+  const { c, set, staged } = setupContext(board);
   const wifi = { ssid: "Lab", password: "secret", hidden: true };
   const result = await operate(c, "owner", "devices_create", { board, name: "Watch", wifi });
   assert.equal("token" in result, false);
   assert.equal("ble_secret" in result, false);
   assert.equal("nvs" in result, false);
   assert.equal("setup_manifest" in result, false);
+  assert.equal("setup_example" in result, false);
+  assert.equal("examples" in result, false);
+  assert.equal("sources" in result, false);
 
   const { flash } = result;
   assert.deepEqual(
     flash.files.map(({ name, offset }) => [name, offset]),
-    [["bootloader.bin", "0x0"], ["partition-table.bin", "0x8000"], ["nvs.bin", "0x9000"],
-      ["launcher.bin", "0x20000"], ["app.bin", "0x2a0000"]],
+    [["bootloader.bin", "0x0"], ["partition-table.bin", "0x8000"], ["nvs.bin", "0x9000"], ["launcher.bin", "0x20000"]],
   );
   const file = (name) => flash.files.find((item) => item.name === name);
   assert.equal(file("launcher.bin").url, bootloaderUrl(set.row.id, set.row.version, "launcher"));
   assert.equal(file("launcher.bin").sha256, set.row.launcher_sha256);
-  assert.equal(file("app.bin").url, releaseUrl(board, "app", app.release.tag));
-  assert.equal(file("app.bin").sha256, createHash("sha256").update(app.files.values().next().value).digest("hex"));
   assert.deepEqual(file("nvs.bin").headers, { Authorization: "Bearer eh_nvs_" + "A".repeat(43) });
   assert.ok(file("nvs.bin").expires_at);
-  assert.equal(flash.command,
+  assert.equal(
+    flash.command,
     "esptool.py --chip esp32s3 --port PORT write_flash --erase-all --flash_mode dio --flash_size 16MB --flash_freq 80m " +
-    "0x0 bootloader.bin 0x8000 partition-table.bin 0x9000 nvs.bin 0x20000 launcher.bin 0x2a0000 app.bin");
+      "0x0 bootloader.bin 0x8000 partition-table.bin 0x9000 nvs.bin 0x20000 launcher.bin",
+  );
   assert.deepEqual(flash.bootloader, { id: "esp32s3-16mb", version: "2.0.7" });
-  assert.equal(flash.app_version, "2.0.7");
+  assert.equal("app_version" in flash, false);
+  assert.equal("project" in flash, false);
 
   const [nvs] = staged;
   assert.equal(nvs.byteLength, set.row.nvs_size);
@@ -87,14 +107,72 @@ test("registration returns a flash plan for the shared bootloader, the app and a
   assert.match(result.prompt, /pip install esptool/);
   assert.ok(result.prompt.includes(flash.command));
   assert.match(result.prompt, /already contains the Wi-Fi network/);
+  assert.match(result.prompt, /projects_search/);
   assert.doesNotMatch(result.prompt, /secret/);
-  assert.deepEqual(result.setup_example,
-    profile.published_examples.find((example) => example.id === profile.default_example));
-  assert.deepEqual(result.firmware, {
-    app: { version: "2.0.7", download_url: releaseUrl(board, "app", app.release.tag) },
-    bootloader: { id: "esp32s3-16mb", version: "2.0.7",
-      download_url: bootloaderUrl("esp32s3-16mb", "2.0.7", "launcher") },
+  assert.deepEqual(result.spec, {
+    soc: "esp32s3",
+    flash_mb: 16,
+    flash_bus: "quad",
+    psram: null,
+    console: "usb-serial-jtag",
   });
+  assert.deepEqual(result.firmware, {
+    bootloader: {
+      id: "esp32s3-16mb",
+      version: "2.0.7",
+      download_url: bootloaderUrl("esp32s3-16mb", "2.0.7", "launcher"),
+    },
+  });
+});
+
+test("registration with optional project_id includes the project app.bin in the flash plan", async () => {
+  const board = "m5stack/stopwatch";
+  const projectId = crypto.randomUUID();
+  const body = new Uint8Array(256).fill(0xe9);
+  const sha = createHash("sha256").update(body).digest("hex");
+  const release = {
+    project_id: projectId,
+    board_id: board,
+    version: "1.2.3",
+    app_key: `projects/${projectId}/releases/${board}/1.2.3/app.bin`,
+    app_size: body.length,
+    app_sha256: sha,
+    body,
+  };
+  const { c } = setupContext(board, { projectRelease: release });
+  const result = await operate(c, "owner", "devices_create", {
+    board,
+    name: "Watch",
+    wifi: { ssid: "Lab" },
+    project_id: projectId,
+    version: "1.2.3",
+  });
+  assert.deepEqual(
+    result.flash.files.map(({ name, offset }) => [name, offset]),
+    [["bootloader.bin", "0x0"], ["partition-table.bin", "0x8000"], ["nvs.bin", "0x9000"],
+      ["launcher.bin", "0x20000"], ["app.bin", "0x2a0000"]],
+  );
+  const appFile = result.flash.files.find((item) => item.name === "app.bin");
+  assert.equal(appFile.url, projectAppUrl(projectId, board, "1.2.3"));
+  assert.equal(appFile.sha256, sha);
+  assert.deepEqual(result.flash.project, {
+    id: projectId,
+    version: "1.2.3",
+    download_url: projectAppUrl(projectId, board, "1.2.3"),
+  });
+  assert.match(result.prompt, /bootloader_exit/);
+
+  // Unknown project or version without project_id fails before creating a device.
+  const empty = setupContext(board);
+  await assert.rejects(
+    operate(empty.c, "owner", "devices_create", { board, name: "Watch", version: "1.2.3" }),
+    (error) => error.status === 400 && /project_id/.test(error.message),
+  );
+  await assert.rejects(
+    operate(empty.c, "owner", "devices_create", { board, name: "Watch", project_id: projectId }),
+    (error) => error.status === 404,
+  );
+  assert.equal(empty.inserted, 0);
 });
 
 test("registration without Wi-Fi asks for it, and an unpublished bootloader fails before registering", async () => {
@@ -110,15 +188,29 @@ test("registration without Wi-Fi asks for it, and an unpublished bootloader fail
     (error) => error.status === 503,
   );
   assert.equal(missing.staged.length, 0);
+  assert.equal(missing.inserted, 0);
 });
 
-test("OTA accepts either the published app or bootloader or an explicit HTTPS binary", () => {
+test("OTA requires url for app installs, allows omitting url for bootloaders, and rejects project_id", () => {
   const device_id = crypto.randomUUID();
+  validate("ota_install", { device_id, kind: "bootloader" });
+  validate("ota_install", { device_id, kind: "bootloader", url: "https://example.com/launcher.bin" });
+  assert.throws(
+    () => validate("ota_install", { device_id, kind: "app" }),
+    (error) => error.status === 400 && /url/.test(error.message),
+  );
+  validate("ota_install", { device_id, kind: "app", url: "https://example.com/app.bin" });
+  assert.throws(
+    () => validate("ota_install", { device_id, kind: "app", project_id: crypto.randomUUID() }),
+    (error) => error.status === 400,
+  );
   for (const kind of ["bootloader", "app"]) {
-    validate("ota_install", { device_id, kind });
-    validate("ota_install", { device_id, kind, url: "https://example.com/app.bin" });
-    for (const url of ["http://example.com/a", "https://user:password@example.com/a",
-      "https://example.com/a#b", "https://example.com/" + "a".repeat(1024)])
+    for (const url of [
+      "http://example.com/a",
+      "https://user:password@example.com/a",
+      "https://example.com/a#b",
+      "https://example.com/" + "a".repeat(1024),
+    ])
       assert.throws(() => validate("ota_install", { device_id, kind, url }));
   }
 });
