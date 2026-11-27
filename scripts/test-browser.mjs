@@ -235,13 +235,15 @@ try {
       [
         "devices_list",
         "devices_get",
+        "projects_search",
+        "projects_get",
         "bootloader_enter",
         "ota_install",
         "ota_resize_app",
         "devices_delete",
       ],
     ],
-    ["Bind my ESP32", ["group/project", "devices_create", "devices_get"]],
+    ["Bind my ESP32", ["vendor/model", "boards_search", "devices_create", "devices_get"]],
   ]) {
     await page.getByRole("button", { name, exact: true }).click();
     const dialog = page.getByRole("dialog", { name });

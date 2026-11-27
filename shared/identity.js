@@ -9,6 +9,7 @@ export const browserOrigins = [
   application,
 ];
 export const mcpEndpoint = apiOrigin + "/mcp";
+// Kept solely so historical migration 017 can replay on fresh databases.
 export function releaseUrl(board, asset, tag) {
   const url = `${apiOrigin}/releases/${board}/${asset}`;
   return tag ? url + "?tag=" + encodeURIComponent(tag) : url;

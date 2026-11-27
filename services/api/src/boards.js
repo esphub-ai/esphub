@@ -20,28 +20,24 @@ export function boardSpec(row) {
 export async function searchBoards(sql, query = "") {
   if (query.includes("\0")) fail(400, "Invalid query");
   const rows =
-    await sql`SELECT b.id, b.name, b.model, b.soc, b.flash_mb, b.flash_bus, b.psram, b.console,
+    await sql`SELECT b.id, b.vendor, b.name, b.model, b.soc, b.flash_mb, b.flash_bus, b.psram, b.console,
       b.bootloader AS bootloader_id, b.product_url, b.has_photo, b.preview,
-      b.default_example, b.published_examples,
-      (SELECT jsonb_build_object('version', r.version, 'tag', r.tag) FROM esphub.firmware_releases r
-       WHERE r.board = b.id AND r.kind = 'app') AS app,
       (SELECT jsonb_build_object('id', r.id, 'version', r.version) FROM esphub.bootloader_releases r
        WHERE r.id = b.bootloader) AS bootloader_release
-    FROM esphub.board_profiles b
+    FROM esphub.boards b
     WHERE NOT b.retired AND strpos(b.id, ${query.trim().toLowerCase()}) > 0
     ORDER BY b.display_order NULLS LAST, b.id`;
   return rows.map((row) => ({
     id: row.id,
+    vendor: row.vendor,
     name: row.name,
     model: row.model,
     bootloader: row.bootloader_id,
     spec: boardSpec(row),
     product_url: row.product_url,
-    default_example: row.default_example ?? null,
     preview: row.preview,
-    examples: row.published_examples ?? [],
     image_url: row.has_photo ? boardImageUrl(row.id) : null,
-    firmware: firmwareSummary(row.id, row.app, row.bootloader_release),
+    firmware: firmwareSummary(row.bootloader_release),
   }));
 }
 
@@ -67,15 +63,14 @@ export async function getBoardDetail(sql, id) {
     preview: row.preview,
     retired: row.retired,
     image_url: row.has_photo ? boardImageUrl(row.id) : null,
-    firmware: firmwareSummary(row.id, null, row.bootloader_release),
+    firmware: firmwareSummary(row.bootloader_release),
   };
 }
 
 export async function getBoard(sql, id) {
-  const [profile] =
-    await sql`SELECT * FROM esphub.board_profiles WHERE id = ${id}`;
-  if (!profile) fail(404, "Unknown board");
-  return profile;
+  const [board] = await sql`SELECT * FROM esphub.boards WHERE id = ${id}`;
+  if (!board) fail(404, "Unknown board");
+  return board;
 }
 
 export async function boardGallery(sql) {

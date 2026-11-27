@@ -2,16 +2,14 @@ import {
   apiOrigin,
   bootloaderUrl,
   projectAppUrl,
-  releaseUrl,
 } from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
 import { issueBle } from "./ble.js";
 import { connectedSince, publishDownlink } from "./iot.js";
 import { appAlignment, maxAppSize, maxFlashBytes, minLittleFSBytes, validLayout } from "./layout.js";
 import { artifactBase, maxUploadBytes } from "./uploads.js";
-import { boardIdPattern, boardImageUrl, getBoard, searchBoards } from "./boards.js";
-import { updateSources } from "./update-sources.js";
-import { boardFirmware, bootloaderSet, latestBootloader } from "./firmware.js";
+import { boardIdPattern, boardImageUrl, boardSpec, getBoard, searchBoards } from "./boards.js";
+import { boardFirmware, bootloaderSet, latestBootloader, versionPattern } from "./firmware.js";
 import {
   createProject,
   getProjectForMcp,
@@ -20,7 +18,6 @@ import {
   parseProjectAppUrl,
   projectAppFile,
 } from "./projects.js";
-import { releaseFile } from "./releases.js";
 import { fail } from "./auth.js";
 import { createDeviceSetup } from "./setup.js";
 import { createVirtual, operateVirtual } from "./virtual-device.js";
@@ -31,9 +28,14 @@ const id = strings("device_id");
 const otaKind = { type: "string", enum: ["bootloader", "app"] };
 const bootloaderBase = apiOrigin + "/bootloaders/";
 const projectAppBase = apiOrigin + "/projects/";
-async function boardSources(db, board) {
-  const profile = await getBoard(db, board);
-  return updateSources(profile, (await boardFirmware(db, profile)).firmware);
+async function boardDetails(db, boardId) {
+  const board = await getBoard(db, boardId);
+  const { firmware } = await boardFirmware(db, board);
+  return {
+    bootloader: board.bootloader,
+    spec: boardSpec(board),
+    firmware,
+  };
 }
 const additive = {
   readOnlyHint: false,
@@ -47,14 +49,14 @@ const defs = [
   [
     "boards_search",
     readOnly,
-    "Find supported boards by a literal, case-insensitive substring of their vendor/model ID. Omit query to list all boards. Includes the default example, example capabilities, pinned source and published downloads.",
+    "Find supported boards by a literal, case-insensitive substring of their vendor/model ID. Omit query to list all boards. Returns each board's hardware spec, bootloader ID, product URL, photo URL, and latest published bootloader download. Use projects_search to find installable applications for a board.",
     strings("query"),
   ],
   ["devices_list", readOnly, "List your registered devices.", {}],
   [
     "devices_create",
     additive,
-    "Registers a physical device with its name and group/project board ID (for example, m5stack/cardputer-adv). Ask the user for the Wi-Fi SSID and password first and pass them as wifi, so the board joins the network on first boot. Returns its device ID, a flash plan with every file of the first install (including the short-lived private NVS image), the esptool command and the installed example with its source and build command.",
+    "Registers a physical device with its name and vendor/model board ID (for example, m5stack/cardputer-adv). Ask the user for the Wi-Fi SSID and password first and pass them as wifi, so the board joins the network on first boot. By default, returns a flash plan for the board's shared bootloader set and short-lived private NVS image; optionally pass project_id (and optional version) to also include a published project's app.bin in the initial USB flash.",
     {
       ...strings("name"),
       board: { type: "string", description: "Exact board ID returned by boards_search." },
@@ -69,7 +71,16 @@ const defs = [
         },
         required: ["ssid"],
       },
+      project_id: {
+        type: "string",
+        description: "Optional EspHub project UUID (from projects_search) to also flash its app.bin during initial USB setup.",
+      },
+      version: {
+        type: "string",
+        description: "Optional release version for project_id (defaults to the project's latest version for this board). Requires project_id.",
+      },
     },
+    ["name", "board"],
   ],
   [
     "devices_create_virtual",
@@ -80,7 +91,7 @@ const defs = [
   [
     "devices_get",
     readOnly,
-    "Show device kind, identity and connection status. For a physical board, also return the reported application identity, bootloader and app downloads, and examples with pinned source and build instructions.",
+    "Show device kind, identity, connection status, hardware spec, reported application identity, and latest bootloader download.",
     id,
   ],
   [
@@ -146,7 +157,7 @@ const defs = [
   [
     "firmware_get",
     readOnly,
-    "Read device firmware identity, SDK version and board examples with pinned source and build instructions.",
+    "Read device firmware identity, hardware spec, and latest bootloader download.",
     id,
   ],
   [
@@ -162,13 +173,21 @@ const defs = [
   [
     "ota_install",
     { ...destructive, openWorldHint: true },
-    "Install a bootloader or app in EspHub Bootloader mode. Supply an HTTPS image URL or omit it for the board’s latest published image. Verify the command receipt and the next boot.",
+    "Install a bootloader or app in EspHub Bootloader mode. For kind='app', url is required (pass a download_url from projects_get, an ota_prepare_upload artifact URL, or a third-party HTTPS URL). For kind='bootloader', pass an HTTPS URL or omit it to install the board’s latest published Launcher. Verify the command receipt and the next boot.",
     {
       ...id,
       kind: otaKind,
-      url: { type: "string", maxLength: 1024 },
-      image_size_bytes: { type: "integer", minimum: 1, maximum: 0xffffffff,
-        description: "Byte length of a third-party HTTPS image, if known. EspHub measures its own uploads and releases." },
+      url: {
+        type: "string",
+        maxLength: 1024,
+        description: "HTTPS binary URL. Required when kind='app' (for example, a project download_url from projects_get or an ota_prepare_upload artifact URL). Optional when kind='bootloader'.",
+      },
+      image_size_bytes: {
+        type: "integer",
+        minimum: 1,
+        maximum: 0xffffffff,
+        description: "Byte length of a third-party HTTPS image, if known. EspHub measures its own uploads, bootloaders, and project releases.",
+      },
     },
   ],
   [
@@ -235,7 +254,7 @@ const defs = [
   [
     "projects_get",
     readOnly,
-    "Show a project's metadata, preview images and latest per-board releases. Reads any public published project or your own draft/archived project.",
+    "Show a project's metadata, preview images and latest per-board releases (including download_url for ota_install). Reads any public published project or your own draft/archived project.",
     strings("project_id"),
     ["project_id"],
   ],
@@ -333,6 +352,11 @@ export function validate(name, a) {
   )
     fail(400, "Invalid identifier");
   if (a.board && !boardIdPattern.test(a.board)) fail(400, "Invalid board");
+  if (a.version !== undefined) {
+    if (name === "devices_create" && !a.project_id)
+      fail(400, "version requires project_id");
+    if (!versionPattern.test(a.version)) fail(400, "Invalid version");
+  }
   const maxName = name === "projects_create" ? 120 : 64;
   if (a.name?.trim().length === 0 || a.name?.length > maxName)
     fail(400, "Invalid name");
@@ -347,6 +371,8 @@ export function validate(name, a) {
       fail(400, "Invalid " + k);
   if (name === "ota_prepare_upload" && a.kind === "bootloader" && a.size > 4 * 1024 * 1024)
     fail(400, "Bootloader upload exceeds 4 MiB");
+  if (name === "ota_install" && a.kind === "app" && !a.url)
+    fail(400, "url is required when kind is app");
   if (a.url) {
     let u;
     try {
@@ -419,6 +445,8 @@ export async function operate(c, owner, name, a) {
       name: a.name,
       board: a.board,
       ...(a.wifi !== undefined && { wifi: a.wifi }),
+      ...(a.project_id !== undefined && { project_id: a.project_id }),
+      ...(a.version !== undefined && { version: a.version }),
     });
   }
   const ds =
@@ -450,7 +478,7 @@ export async function operate(c, owner, name, a) {
       board: d.board,
       kind: d.kind,
       ...(await summary(c, d)),
-      ...(d.kind === "physical" ? await boardSources(db, d.board) : {}),
+      ...(d.kind === "physical" ? await boardDetails(db, d.board) : {}),
     };
   if (name === "devices_delete") {
     await db`DELETE FROM esphub.devices WHERE id=${d.id} AND owner=${owner}`;
@@ -530,18 +558,13 @@ export async function operate(c, owner, name, a) {
     let url = a.url, imageSize = a.image_size_bytes;
     if (url?.startsWith(artifactBase)) {
       ({ size: imageSize } = await internal(c, d.id, "check-upload", { url, kind: a.kind }));
-    } else if (a.kind === "app" && url?.startsWith(projectAppBase)) {
+    } else if (a.kind === "app" && url.startsWith(projectAppBase)) {
       const ref = parseProjectAppUrl(url);
       if (ref.boardId !== d.board)
         fail(400, `Project release is for ${ref.boardId}, not ${d.board}`);
       const file = await projectAppFile(db, ref.projectId, ref.boardId, ref.version);
       imageSize = file.app_size;
       url = projectAppUrl(file.project_id, file.board_id, file.version);
-    } else if (a.kind === "app" && (!url || url.split("?")[0] === releaseUrl(d.board, "app"))) {
-      const tag = (url && new URL(url).searchParams.get("tag")) || undefined;
-      const file = await releaseFile(db, d.board, tag);
-      imageSize = file.size ?? (await c.env.FIRMWARE.head(file.object_key))?.size;
-      url = releaseUrl(d.board, "app", file.tag);
     } else if (a.kind === "bootloader" && (!url || url.startsWith(bootloaderBase))) {
       const { bootloader: id } = await getBoard(db, d.board);
       const [, version, file] = url ? url.slice(bootloaderBase.length).split("/") : [];
@@ -577,8 +600,8 @@ export async function operate(c, owner, name, a) {
   }
   if (name === "devices_reset") op = "provision.reset";
   if (name === "firmware_get") {
-    const [sources, state] = await Promise.all([boardSources(db, d.board), summary(c, d)]);
-    return { ...await queue("status", {}), software: state.software, ...sources };
+    const [details, state] = await Promise.all([boardDetails(db, d.board), summary(c, d)]);
+    return { ...await queue("status", {}), software: state.software, ...details };
   }
   return queue(op, args);
 }

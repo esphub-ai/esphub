@@ -6,7 +6,7 @@ import { operate } from "../services/api/src/operations.js";
 import { bootloaderSet } from "./fixtures/firmware.mjs";
 
 test(
-  "board discovery, detail lookup, and gallery reflect esphub.boards and published firmware",
+  "board discovery, detail lookup, and gallery reflect esphub.boards and published bootloaders",
   { skip: !process.env.TEST_DATABASE_URL },
   async () => {
     const sql = postgres(process.env.TEST_DATABASE_URL, { max: 1 });
@@ -15,41 +15,35 @@ test(
         const key = crypto.randomUUID();
         const id = "catalog-test/" + key;
         const loader = "catalog-test-" + key.slice(0, 8);
-        const published = [
-          {
-            id: "hello",
-            description: "Print hello",
-            upstream: "https://example.com",
-            source_url: "https://source.example/hello",
-            entrypoint: "main.c",
-          },
-        ];
         await tx`INSERT INTO esphub.boards
           (id, vendor, name, model, soc, flash_mb, flash_bus, psram, console,
            bootloader, product_url, has_photo, preview)
           VALUES (${id}, 'catalog-test', 'Unlisted name', 'Test Model', 'esp32s3', 16, 'octal', 'octal',
             'usb-serial-jtag', ${loader}, 'https://example.com/board', true, true)`;
-        await tx`INSERT INTO esphub.board_examples
-          (board, source_revision, default_example, published_examples, bootloader_source_url)
-          SELECT ${id}, revision, 'hello', ${tx.json(published)}, 'https://source.example/bootloader'
-          FROM esphub.board_sources WHERE is_current`;
 
         const search = (query) =>
           operate({ sql: tx }, null, "boards_search", { query });
         const [preview] = await search(key.slice(0, 18).toUpperCase());
-        assert.equal(preview.id, id);
-        assert.equal(preview.bootloader, loader);
-        assert.deepEqual(preview.spec, {
-          soc: "esp32s3",
-          flash_mb: 16,
-          flash_bus: "octal",
-          psram: "octal",
-          console: "usb-serial-jtag",
+        assert.deepEqual(preview, {
+          id,
+          vendor: "catalog-test",
+          name: "Unlisted name",
+          model: "Test Model",
+          bootloader: loader,
+          spec: {
+            soc: "esp32s3",
+            flash_mb: 16,
+            flash_bus: "octal",
+            psram: "octal",
+            console: "usb-serial-jtag",
+          },
+          product_url: "https://example.com/board",
+          preview: true,
+          image_url: `https://cdn.esphub.ai/boards/${id}/image`,
+          firmware: {},
         });
-        assert.equal(preview.product_url, "https://example.com/board");
-        assert.equal(preview.image_url, `https://cdn.esphub.ai/boards/${id}/image`);
-        assert.deepEqual(preview.firmware, {});
-        assert.deepEqual(preview.examples, published);
+        assert.equal("examples" in preview, false);
+        assert.equal("default_example" in preview, false);
         assert.deepEqual(await search("Unlisted name"), []);
         assert.deepEqual(await search("%"), []);
         assert.deepEqual(await search("_"), []);
@@ -69,20 +63,6 @@ test(
         assert.equal((await search(id))[0].image_url, null);
         await tx`UPDATE esphub.boards SET has_photo = true WHERE id = ${id}`;
 
-        await tx`INSERT INTO esphub.firmware_releases (board, kind, version, tag)
-          VALUES (${id}, 'app', '1.0.9', 'test-app-1.0.9')`;
-        const [before] = await search(id);
-        assert.deepEqual(Object.keys(before.firmware), ["app"]);
-        assert.equal(before.firmware.app.version, "1.0.9");
-        const old = new URL(before.firmware.app.download_url);
-        await tx`UPDATE esphub.firmware_releases SET version = '1.0.10', tag = 'test-app-1.0.10'
-          WHERE board = ${id} AND kind = 'app'`;
-        const [after] = await search(id);
-        assert.equal(after.firmware.app.version, "1.0.10");
-        assert.notEqual(after.firmware.app.download_url, old.href);
-        assert.equal(old.pathname, "/releases/" + id + "/app");
-        assert.equal(old.searchParams.get("tag"), "test-app-1.0.9");
-
         // Boards share bootloader sets, and bootloader_releases selects the active version.
         for (const version of ["2.0.9", "2.0.10", "a1b2c3d"])
           await tx`INSERT INTO esphub.bootloaders ${tx({
@@ -90,22 +70,26 @@ test(
             chip: "esp32s3",
           })}`;
         const [unpromoted] = await search(id);
-        assert.equal(unpromoted.firmware.bootloader, undefined);
+        assert.deepEqual(unpromoted.firmware, {});
 
         await tx`INSERT INTO esphub.bootloader_releases (id, version) VALUES (${loader}, '2.0.10')`;
         const [shared] = await search(id);
-        assert.deepEqual(shared.firmware.bootloader, {
-          id: loader,
-          version: "2.0.10",
-          download_url: `https://api.esphub.ai/bootloaders/${loader}/2.0.10/launcher`,
+        assert.deepEqual(shared.firmware, {
+          bootloader: {
+            id: loader,
+            version: "2.0.10",
+            download_url: `https://api.esphub.ai/bootloaders/${loader}/2.0.10/launcher`,
+          },
         });
 
         await tx`UPDATE esphub.bootloader_releases SET version = 'a1b2c3d', promoted_at = now() WHERE id = ${loader}`;
         const [commit] = await search(id);
-        assert.deepEqual(commit.firmware.bootloader, {
-          id: loader,
-          version: "a1b2c3d",
-          download_url: `https://api.esphub.ai/bootloaders/${loader}/a1b2c3d/launcher`,
+        assert.deepEqual(commit.firmware, {
+          bootloader: {
+            id: loader,
+            version: "a1b2c3d",
+            download_url: `https://api.esphub.ai/bootloaders/${loader}/a1b2c3d/launcher`,
+          },
         });
 
         // GET /boards/:vendor/:slug returns full board spec and active bootloader.
@@ -161,10 +145,8 @@ test(
           (error) => error.status === 404,
         );
 
-        await tx`DELETE FROM esphub.firmware_releases WHERE board = ${id}`;
         await tx`DELETE FROM esphub.bootloader_releases WHERE id = ${loader}`;
         await tx`DELETE FROM esphub.bootloaders WHERE id = ${loader}`;
-        await tx`DELETE FROM esphub.board_examples WHERE board = ${id}`;
         await tx`DELETE FROM esphub.boards WHERE id = ${id}`;
       });
     } finally {

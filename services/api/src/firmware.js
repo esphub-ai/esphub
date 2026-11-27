@@ -1,4 +1,4 @@
-import { bootloaderUrl, releaseUrl } from "../../../shared/identity.js";
+import { bootloaderUrl, projectAppUrl } from "../../../shared/identity.js";
 import { fail } from "./auth.js";
 
 export const bootloaderIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -29,19 +29,9 @@ export async function bootloaderSet(sql, id, version) {
   return row ?? null;
 }
 
-export async function latestApp(sql, board) {
-  const [row] = await sql`SELECT r.version, r.tag, a.object_key, a.size
-    FROM esphub.firmware_releases r JOIN esphub.release_assets a ON a.tag = r.tag AND a.board = r.board
-    WHERE r.board = ${board} AND r.kind = 'app' AND a.asset = 'app'`;
-  return row ? { ...row, size: row.size === null ? null : Number(row.size) } : null;
-}
-
-// The firmware a board can install today: its latest app and its latest bootloader set.
-export function firmwareSummary(board, app, bootloader) {
+// The board's active shared bootloader set, when promoted.
+export function firmwareSummary(bootloader) {
   return {
-    ...(app && {
-      app: { version: app.version, download_url: releaseUrl(board, "app", app.tag) },
-    }),
     ...(bootloader && {
       bootloader: {
         id: bootloader.id,
@@ -52,33 +42,32 @@ export function firmwareSummary(board, app, bootloader) {
   };
 }
 
-export async function boardFirmware(sql, profile) {
-  const [app, bootloader] = await Promise.all([
-    latestApp(sql, profile.id),
-    latestBootloader(sql, profile.bootloader),
-  ]);
-  return { app, bootloader, firmware: firmwareSummary(profile.id, app, bootloader) };
+export async function boardFirmware(sql, board) {
+  const bootloader = await latestBootloader(sql, board.bootloader);
+  return { bootloader, firmware: firmwareSummary(bootloader) };
 }
 
-// The public files a first install writes before the device's private NVS image.
-export async function flashPlan(sql, bucket, profile) {
-  const { app, bootloader } = await boardFirmware(sql, profile);
+// The public files a first install writes before the device's private NVS image:
+// the shared bootloader set, plus an optional project app.bin.
+export async function flashPlan(sql, bucket, board, app = null) {
+  const bootloader = await latestBootloader(sql, board.bootloader);
   if (!bootloader) fail(503, "No bootloader is published for this board yet");
-  if (!app) fail(503, "No app is published for this board yet");
-  const appObject = await bucket.head(app.object_key);
-  if (!appObject) fail(503, "Published app unavailable");
   const files = Object.entries(bootloaderFiles).map(([name, { column, file }]) => ({
     name: file,
     offset: hex(bootloader[column + "_offset"]),
     url: bootloaderUrl(bootloader.id, bootloader.version, name),
     sha256: bootloader[column + "_sha256"],
   }));
-  files.push({
-    name: "app.bin",
-    offset: hex(bootloader.app_offset),
-    url: releaseUrl(profile.id, "app", app.tag),
-    ...(appObject.customMetadata?.sha256 && { sha256: appObject.customMetadata.sha256 }),
-  });
+  if (app) {
+    const appObject = await bucket.head(app.app_key);
+    if (!appObject) fail(503, "Published project app unavailable");
+    files.push({
+      name: "app.bin",
+      offset: hex(bootloader.app_offset),
+      url: projectAppUrl(app.project_id, app.board_id, app.version),
+      sha256: app.app_sha256,
+    });
+  }
   return { bootloader, app, files };
 }
 
