@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import postgres from "postgres";
 import { setTimeout as delay } from "node:timers/promises";
 import { simulatedDevice } from "../tests/fixtures/iot/device.mjs";
+import { parseNvs } from "../services/api/src/nvs.js";
 import { importPKCS8, SignJWT } from "jose";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 const base = process.env.TEST_SITE_URL;
 if (!base || !["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   throw Error("A local TEST_SITE_URL is required");
@@ -29,6 +30,31 @@ function issue(scope, overrides = {}, typ = "at+jwt") {
     .sign(privateKey);
 }
 const key = await issue("devices:read devices:write");
+function issueSession(sub = subject) {
+  return new SignJWT({ sid: "sess_device", azp: base })
+    .setProtectedHeader({ alg: "RS256", kid: "test", typ: "JWT", cat: "cl_B7d4PD111AAA" })
+    .setSubject(sub)
+    .setIssuer(issuer)
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(privateKey);
+}
+const sessionJwt = await issueSession();
+const otherSessionJwt = await issueSession(otherSubject);
+async function downloadNvs(nvs) {
+  const url = base + "/backend" + new URL(nvs.url).pathname;
+  assert.equal((await fetch(url)).status, 403);
+  assert.equal(
+    (await fetch(url, { headers: { Authorization: "Bearer eh_nvs_" + "x".repeat(43) } })).status,
+    403,
+  );
+  const res = await fetch(url, { headers: nvs.headers });
+  assert.equal(res.status, 200);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  assert.equal(bytes.byteLength, nvs.size);
+  assert.equal(createHash("sha256").update(bytes).digest("hex"), nvs.sha256);
+  return parseNvs(bytes);
+}
 async function request(method, params, accessToken = key) {
   return fetch(base + "/backend/mcp", {
     method: "POST",
@@ -118,10 +144,8 @@ async function testVirtualDevice(read) {
     assert.match(result.content[0].text, /Device not found/, name);
   }
   for (const [name, args] of [
-    ["devices_bind_ble_address", { ...vid, ble_address: "02:11:22:33:44:55" }],
     ["wifi_scan", vid],
     ["wifi_ble_credential", vid],
-    ["devices_reissue", vid],
     ["bootloader_enter", vid],
     ["bootloader_exit", vid],
     ["ota_install", { ...vid, kind: "app" }],
@@ -216,6 +240,10 @@ try {
     "wifi_add",
     "ota_install",
   ]);
+  const toolNames = new Set(listed.map((t) => t.name));
+  assert.equal(toolNames.has("devices_bind_ble_address"), false);
+  assert.equal(toolNames.has("devices_reissue"), false);
+  assert.equal(toolNames.has("wifi_ble_credential"), true);
   for (const { name, annotations } of listed) {
     // Active Wi-Fi discovery observes nearby networks but still requires write scope.
     const observesOnly = readOnly.has(name) || name === "wifi_scan";
@@ -257,21 +285,20 @@ try {
     }),
     id = { device_id: d.id };
   assert.match(d.prompt, /hidden SSID/);
-  assert.match(d.ble_secret, /^[0-9a-f]{64}$/);
-  const usbAddress = "02:AA:BB:CC:DD:EE";
+  assert.equal("token" in d, false);
+  assert.equal("ble_secret" in d, false);
+  const dNvs = await downloadNvs(d.nvs);
+  const deviceToken = dNvs.eh.tok;
+  const deviceBleSecret = dNvs.eh.ble_key;
+  assert.match(deviceToken, /^eh_dev_/);
+  assert.match(deviceBleSecret, /^[0-9a-f]{64}$/);
+  assert.equal(dNvs.eh.hub, "api.esphub.ai");
+  assert.equal(dNvs.eh.hold, 1);
   const reportedAddress = "02:11:22:AA:BB:CC";
-  const bindArgs = { ...id, ble_address: usbAddress };
   assert.equal((await op("devices_get", id)).ble_address, null);
-  for (let i = 0; i < 2; i++) {
-    assert.deepEqual(await op("devices_bind_ble_address", bindArgs), {
-      id: d.id, ble_address: usbAddress.toLowerCase(),
-    });
-  }
-  await assert.rejects(op("devices_bind_ble_address", { ...id, ble_address: "wrong" }), /Invalid ble_address/);
-  assert.equal((await op("devices_list", {}, read))[0].ble_address, usbAddress.toLowerCase());
   const firstBle = await op("wifi_ble_credential", id);
   assert.deepEqual(firstBle, {
-    psk: createHmac("sha256", Buffer.from(d.ble_secret, "hex"))
+    psk: createHmac("sha256", Buffer.from(deviceBleSecret, "hex"))
       .update("esphub/wifi/tls-psk").digest("hex"),
   });
   assert.equal(d.setup_example.id, "color-bands");
@@ -285,13 +312,31 @@ try {
   assert.equal(offline.online, false);
   assert.equal(offline.kind, "physical");
   assert.deepEqual(offline.sources, d.sources);
-  const watch = await op("devices_create", {
-    board: "m5stack/stopwatch",
-    name: "Watch",
+  const setupRes = await fetch(base + "/backend/setup", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + sessionJwt,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      board: "m5stack/stopwatch",
+      name: "Watch",
+      wifi: { ssid: "LabWiFi", password: "lab-password", hidden: true },
+    }),
   });
+  assert.equal(setupRes.status, 200);
+  const watch = await setupRes.json();
+  assert.equal("token" in watch, false);
+  assert.equal("ble_secret" in watch, false);
+  const watchNvs = await downloadNvs(watch.nvs);
+  const watchToken = watchNvs.eh.tok;
+  assert.match(watchToken, /^eh_dev_/);
+  assert.match(watchNvs.eh.ble_key, /^[0-9a-f]{64}$/);
+  assert.deepEqual(JSON.parse(watchNvs.eh.wifis), [
+    { s: "LabWiFi", p: "lab-password", h: true },
+  ]);
   assert.equal(watch.setup_example.id, "bar-graph");
   assert.ok(watch.examples.some(e => e.id === "buttons"));
-  assert.match(watch.ble_secret, /^[0-9a-f]{64}$/);
   assert.match(watch.prompt, /Bootloader mode for the BLE connection/);
   const local = (url) => base + "/backend" + new URL(url).pathname;
   const localFiles = {};
@@ -322,9 +367,9 @@ try {
           "Accept-Encoding": "identity",
         },
       });
-    assert.equal((await get(watch.token)).status, 404);
+    assert.equal((await get(watchToken)).status, 404);
     assert.equal((await fetch(local(grant.url))).status, 401);
-    const downloaded = await get(d.token);
+    const downloaded = await get(deviceToken);
     assert.equal(downloaded.status, 200);
     assert.equal(downloaded.headers.get("Content-Length"), String(file.length));
     assert.ok(Buffer.from(await downloaded.arrayBuffer()).equals(file));
@@ -339,7 +384,6 @@ try {
   const other = await issue("devices:read devices:write", {
     sub: otherSubject,
   });
-  await assert.rejects(op("devices_bind_ble_address", bindArgs, other), /not found/i);
   for (const name of ["devices_get", "devices_delete", "wifi_ble_credential"]) {
     const response = await request(
       "tools/call",
@@ -350,8 +394,8 @@ try {
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /not found/i);
   }
-  assert.equal((await request("tools/list", {}, d.token)).status, 401);
-  mcu = simulatedDevice(base, d.token);
+  assert.equal((await request("tools/list", {}, deviceToken)).status, 401);
+  mcu = simulatedDevice(base, deviceToken);
   const addresses = { ble_address: reportedAddress, net_mac: "00:11:22:33:44:54" };
   const boot = await mcu.hello({
     ...addresses,
@@ -377,7 +421,7 @@ try {
       }),
     });
   assert.equal(
-    (await ingress(d.token, mcu.principal, { t: "hello" })).status,
+    (await ingress(deviceToken, mcu.principal, { t: "hello" })).status,
     401,
   );
   assert.equal(
@@ -529,7 +573,7 @@ try {
     (
       await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
         boot_id: boot,
-        ble_address: usbAddress,
+        ble_address: "02:AA:BB:CC:DD:EE",
         t: "hello",
         role: "bootloader",
       })
@@ -631,7 +675,38 @@ try {
   } });
   assert.equal((await result(mismatch.id)).state, "failed");
   assert.match((await result(mismatch.id)).result.error, /does not match/);
-  await op("devices_reissue", id);
+  assert.equal(
+    (
+      await fetch(`${base}/backend/setup/${d.id}/reissue`, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + otherSessionJwt },
+      })
+    ).status,
+    404,
+  );
+  const reissueRes = await fetch(`${base}/backend/setup/${d.id}/reissue`, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + sessionJwt,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ wifi: { ssid: "RecoveryNet", password: "new-password" } }),
+  });
+  assert.equal(reissueRes.status, 200);
+  const reissued = await reissueRes.json();
+  assert.equal(reissued.id, d.id);
+  assert.equal("token" in reissued, false);
+  assert.equal("ble_secret" in reissued, false);
+  assert.equal(
+    (await fetch(base + "/backend" + new URL(d.nvs.url).pathname, { headers: d.nvs.headers })).status,
+    403,
+  );
+  const reissuedNvs = await downloadNvs(reissued.nvs);
+  assert.notEqual(reissuedNvs.eh.tok, deviceToken);
+  assert.notEqual(reissuedNvs.eh.ble_key, deviceBleSecret);
+  assert.deepEqual(JSON.parse(reissuedNvs.eh.wifis), [
+    { s: "RecoveryNet", p: "new-password" },
+  ]);
   assert.equal(
     (
       await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {

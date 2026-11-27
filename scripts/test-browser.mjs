@@ -1,5 +1,6 @@
 import { chromium } from "playwright-core";
 import { simulatedDevice } from "../tests/fixtures/iot/device.mjs";
+import { parseNvs } from "../services/api/src/nvs.js";
 import assert from "node:assert/strict";
 import { importPKCS8, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
@@ -219,7 +220,14 @@ try {
     0,
   );
 
-  mcu = simulatedDevice(origin, board.token);
+  assert.equal("token" in board, false);
+  const nvsResponse = await fetch(
+    origin + "/backend" + new URL(board.nvs.url).pathname,
+    { headers: board.nvs.headers },
+  );
+  assert.equal(nvsResponse.status, 200);
+  const boardToken = parseNvs(new Uint8Array(await nvsResponse.arrayBuffer())).eh.tok;
+  mcu = simulatedDevice(origin, boardToken);
   await mcu.hello({ bootloader_version: "test", role: "bootloader" });
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await pictured.getByText("Online", { exact: true }).waitFor();

@@ -14,7 +14,7 @@ export async function issueBle(sql, owner, id) {
   if (!d)
     fail(
       409,
-      "For a registration missing BLE credentials, use devices_reissue and write the new token and ble_secret over USB",
+      "For a registration missing BLE credentials, reissue its setup NVS image through the setup API and flash it over USB",
     );
   const psk = createHmac("sha256", Buffer.from(d.ble_secret, "hex"))
     .update("esphub/wifi/tls-psk")

@@ -25,7 +25,7 @@ EspHub's default grant includes `devices:read` and `devices:write`. A read-only 
 First-time setup requires a physical USB connection. If you are running remotely, ask the user to plug the board into their local computer with a USB data cable. Use Computer Use on that same computer to guide the local setup, including the local Chrome USB picker when the board instructions use it. Ask the user to select the device and approve access if Chrome requires it. If you cannot access their computer through Computer Use, guide the user through the local steps and resume once they are done.
 
 1. Identify the exact USB-connected board from its markings or local hardware information. Confirm an ambiguous model with the user. Call `boards_search` with a partial `group/project` ID, such as `cardputer`. Use the exact returned ID for registration. Each matching board includes the latest published version and pinned download URL for each available firmware kind.
-2. Call `devices_create` for a new registration. Keep the returned device credentials private and follow the returned board-specific setup instructions for the official firmware kit, USB registration, and Wi-Fi. Obtain confirmation before erasing existing data.
+2. Call `devices_create` for a new registration. Keep the returned private NVS download credential and image private, and follow the returned board-specific setup instructions for the official firmware kit, USB flashing, and Wi-Fi. Obtain confirmation before erasing existing data.
 3. Use `devices_get` to check that the registered device is online. When the board-specific flow starts an application, check for the expected role in the new session. If setup fails, report the blocked step and reuse the registration when troubleshooting.
 
 ## Work with an existing device
@@ -34,7 +34,7 @@ First-time setup requires a physical USB connection. If you are running remotely
 - **Manage Wi-Fi.** Start with `wifi_list`. Use `wifi_scan`, `wifi_add`, or `wifi_remove` as needed. For an offline board, follow its local provisioning instructions.
 - **Resize an application slot.** Read the layout reported by the current Launcher boot. With explicit permission to erase all LittleFS files, call `ota_resize_app` with a 64 KiB-aligned `app_size_bytes` and `erase_littlefs: true`. Growing and shrinking both reset LittleFS. A same-size request preserves it. Wait for the command receipt to confirm the new layout after reboot before installing.
 - **Develop a board application.** Choose an example by its capability description in `boards_search`. For a newly registered board, use the exact `setup_example` returned by `devices_create`. Check out its pinned source, open the entrypoint and run the build command. Upload custom binaries with `ota_prepare_upload`. Enter Bootloader mode with `bootloader_enter`, install with `ota_install` (kind `app` or `bootloader`), follow `commands_get` and confirm the firmware version after reboot.
-- **Reset, rotate, or delete.** Confirm the target and effect with the user before `devices_reset`, `devices_reissue`, or `devices_delete`. A reset can require USB setup again, and deletion revokes device access.
+- **Reset or delete.** Confirm the target and effect with the user before `devices_reset` or `devices_delete`. A reset can require USB setup again (or reissuing the setup NVS image through the setup API for the same device ID), and deletion revokes device access.
 
 A queued command is an acknowledgement. Report success only after checking the result and any expected device state.
 
