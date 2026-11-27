@@ -21,8 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # The local gallery import reads its photos from a historical commit.
-          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with: {node-version: 24, cache: npm}
@@ -30,7 +28,6 @@ jobs:
       - run: sudo apt-get update -qq && sudo apt-get install -y mosquitto mosquitto-clients pkg-config libcjson-dev
       - run: npm run migrate && npm run migrate
       - run: node scripts/seed-catalog.mjs
-      - run: node scripts/migrate-board-gallery.mjs --local
       - run: npm test && npm run build && node scripts/local-e2e.mjs
       - run: npx wrangler deploy --dry-run -c services/api/wrangler.jsonc && npx wrangler deploy --dry-run -c services/web/wrangler.jsonc
   deploy:
@@ -71,9 +68,6 @@ jobs:
           node scripts/ensure-bucket.mjs esphub-firmware
       - name: Migrate the production database
         run: npm run migrate
-      # The esphub-firmware publisher owns the board catalog and release index.
-      - name: Migrate the original gallery
-        run: node scripts/migrate-board-gallery.mjs --remote
       - name: Deploy API and device broker
         run: |
           umask 077

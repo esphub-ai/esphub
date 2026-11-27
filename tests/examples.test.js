@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { updateSources } from "../services/api/src/update-sources.js";
 import { operate, validate } from "../services/api/src/operations.js";
 import { releaseUrl } from "../shared/identity.js";
 import { jsonBucket, setupRelease } from "./fixtures/setup-release.mjs";
@@ -9,22 +8,6 @@ import { jsonBucket, setupRelease } from "./fixtures/setup-release.mjs";
 const { source, boards } = JSON.parse(await readFile(new URL("./fixtures/catalog.json", import.meta.url), "utf8"));
 const profiles = Object.fromEntries(boards.map((board) => [board.id,
   { ...board, source_revision: source.revision, sdk_version: source.sdk_version, sdk_source_url: source.sdk_source_url, is_current: true }]));
-
-test("example and source links come from the publisher's catalog record", () => {
-  for (const profile of Object.values(profiles)) {
-    const result = updateSources(profile);
-    assert.equal(result.examples, profile.published_examples);
-    assert.ok(result.examples.some((e) => e.id === result.default_example), profile.id);
-    assert.deepEqual(result.sources, {
-      bootloader: { directory_url: profile.bootloader_source_url },
-      sdk: { version: source.sdk_version, directory_url: source.sdk_source_url },
-    });
-    assert.deepEqual(result.firmware_update, {
-      bootloader: { download_url: releaseUrl(profile.id, "ota") },
-      app: { download_url: releaseUrl(profile.id, "app") },
-    });
-  }
-});
 
 test("registration returns the exact example from the immutable kit when the catalog moves ahead", async () => {
   const id = "m5stack/stopwatch", profile = profiles[id];
