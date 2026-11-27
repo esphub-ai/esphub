@@ -89,6 +89,3 @@ jobs:
           curl -fsS --retry 5 --retry-all-errors https://api.esphub.ai/.well-known/oauth-protected-resource/mcp | jq -e '.resource == "https://api.esphub.ai/mcp" and .authorization_servers == ["https://clerk.esphub.ai"] and (.scopes_supported | contains(["devices:read","devices:write"]))'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer esh_key_invalidtestkey' https://api.esphub.ai/mcp)" = 401
           test "$(curl -s -o /dev/null -w '%{http_code}' https://app.esphub.ai/backend/auth/me)" = 401
-      - name: Retire database access to the former authentication tables
-        run: |
-          psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'REVOKE ALL PRIVILEGES ON esphub.credentials, esphub.challenges, esphub.access_tokens FROM esphub_runtime'
