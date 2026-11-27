@@ -1,7 +1,7 @@
 import { enroll, publishDownlink } from "./iot.js";
 import { retryDue } from "./commands.js";
 import { maxUploadBytes } from "./uploads.js";
-import { boardGallery, searchBoards } from "./boards.js";
+import { boardGallery, getBoardDetail, searchBoards } from "./boards.js";
 import { boardPhotos } from "./board-photos.js";
 import { boardPhotoOrigin } from "../../../shared/identity.js";
 import { uuidPattern } from "./ids.js";
@@ -51,7 +51,7 @@ api.get("/bootloaders/:id/:version/:file", (c) => {
 });
 api.get("/boards/gallery", (c) =>
   withDatabase(c.env, async (sql) =>
-    c.json(await boardGallery(sql, c.env.FIRMWARE), 200, {
+    c.json(await boardGallery(sql), 200, {
       "Cache-Control": "public, max-age=60",
     }),
   ),
@@ -127,6 +127,10 @@ api.use("*", (c, next) =>
 api.get("/boards", async (c) =>
   c.json(await searchBoards(c.get("sql"), c.req.query("q"))),
 );
+api.get("/boards/:vendor/:slug", async (c) => {
+  const id = `${c.req.param("vendor")}/${c.req.param("slug")}`;
+  return c.json(await getBoardDetail(c.get("sql"), id));
+});
 async function authenticatedDevice(c) {
   const t = c.req
     .header("Authorization")

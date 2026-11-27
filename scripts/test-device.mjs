@@ -248,6 +248,23 @@ try {
   const publicMatches = await (await fetch(base + "/backend/boards?q=CaRdPuTeR")).json();
   assert.deepEqual(matches, publicMatches);
   assert.deepEqual(publicMatches.map(b => b.id).sort(), ["m5stack/cardputer", "m5stack/cardputer-adv"]);
+  assert.equal(publicMatches[0].spec.soc, "esp32s3");
+  assert.equal(publicMatches[0].bootloader, "esp32s3-8mb");
+  const detailRes = await fetch(base + "/backend/boards/m5stack/cardputer-adv");
+  assert.equal(detailRes.status, 200);
+  const detail = await detailRes.json();
+  assert.equal(detail.id, "m5stack/cardputer-adv");
+  assert.equal(detail.vendor, "m5stack");
+  assert.equal(detail.bootloader, "esp32s3-8mb");
+  assert.deepEqual(detail.spec, {
+    soc: "esp32s3",
+    flash_mb: 8,
+    flash_bus: "quad",
+    psram: null,
+    console: "usb-serial-jtag",
+  });
+  assert.equal(detail.firmware.bootloader.id, "esp32s3-8mb");
+  assert.equal((await fetch(base + "/backend/boards/m5stack/nonexistent-board")).status, 404);
   const additiveTools = new Set([
     "wifi_ble_credential",
     "devices_create",

@@ -4,7 +4,7 @@ export const reconnectGuidance =
 // Shell instructions for a first install with esptool. The private NVS image carries the
 // device credentials and, when supplied, the Wi-Fi network.
 export function provisioning(profile, flash, example, wifi) {
-  const identify = `Identify the USB board. If the port or model is ambiguous, ask the user. Check the physical model as well as the ${profile.chip} chip. Proceed with the registered ${profile.model}.`;
+  const identify = `Identify the USB board. If the port or model is ambiguous, ask the user. Check the physical model as well as the ${profile.soc} chip. Proceed with the registered ${profile.model}.`;
   const network = wifi
     ? "The private NVS image already contains the Wi-Fi network the user gave you."
     : "This NVS image has no Wi-Fi network, so the board cannot come online after flashing. Ask the user for the Wi-Fi SSID and password, delete this registration with devices_delete and call devices_create again with wifi before flashing.";

@@ -13,13 +13,19 @@ try {
       await tx.unsafe(
         "CREATE ROLE esphub_runtime LOGIN PASSWORD '" + password + "'",
       );
-    await tx.unsafe("GRANT SELECT ON esphub.firmware_releases, esphub.release_assets, esphub.board_profiles, esphub.board_product_pages TO esphub_runtime");
+    await tx.unsafe("GRANT SELECT ON esphub.firmware_releases, esphub.release_assets, esphub.boards, esphub.board_examples, esphub.board_profiles TO esphub_runtime");
     await tx.unsafe("GRANT SELECT, INSERT ON esphub.bootloaders TO esphub_runtime");
     await tx.unsafe("GRANT SELECT, INSERT, UPDATE ON esphub.bootloader_releases TO esphub_runtime");
     await tx.unsafe("GRANT USAGE ON SCHEMA esphub TO esphub_runtime");
     await tx.unsafe(
       "GRANT SELECT,INSERT,UPDATE,DELETE ON esphub.accounts, esphub.devices, esphub.virtual_boots, esphub.device_commands, esphub.iot_revocations TO esphub_runtime",
     );
+    const [boardsPublisher] =
+      await tx`SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='esphub_boards_publisher') AS exists`;
+    if (boardsPublisher.exists) {
+      await tx.unsafe("GRANT USAGE ON SCHEMA esphub TO esphub_boards_publisher");
+      await tx.unsafe("GRANT SELECT, INSERT, UPDATE ON esphub.boards TO esphub_boards_publisher");
+    }
   });
 } finally {
   await sql.end();

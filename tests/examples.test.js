@@ -9,7 +9,7 @@ import { appRelease, bootloaderSet, fixtureBucket } from "./fixtures/firmware.mj
 
 const { source, boards } = JSON.parse(await readFile(new URL("./fixtures/catalog.json", import.meta.url), "utf8"));
 const profiles = Object.fromEntries(boards.map((board) => [board.id,
-  { ...board, source_revision: source.revision, sdk_version: source.sdk_version, sdk_source_url: source.sdk_source_url, is_current: true }]));
+  { ...board, retired: false, source_revision: source.revision, sdk_version: source.sdk_version, sdk_source_url: source.sdk_source_url, is_current: true }]));
 
 // Answers the setup queries from a fixture bootloader set and app release.
 function setupContext(board, { bootloader = true } = {}) {
