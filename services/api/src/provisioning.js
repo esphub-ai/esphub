@@ -7,11 +7,11 @@ export function provisioning(profile, tag, example) {
   const board = profile.id;
   const identify = `Identify the USB board. If the port or model is ambiguous, ask the user. Check the physical model as well as the ${profile.chip} chip. Proceed with the registered ${profile.model}.`;
   const usb =
-    "Download the private device NVS image from nvs.url using nvs.headers before nvs.expires_at, verify its sha256, and flash it to nvs.offset alongside the setup kit (replacing board-nvs.bin). Keep the NVS download credential and image private and delete the local file after flashing. For first-time setup with Wi-Fi credentials or to replace lost credentials for an existing device ID, use the EspHub setup API.";
+    "Download the private device NVS image from nvs.url using nvs.headers before nvs.expires_at, verify its sha256 and save it as nvs.bin. Keep the NVS download credential and image private and delete the local file after flashing. For first-time setup with Wi-Fi credentials or to replace lost credentials for an existing device ID, use the EspHub setup API.";
   const wifi =
     "On the Mac, pass wifi_ble_credential to tools/ble-wifi/macos.py as private JSON on stdin. Keep the board in EspHub Bootloader mode for the BLE connection. Select a listed network or enter a hidden SSID, then enter its password locally.";
   const flashKit =
-    "Read setup_manifest and match its board to the device. Download the ZIP over HTTPS from its download_url, then flash over USB using INSTALL.txt, flash_args, and the private device NVS image at nvs.offset. First-time installation erases flash. Back up any device data before flashing.";
+    "Read setup_manifest and match its board to the device. Download the ZIP over HTTPS from its download_url and flash it as INSTALL.txt shows: esptool.py --chip <chip> --port PORT write_flash --erase-all @flash_args <nvs.offset> nvs.bin. First-time installation erases flash. Back up any device data before flashing.";
   return {
     setup_manifest: releaseUrl(board, "setup-manifest", tag),
     setup_example: example,
