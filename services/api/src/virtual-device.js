@@ -12,8 +12,8 @@ export async function createVirtual(db, owner) {
     ON CONFLICT (owner) WHERE kind='virtual' DO UPDATE SET owner=EXCLUDED.owner
     RETURNING id,name,board,kind
   ), initial_boot AS (
-    INSERT INTO esphub.virtual_boots(device_id,messages)
-    SELECT id,'[]'::jsonb FROM registered
+    INSERT INTO esphub.virtual_boots(device_id)
+    SELECT id FROM registered
     ON CONFLICT (device_id,request_id) DO NOTHING
   ) SELECT * FROM registered`;
   return device;
@@ -27,8 +27,8 @@ export async function operateVirtual(db, device, name, args) {
     // Serialize distinct reboots before allocating their history sequence.
     const [boot] = await db`WITH target AS (
       SELECT id FROM esphub.devices WHERE id=${device.id} FOR UPDATE
-    ) INSERT INTO esphub.virtual_boots(device_id,request_id,messages)
-      SELECT id,${key},'[]'::jsonb FROM target
+    ) INSERT INTO esphub.virtual_boots(device_id,request_id)
+      SELECT id,${key} FROM target
       ON CONFLICT (device_id,request_id) DO UPDATE SET request_id=EXCLUDED.request_id
       RETURNING process_id`;
     if (!boot) fail(404, "Device not found");

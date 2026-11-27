@@ -7,7 +7,6 @@ export const browserOrigins = [
   "https://esphub.ai",
   "https://www.esphub.ai",
   application,
-  apiOrigin,
 ];
 export const mcpEndpoint = apiOrigin + "/mcp";
 export function releaseUrl(board, asset, tag) {

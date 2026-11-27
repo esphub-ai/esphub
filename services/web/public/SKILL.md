@@ -10,7 +10,7 @@ Use EspHub to inspect and manage the user's ESP32 devices. Start with the action
 ## Connect
 
 1. Check whether the client already has an EspHub MCP connection. Reuse it if it points to `https://api.esphub.ai/mcp` and is authenticated.
-2. Add `https://api.esphub.ai/mcp` as a remote MCP server using Streamable HTTP. If migrating an existing connection, remove any static Authorization header or bearer-token setting so the client can start OAuth.
+2. Add `https://api.esphub.ai/mcp` as a remote MCP server using Streamable HTTP.
 3. Start the client's sign-in flow. Have the user sign in and approve access in the browser.
 4. Discover the server's tool schemas and call `devices_list`. Show the device name, board identifier, and online status. Ask which device or task the user wants to work on if they have not already specified it.
 
@@ -22,7 +22,7 @@ EspHub's default grant includes `devices:read` and `devices:write`. A read-only 
 
 ## Bind a new ESP32
 
-First-time setup requires a physical USB connection. If you are running remotely, ask the user to plug the board into their local computer with a USB data cable. Use Computer Use on that same computer to guide the local setup, including the local Chrome USB picker when the board instructions use it. Ask the user to select the device and approve access if Chrome requires it. If you cannot access their computer through Computer Use, guide the user through the local steps and resume once they are done.
+First-time setup requires a physical USB connection. If you are running remotely, ask the user to plug the board into their local computer with a USB data cable. Use Computer Use on that same computer to guide the local setup. If you cannot access their computer through Computer Use, guide the user through the local steps and resume once they are done.
 
 1. Identify the exact USB-connected board from its markings or local hardware information. Confirm an ambiguous model with the user. Call `boards_search` with a partial `group/project` ID, such as `cardputer`. Use the exact returned ID for registration. Each matching board includes the latest published version and pinned download URL for each available firmware kind.
 2. Call `devices_create` for a new registration. Keep the returned private NVS download credential and image private, and follow the returned board-specific setup instructions for the official firmware kit, USB flashing, and Wi-Fi. Obtain confirmation before erasing existing data.

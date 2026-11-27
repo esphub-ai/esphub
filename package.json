@@ -2,10 +2,6 @@
   "name": "esphub",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
-  "directories": {
-    "test": "tests"
-  },
   "scripts": {
     "test": "node --test tests/*.test.js",
     "build": "node scripts/build-web.mjs",
@@ -43,7 +39,6 @@
     "cn": "^0.5.2",
     "jose": "^6.2.18",
     "playwright-core": "^1.65.1",
-    "prettier": "^3.10.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "shadcn": "^4.23.0",

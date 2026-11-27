@@ -70,8 +70,7 @@ export function publishDownlink(env, id, payload, qos = 1) {
   );
 }
 export async function revokeCertificate(env, id) {
-  if (id)
-    await control(env, "/certificates/" + id + "?newStatus=INACTIVE", "PUT");
+  await control(env, "/certificates/" + id + "?newStatus=INACTIVE", "PUT");
 }
 export async function enroll(env, db, id, hash, csr) {
   if (!configured(env)) fail(503, "IoT credentials unavailable");

@@ -11,7 +11,7 @@
     { "pattern": "cdn.esphub.ai", "custom_domain": true }
   ],
   "images": { "binding": "IMAGES" },
-  "vars": { "APP_ORIGIN": "https://app.esphub.ai", "CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZXNwaHViLmFpJA" },
+  "vars": { "CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZXNwaHViLmFpJA" },
   "durable_objects": {
     "bindings": [{ "name": "DEVICE", "class_name": "Device" }]
   },

@@ -44,14 +44,22 @@ for (const worker of ["web", "api"]) {
     const entry = root + "src/iot-e2e-entry.mjs";
     await writeFile(
       entry,
-      `export {default,Device} from "./index.js";
+      `import worker from "./index.js";
+      export {Device} from "./index.js";
       const realFetch=globalThis.fetch.bind(globalThis);
       globalThis.fetch=(input,init)=>{
         const req=new Request(input,init), url=new URL(req.url);
         if (["iot.us-west-2.amazonaws.com","fixture-ats.iot.us-west-2.amazonaws.com"].includes(url.hostname))
           return realFetch(new Request(${JSON.stringify(broker.endpoint)}+url.pathname+url.search, req));
         return realFetch(input,init);
-      };`,
+      };
+      // Production routes cdn.esphub.ai to this Worker by hostname. Locally, /__cdn stands in for it.
+      export default {...worker, fetch(req, env, ctx) {
+        const url=new URL(req.url);
+        if (url.pathname.startsWith("/__cdn/"))
+          return worker.fetch(new Request("https://cdn.esphub.ai"+url.pathname.slice(6)+url.search, req), env, ctx);
+        return worker.fetch(req, env, ctx);
+      }};`,
     );
     configs.push(entry);
     cfg.main = "src/iot-e2e-entry.mjs";

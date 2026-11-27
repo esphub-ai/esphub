@@ -4,10 +4,10 @@ import { maxUploadBytes } from "./uploads.js";
 import { boardGallery, searchBoards } from "./boards.js";
 import { boardPhotos } from "./board-photos.js";
 import { boardPhotoOrigin } from "../../../shared/identity.js";
+import { uuidPattern } from "./ids.js";
 import { releaseResponse } from "./releases.js";
 import { Hono } from "hono";
 import { withDatabase } from "./database.js";
-import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { allowedOrigin, identify, digest, fail } from "./auth.js";
@@ -37,31 +37,12 @@ api.get("/releases/:group/:project/:asset", (c) => {
     releaseResponse(board, asset, tag, sql, c.env.FIRMWARE),
   );
 });
-// Keep the original image route available to existing API clients.
-api.route("/", boardPhotos);
 api.get("/boards/gallery", (c) =>
   withDatabase(c.env, async (sql) =>
     c.json(await boardGallery(sql, c.env.FIRMWARE), 200, {
       "Cache-Control": "public, max-age=60",
     }),
   ),
-);
-api.use(
-  "*",
-  cors({
-    origin: (origin, c) => (allowedOrigin(c, origin) ? origin : undefined),
-    credentials: true,
-    allowHeaders: [
-      "Authorization",
-      "Content-Type",
-      "MCP-Protocol-Version",
-      "Mcp-Method",
-      "Mcp-Name",
-      "Mcp-Session-Id",
-    ],
-    exposeHeaders: ["WWW-Authenticate"],
-    allowMethods: ["GET", "POST", "PUT", "OPTIONS"],
-  }),
 );
 api.use("*", async (c, next) => {
   const origin = c.req.header("Origin");
@@ -71,11 +52,7 @@ api.use("*", async (c, next) => {
 });
 api.get("/setup/:device/:nvs", async (c) => {
   const { device, nvs } = c.req.param();
-  if (
-    ![device, nvs].every((id) =>
-      /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(id),
-    )
-  )
+  if (![device, nvs].every((id) => uuidPattern.test(id)))
     fail(404, "Unknown setup image");
   if (
     !/^Bearer eh_nvs_[A-Za-z0-9_-]{43}$/.test(
@@ -93,11 +70,7 @@ api.get("/setup/:device/:nvs", async (c) => {
 });
 api.put("/uploads/:device/:artifact", async (c) => {
   const { device, artifact } = c.req.param();
-  if (
-    ![device, artifact].every((id) =>
-      /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(id),
-    )
-  )
+  if (![device, artifact].every((id) => uuidPattern.test(id)))
     fail(404, "Unknown upload");
   if (
     !/^Bearer eh_upload_[A-Za-z0-9_-]{43}$/.test(
@@ -131,9 +104,6 @@ api.use("*", (c, next) =>
 api.get("/boards", async (c) =>
   c.json(await searchBoards(c.get("sql"), c.req.query("q"))),
 );
-api.get("/auth/me", async (c) =>
-  c.json({ handle: (await identify(c)).handle }),
-);
 async function authenticatedDevice(c) {
   const t = c.req
     .header("Authorization")
@@ -163,7 +133,7 @@ api.post("/internal/iot/uplink", async (c) => {
     fail(401, "Broker authentication required");
   const { device, principal, frame } = await c.req.json();
   if (
-    !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(device) ||
+    !uuidPattern.test(device) ||
     !/^[a-f0-9]{64}$/.test(principal) ||
     !validBoot(frame?.boot_id) ||
     !Number.isSafeInteger(frame.mid) ||
@@ -221,7 +191,8 @@ api.post("/setup/:device/reissue", async (c) => {
     ),
   );
 });
-api.post("/operations/:name", async (c) => {
+// The console lists devices through the website. Agents use MCP for every other tool.
+api.post("/operations/devices_list", async (c) => {
   const user = await identify(c);
   if (!allowedOrigin(c, c.req.header("Origin")))
     fail(403, "Browser origin required");
@@ -229,7 +200,7 @@ api.post("/operations/:name", async (c) => {
     await operate(
       { env: c.env, sql: c.get("sql") },
       user.owner,
-      c.req.param("name"),
+      "devices_list",
       await c.req.json(),
     ),
   );

@@ -21,7 +21,7 @@ export function simulatedDevice(site, token) {
     inbox = [],
     messages = [],
     httpsRequests = [];
-  let lastHello, lastInfo;
+  let lastInfo;
   async function post(path, value) {
     httpsRequests.push(path);
     const r = await fetch(site + "/backend/api/device/" + path, {
@@ -110,17 +110,8 @@ export function simulatedDevice(site, token) {
     }
   }
   return {
-    get id() {
-      return device;
-    },
-    get pid() {
-      return boot;
-    },
     principal: createHash("sha256").update(csr).digest("hex"),
     httpsRequests,
-    get lastHello() {
-      return lastHello;
-    },
     get queued() {
       return inbox.length;
     },
@@ -129,7 +120,7 @@ export function simulatedDevice(site, token) {
     async reconnect() {
       await disconnect();
       await subscribe();
-      lastHello = await send({ t: "hello", ...lastInfo });
+      await send({ t: "hello", ...lastInfo });
     },
     send,
     sendBestEffort(frame) {
@@ -152,7 +143,7 @@ export function simulatedDevice(site, token) {
       if (!device) device = (await post("iot/enroll", { csr })).device_id;
       await subscribe();
       lastInfo = info;
-      lastHello = await send({ t: "hello", ...info });
+      await send({ t: "hello", ...info });
       return boot;
     },
     async nextMessage() {

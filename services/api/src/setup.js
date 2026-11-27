@@ -12,8 +12,9 @@ import {
 import { provisioning } from "./provisioning.js";
 import { releaseResponse } from "./releases.js";
 import { updateSources } from "./update-sources.js";
+import { uuidPattern } from "./ids.js";
 
-const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const uuid = new RegExp(uuidPattern.source, "i");
 
 function parseNvsPartition(manifest) {
   const rawOffset = manifest.nvs?.offset ?? manifest.nvs_offset;

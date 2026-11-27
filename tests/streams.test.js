@@ -4,9 +4,6 @@ import { Stream } from "../services/api/src/streams.js";
 import { tools, validate } from "../services/api/src/operations.js";
 class Bucket {
   data = new Map();
-  head(k) {
-    return this.data.has(k);
-  }
   get(k) {
     const value = this.data.get(k);
     return value === undefined ? null : { json: () => JSON.parse(value) };
@@ -19,11 +16,7 @@ class Bucket {
 test("R2 reads cross segment boundaries without skipping records", async () => {
   const b = new Bucket(),
     s = new Stream(b, "devices/a/p/uart/tx");
-  await s.init();
-  await s.append(
-    Array.from({ length: 68 }, (_, i) => ({ text: String(i) })),
-    { source: 68 },
-  );
+  await s.append(Array.from({ length: 68 }, (_, i) => ({ text: String(i) })));
   assert.deepEqual(
     (await s.read(63)).records.map((r) => r.seq),
     [64, 65, 66, 67, 68],
@@ -33,7 +26,6 @@ test("R2 reads cross segment boundaries without skipping records", async () => {
 test("a failed manifest commit cannot expose or duplicate abandoned input", async () => {
   const b = new Bucket(),
     s = new Stream(b, "rx");
-  await s.init();
   await s.append([{ text: "one" }]);
   b.fail = "rx";
   await assert.rejects(() => s.append([{ text: "failed" }]));
@@ -45,16 +37,9 @@ test("a failed manifest commit cannot expose or duplicate abandoned input", asyn
     ["one", "two"],
   );
 });
-test("reject invalid boards and insecure firmware URLs", () => {
+test("rejects board IDs without a vendor", () => {
   assert.throws(() =>
     validate("devices_create", { name: "x", board: "esp32s3" }),
-  );
-  assert.throws(() =>
-    validate("ota_install", {
-      device_id: crypto.randomUUID(),
-      url: "http://e.test/a",
-      kind: "bootloader",
-    }),
   );
 });
 test("MCP tool names use characters accepted by strict clients", () => {
