@@ -243,6 +243,9 @@ try {
     "wifi_list",
     "firmware_get",
     "logs_read",
+    "projects_list",
+    "projects_get",
+    "projects_search",
   ]);
   const matches = await op("boards_search", { query: "CaRdPuTeR" }, read);
   const publicMatches = await (await fetch(base + "/backend/boards?q=CaRdPuTeR")).json();
@@ -272,6 +275,7 @@ try {
     "devices_send",
     "ota_prepare_upload",
     "logs_set",
+    "projects_create",
   ]);
   const openWorldTools = new Set([
     "wifi_scan",
@@ -900,8 +904,216 @@ try {
     await sql`DELETE FROM esphub.bootloader_releases WHERE id = ${publishLoaderId}`;
     await sql`DELETE FROM esphub.bootloaders WHERE id = ${publishLoaderId}`;
   }
+
+  // Personal Projects API (/v1/* via Clerk API Key + Web Session) + MCP + public reads + CDN.
+  const personalApiKey = "ak_local_subject_" + subject;
+  const orgApiKey = "ak_local_subject_org_12345";
+  let createdProjectId = null;
+  try {
+    assert.equal(
+      (await fetch(base + "/backend/v1/uploads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: [{ size: 16, content_type: "application/octet-stream" }] }),
+      })).status,
+      401,
+    );
+    assert.equal(
+      (await fetch(base + "/backend/v1/uploads", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + m2mJwt, "Content-Type": "application/json" },
+        body: JSON.stringify({ files: [{ size: 16, content_type: "application/octet-stream" }] }),
+      })).status,
+      401,
+    );
+    assert.equal(
+      (await fetch(base + "/backend/v1/uploads", {
+        method: "POST",
+        headers: { Authorization: "Bearer ak_invalid_key", "Content-Type": "application/json" },
+        body: JSON.stringify({ files: [{ size: 16, content_type: "application/octet-stream" }] }),
+      })).status,
+      401,
+    );
+    assert.equal(
+      (await fetch(base + "/backend/v1/uploads", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + orgApiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ files: [{ size: 16, content_type: "application/octet-stream" }] }),
+      })).status,
+      403,
+    );
+
+    // Create project via MCP and read it via /v1/projects with personal API Key (shared owner identity).
+    const mcpProject = await op("projects_create", {
+      name: "Cardputer E2E Demo",
+      description: "End-to-end project publish test",
+      repo_url: "https://github.com/esphub-ai/esphub-projects",
+      repo_path: "projects/cardputer-e2e-demo",
+    });
+    createdProjectId = mcpProject.id;
+    const mcpList = await op("projects_list", {}, read);
+    assert.equal(mcpList.some((p) => p.id === createdProjectId), true);
+    const v1ListRes = await fetch(base + "/backend/v1/projects", {
+      headers: { Authorization: "Bearer " + personalApiKey },
+    });
+    assert.equal(v1ListRes.status, 200);
+    assert.equal((await v1ListRes.json()).some((p) => p.id === createdProjectId), true);
+    // Web Session Token also works on /v1/projects/:id
+    assert.equal(
+      (await fetch(base + `/backend/v1/projects/${createdProjectId}`, {
+        headers: { Authorization: "Bearer " + sessionJwt },
+      })).status,
+      200,
+    );
+    // Draft is not public yet
+    assert.equal((await fetch(base + `/backend/projects/${createdProjectId}`)).status, 404);
+
+    // Presign image + binary via /v1/uploads and PUT to R2 staging
+    const imgBytes = Buffer.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 5, 6, 7, 8]);
+    const appBytes = Buffer.alloc(192, 0xe9);
+    const v1UpRes = await fetch(base + "/backend/v1/uploads", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + personalApiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: [
+          { size: imgBytes.length, content_type: "image/webp" },
+          { size: appBytes.length, content_type: "application/octet-stream" },
+        ],
+      }),
+    });
+    assert.equal(v1UpRes.status, 201);
+    const { uploads: v1Uploads } = await v1UpRes.json();
+    assert.equal(v1Uploads.length, 2);
+    for (const [idx, buf] of [imgBytes, appBytes].entries()) {
+      const signed = new URL(v1Uploads[idx].url);
+      assert.equal(signed.pathname, `/esphub-firmware/staging/uploads/${v1Uploads[idx].id}`);
+      assert.equal(
+        signed.searchParams.get("X-Amz-SignedHeaders"),
+        "content-length;content-type;host",
+      );
+      const put = await fetch(base + "/backend/__r2" + signed.pathname, {
+        method: "PUT",
+        headers: v1Uploads[idx].headers,
+        body: buf,
+      });
+      assert.equal(put.status, 200);
+    }
+
+    const imgSha = createHash("sha256").update(imgBytes).digest("hex");
+    const appSha = createHash("sha256").update(appBytes).digest("hex");
+    const putProjRes = await fetch(base + `/backend/v1/projects/${createdProjectId}`, {
+      method: "PUT",
+      headers: { Authorization: "Bearer " + personalApiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Cardputer E2E Demo",
+        description: "Published E2E demo",
+        repo_url: "https://github.com/esphub-ai/esphub-projects",
+        repo_path: "projects/cardputer-e2e-demo",
+        images: [
+          {
+            upload_id: v1Uploads[0].id,
+            sha256: imgSha,
+            size: imgBytes.length,
+            content_type: "image/webp",
+            is_cover: true,
+          },
+        ],
+      }),
+    });
+    assert.equal(putProjRes.status, 200, await putProjRes.clone().text());
+    const updatedProj = await putProjRes.json();
+    assert.equal(
+      updatedProj.cover_image_url,
+      `https://cdn.esphub.ai/projects/${createdProjectId}/images/${imgSha}.webp`,
+    );
+
+    // CDN serves immutable project image directly from R2
+    const cdnImg = await fetch(
+      base + `/backend/__cdn/projects/${createdProjectId}/images/${imgSha}.webp`,
+    );
+    assert.equal(cdnImg.status, 200);
+    assert.equal(cdnImg.headers.get("Content-Type"), "image/webp");
+    assert.match(cdnImg.headers.get("Cache-Control"), /immutable/);
+    assert.ok(Buffer.from(await cdnImg.arrayBuffer()).equals(imgBytes));
+
+    // Publish release for m5stack/cardputer-adv
+    const relRes = await fetch(base + `/backend/v1/projects/${createdProjectId}/releases`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + personalApiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        board_id: "m5stack/cardputer-adv",
+        version: "1.0.0",
+        sdk_version: "8.2.0",
+        idf_version: "5.5.4",
+        source_revision: "b".repeat(40),
+        app: {
+          upload_id: v1Uploads[1].id,
+          size: appBytes.length,
+          sha256: appSha,
+          elf_sha256: "c".repeat(64),
+        },
+      }),
+    });
+    assert.equal(relRes.status, 201, await relRes.clone().text());
+
+    // Public directory, detail, MCP search, and downloads now work
+    const pubList = await (
+      await fetch(base + "/backend/projects?board=m5stack/cardputer-adv&q=E2E")
+    ).json();
+    assert.equal(pubList.some((p) => p.id === createdProjectId), true);
+    const mcpSearch = await op("projects_search", { board: "m5stack/cardputer-adv", query: "E2E" }, read);
+    assert.equal(mcpSearch.some((p) => p.id === createdProjectId), true);
+    const pubDetail = await (
+      await fetch(base + `/backend/projects/${createdProjectId}`)
+    ).json();
+    assert.equal(pubDetail.boards[0].version, "1.0.0");
+
+    const latestDl = await fetch(
+      base + `/backend/projects/${createdProjectId}/boards/m5stack/cardputer-adv/app`,
+    );
+    assert.equal(latestDl.status, 200);
+    assert.match(latestDl.headers.get("Cache-Control"), /must-revalidate/);
+    assert.ok(Buffer.from(await latestDl.arrayBuffer()).equals(appBytes));
+
+    const pinnedDl = await fetch(
+      base + `/backend/projects/${createdProjectId}/boards/m5stack/cardputer-adv/releases/1.0.0/app`,
+    );
+    assert.equal(pinnedDl.status, 200);
+    assert.match(pinnedDl.headers.get("Cache-Control"), /immutable/);
+    assert.ok(Buffer.from(await pinnedDl.arrayBuffer()).equals(appBytes));
+
+    // Unlink board keeps historical release downloadable; archiving hides everything
+    assert.equal(
+      (await fetch(
+        base + `/backend/v1/projects/${createdProjectId}/boards/m5stack/cardputer-adv`,
+        { method: "DELETE", headers: { Authorization: "Bearer " + personalApiKey } },
+      )).status,
+      200,
+    );
+    assert.equal(
+      (await fetch(
+        base + `/backend/projects/${createdProjectId}/boards/m5stack/cardputer-adv/releases/1.0.0/app`,
+      )).status,
+      200,
+    );
+    assert.equal(
+      (await fetch(base + `/backend/v1/projects/${createdProjectId}`, {
+        method: "DELETE",
+        headers: { Authorization: "Bearer " + personalApiKey },
+      })).status,
+      200,
+    );
+    assert.equal((await fetch(base + `/backend/projects/${createdProjectId}`)).status, 404);
+  } finally {
+    if (createdProjectId) {
+      await sql`DELETE FROM esphub.project_boards WHERE project_id = ${createdProjectId}`;
+      await sql`DELETE FROM esphub.project_releases WHERE project_id = ${createdProjectId}`;
+      await sql`DELETE FROM esphub.project_images WHERE project_id = ${createdProjectId}`;
+      await sql`DELETE FROM esphub.projects WHERE id = ${createdProjectId}`;
+    }
+  }
   console.log(
-    "PASS Clerk, virtual devices, broker enrollment, command dispatch, duplicate receipts, cloud Wi-Fi, BLE credentials, MQTT events, OTA, private file transfer, revocation and bootloader M2M publishing",
+    "PASS Clerk, virtual devices, broker enrollment, command dispatch, duplicate receipts, cloud Wi-Fi, BLE credentials, MQTT events, OTA, private file transfer, revocation, bootloader M2M publishing, and personal Projects API",
   );
 } finally {
   mcu?.close();

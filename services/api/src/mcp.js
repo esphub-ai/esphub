@@ -67,7 +67,7 @@ export async function serveMcp(c) {
             try {
               const result = await withDatabase(c.env, async (sql) => {
                 const owner =
-                  name === "boards_search"
+                  name === "boards_search" || name === "projects_search"
                     ? undefined
                     : (await accountForSubject(sql, authInfo.extra.userId)).owner;
                 return operate({ env: c.env, sql }, owner, name, args);

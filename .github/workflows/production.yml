@@ -92,3 +92,6 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"count":1}' https://api.esphub.ai/internal/uploads)" = 401
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer invalid-token' -H 'Content-Type: application/json' -d '{}' https://api.esphub.ai/internal/bootloaders)" = 401
           test "$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H 'Authorization: Bearer invalid-token' -H 'Content-Type: application/json' -d '{"version":"a1b2c3d"}' https://api.esphub.ai/internal/bootloaders/esp32s3-16mb/current)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"files":[{"size":1,"content_type":"application/octet-stream"}]}' https://api.esphub.ai/v1/uploads)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' https://api.esphub.ai/v1/projects)" = 401
+          curl -fsS --retry 5 --retry-all-errors https://api.esphub.ai/projects | jq -e 'type == "array"'

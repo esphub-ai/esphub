@@ -1,14 +1,18 @@
 // Internal bootloader publishing: presigned R2 staging uploads, server-side
 // staging-to-immutable moves, and single-row release promotion.
-import { AwsClient } from "aws4fetch";
 import { bootloaderUrl } from "../../../shared/identity.js";
 import { fail } from "./auth.js";
 import { bootloaderIdPattern, versionPattern } from "./firmware.js";
 import { uuidPattern } from "./ids.js";
+import {
+  copyStagedObject,
+  r2Config,
+  signPresignedPut,
+  stagingKey,
+  uploadExpirySeconds,
+} from "./r2.js";
 
 const maxUploads = 50;
-const uploadExpirySeconds = 900;
-const defaultBucket = "esphub-firmware";
 const maxInt32 = 2147483647;
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const flashTokenPattern = /^[A-Za-z0-9._-]{1,32}$/;
@@ -38,7 +42,7 @@ const topLevelKeys = new Set([
 ]);
 const fileEntryKeys = new Set(["upload_id", "offset", "size", "sha256"]);
 
-export const stagingKey = (uploadId) => `staging/uploads/${uploadId}`;
+export { stagingKey };
 export const bootloaderObjectKey = (id, version, filename) =>
   `bootloaders/${id}/${version}/${filename}`;
 
@@ -52,32 +56,6 @@ function assertInt32(value, name, min = 0) {
   return value;
 }
 
-function r2Config(env) {
-  const endpoint =
-    env.FIRMWARE_R2_ENDPOINT ||
-    (env.CLOUDFLARE_ACCOUNT_ID
-      ? `https://${env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`
-      : null);
-  const bucket = env.FIRMWARE_R2_BUCKET || defaultBucket;
-  if (
-    !env.FIRMWARE_R2_ACCESS_KEY_ID ||
-    !env.FIRMWARE_R2_SECRET_ACCESS_KEY ||
-    !endpoint
-  )
-    fail(503, "Firmware storage credentials unavailable");
-  return {
-    aws: new AwsClient({
-      accessKeyId: env.FIRMWARE_R2_ACCESS_KEY_ID,
-      secretAccessKey: env.FIRMWARE_R2_SECRET_ACCESS_KEY,
-      service: "s3",
-      region: "auto",
-      retries: 0,
-    }),
-    endpoint,
-    bucket,
-  };
-}
-
 export async function createInternalUploads(env, input) {
   if (!isPlainObject(input)) fail(400, "Expected an upload request object");
   for (const key of Object.keys(input))
@@ -85,21 +63,19 @@ export async function createInternalUploads(env, input) {
   if (!Number.isInteger(input.count) || input.count < 1 || input.count > maxUploads)
     fail(400, `count must be an integer between 1 and ${maxUploads}`);
 
-  const { aws, endpoint, bucket } = r2Config(env);
+  const s3 = r2Config(env);
   const expiresAt = new Date(Date.now() + uploadExpirySeconds * 1000).toISOString();
   const uploads = await Promise.all(
     Array.from({ length: input.count }, async () => {
       const id = crypto.randomUUID();
-      const url = new URL(`${bucket}/${stagingKey(id)}`, endpoint);
-      url.searchParams.set("X-Amz-Expires", String(uploadExpirySeconds));
-      const signed = await aws.sign(url, {
-        method: "PUT",
-        aws: { signQuery: true },
+      const url = await signPresignedPut(s3, {
+        key: stagingKey(id),
+        expiresSeconds: uploadExpirySeconds,
       });
       return {
         id,
         method: "PUT",
-        url: signed.url,
+        url,
         headers: { "Content-Type": "application/octet-stream" },
         expires_at: expiresAt,
       };
@@ -234,37 +210,6 @@ export function formatBootloaderRecord(row) {
   };
 }
 
-async function copyStagedObject(env, s3, spec, srcKey, destKey, expectedSize, expectedSha) {
-  const existing = await env.FIRMWARE.head(destKey);
-  if (existing) {
-    if (
-      existing.size === expectedSize &&
-      existing.customMetadata?.sha256 === expectedSha
-    )
-      return;
-    fail(409, `Published object already exists with different content: ${spec.key}`);
-  }
-  const destUrl = new URL(`${s3.bucket}/${destKey}`, s3.endpoint);
-  const res = await s3.aws.fetch(destUrl, {
-    method: "PUT",
-    headers: {
-      "x-amz-copy-source": `/${s3.bucket}/${srcKey}`,
-      "x-amz-metadata-directive": "REPLACE",
-      "Content-Type": "application/octet-stream",
-      "x-amz-meta-sha256": expectedSha,
-      "If-None-Match": "*",
-    },
-    signal: AbortSignal.timeout(15000),
-  });
-  if (res.status === 412) {
-    const raced = await env.FIRMWARE.head(destKey);
-    if (raced?.size === expectedSize && raced.customMetadata?.sha256 === expectedSha)
-      return;
-    fail(409, `Published object already exists with different content: ${spec.key}`);
-  }
-  if (!res.ok) fail(502, `Failed to move bootloader object: ${spec.key}`);
-}
-
 export async function createBootloaderVersion(env, sql, input) {
   const row = parseBootloaderPayload(input);
 
@@ -293,15 +238,14 @@ export async function createBootloaderVersion(env, sql, input) {
   // Server-side R2 CopyObject into the immutable bootloader path.
   await Promise.all(
     staged.map(({ spec, srcKey }) =>
-      copyStagedObject(
-        env,
-        s3,
-        spec,
+      copyStagedObject(env, s3, {
+        label: spec.key,
         srcKey,
-        row[`${spec.column}_key`],
-        row[`${spec.column}_size`],
-        row[`${spec.column}_sha256`],
-      ),
+        destKey: row[`${spec.column}_key`],
+        contentType: "application/octet-stream",
+        expectedSize: row[`${spec.column}_size`],
+        expectedSha: row[`${spec.column}_sha256`],
+      }),
     ),
   );
 

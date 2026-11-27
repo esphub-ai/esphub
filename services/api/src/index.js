@@ -11,12 +11,34 @@ import { Hono } from "hono";
 import { withDatabase } from "./database.js";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
-import { allowedOrigin, identify, identifyMachine, digest, fail } from "./auth.js";
+import {
+  allowedOrigin,
+  identify,
+  identifyApiSubject,
+  identifyApiUser,
+  identifyMachine,
+  digest,
+  fail,
+} from "./auth.js";
 import {
   createBootloaderVersion,
   createInternalUploads,
   setCurrentBootloaderRelease,
 } from "./bootloader-publish.js";
+import {
+  archiveProject,
+  createProject,
+  createProjectRelease,
+  createUserUploads,
+  getOwnedProject,
+  getPublicProject,
+  listOwnedProjects,
+  listPublicProjects,
+  projectAppResponse,
+  removeProjectBoard,
+  setCurrentProjectBoardRelease,
+  updateProject,
+} from "./projects.js";
 import { installMcpMetadata, serveMcp, authenticateMcp } from "./mcp.js";
 import { operate } from "./operations.js";
 import { createDeviceSetup, reissueDeviceSetup } from "./setup.js";
@@ -47,6 +69,18 @@ api.get("/bootloaders/:id/:version/:file", (c) => {
   const { id, version, file } = c.req.param();
   return withDatabase(c.env, (sql) =>
     bootloaderResponse(sql, c.env.FIRMWARE, id, version, file),
+  );
+});
+api.get("/projects/:id/boards/:vendor/:slug/app", (c) => {
+  const { id, vendor, slug } = c.req.param();
+  return withDatabase(c.env, (sql) =>
+    projectAppResponse(sql, c.env.FIRMWARE, id, `${vendor}/${slug}`),
+  );
+});
+api.get("/projects/:id/boards/:vendor/:slug/releases/:version/app", (c) => {
+  const { id, vendor, slug, version } = c.req.param();
+  return withDatabase(c.env, (sql) =>
+    projectAppResponse(sql, c.env.FIRMWARE, id, `${vendor}/${slug}`, version),
   );
 });
 api.get("/boards/gallery", (c) =>
@@ -118,6 +152,10 @@ api.post("/internal/uploads", async (c) => {
   await identifyMachine(c);
   return c.json(await createInternalUploads(c.env, await readJsonBody(c)), 201);
 });
+api.post("/v1/uploads", async (c) => {
+  await identifyApiSubject(c);
+  return c.json(await createUserUploads(c.env, await readJsonBody(c)), 201);
+});
 api.use("*", (c, next) =>
   withDatabase(c.env, (sql) => {
     c.set("sql", sql);
@@ -130,6 +168,87 @@ api.get("/boards", async (c) =>
 api.get("/boards/:vendor/:slug", async (c) => {
   const id = `${c.req.param("vendor")}/${c.req.param("slug")}`;
   return c.json(await getBoardDetail(c.get("sql"), id));
+});
+api.get("/projects", async (c) =>
+  c.json(
+    await listPublicProjects(c.get("sql"), {
+      board: c.req.query("board"),
+      query: c.req.query("q") ?? "",
+    }),
+  ),
+);
+api.get("/projects/:id", async (c) =>
+  c.json(await getPublicProject(c.get("sql"), c.req.param("id"))),
+);
+api.get("/v1/projects", async (c) => {
+  const user = await identifyApiUser(c);
+  return c.json(
+    await listOwnedProjects(c.get("sql"), user.owner, {
+      includeArchived: c.req.query("include_archived") === "true",
+    }),
+  );
+});
+api.post("/v1/projects", async (c) => {
+  const user = await identifyApiUser(c);
+  return c.json(
+    await createProject(c.get("sql"), user.owner, await readJsonBody(c)),
+    201,
+  );
+});
+api.get("/v1/projects/:id", async (c) => {
+  const user = await identifyApiUser(c);
+  return c.json(
+    await getOwnedProject(c.get("sql"), user.owner, c.req.param("id")),
+  );
+});
+api.put("/v1/projects/:id", async (c) => {
+  const user = await identifyApiUser(c);
+  return c.json(
+    await updateProject(
+      c.env,
+      c.get("sql"),
+      user.owner,
+      c.req.param("id"),
+      await readJsonBody(c),
+    ),
+  );
+});
+api.delete("/v1/projects/:id", async (c) => {
+  const user = await identifyApiUser(c);
+  return c.json(
+    await archiveProject(c.get("sql"), user.owner, c.req.param("id")),
+  );
+});
+api.post("/v1/projects/:id/releases", async (c) => {
+  const user = await identifyApiUser(c);
+  const { status, body } = await createProjectRelease(
+    c.env,
+    c.get("sql"),
+    user.owner,
+    c.req.param("id"),
+    await readJsonBody(c),
+  );
+  return c.json(body, status);
+});
+api.put("/v1/projects/:id/boards/:vendor/:slug/current", async (c) => {
+  const user = await identifyApiUser(c);
+  const boardId = `${c.req.param("vendor")}/${c.req.param("slug")}`;
+  return c.json(
+    await setCurrentProjectBoardRelease(
+      c.get("sql"),
+      user.owner,
+      c.req.param("id"),
+      boardId,
+      await readJsonBody(c),
+    ),
+  );
+});
+api.delete("/v1/projects/:id/boards/:vendor/:slug", async (c) => {
+  const user = await identifyApiUser(c);
+  const boardId = `${c.req.param("vendor")}/${c.req.param("slug")}`;
+  return c.json(
+    await removeProjectBoard(c.get("sql"), user.owner, c.req.param("id"), boardId),
+  );
 });
 async function authenticatedDevice(c) {
   const t = c.req
