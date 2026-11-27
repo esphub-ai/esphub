@@ -573,7 +573,7 @@ try {
     (
       await ingress(process.env.TEST_RELAY_SECRET, mcu.principal, {
         boot_id: boot,
-        ble_address: usbAddress,
+        ble_address: "02:AA:BB:CC:DD:EE",
         t: "hello",
         role: "bootloader",
       })
