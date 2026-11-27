@@ -53,9 +53,9 @@ export async function accountForSubject(sql, subject) {
   if (typeof subject !== "string" || !/^user_[a-zA-Z0-9]+$/.test(subject))
     fail(401, "Clerk user required");
   const [existing] =
-    await sql`SELECT id AS owner,handle FROM esphub.accounts WHERE clerk_subject=${subject}`;
+    await sql`SELECT id AS owner FROM esphub.accounts WHERE clerk_subject=${subject}`;
   if (existing) return existing;
   const [account] =
-    await sql`INSERT INTO esphub.accounts(handle,clerk_subject) VALUES(${"clerk:" + subject},${subject}) ON CONFLICT(clerk_subject) DO UPDATE SET clerk_subject=excluded.clerk_subject RETURNING id AS owner,handle`;
+    await sql`INSERT INTO esphub.accounts(clerk_subject) VALUES(${subject}) ON CONFLICT(clerk_subject) DO UPDATE SET clerk_subject=excluded.clerk_subject RETURNING id AS owner`;
   return account;
 }

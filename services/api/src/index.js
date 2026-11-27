@@ -36,8 +36,6 @@ api.get("/releases/:group/:project/:asset", (c) => {
     releaseResponse(board, asset, tag, sql, c.env.FIRMWARE),
   );
 });
-// Keep the original image route available to existing API clients.
-api.route("/", boardPhotos);
 api.get("/boards/gallery", (c) =>
   withDatabase(c.env, async (sql) =>
     c.json(await boardGallery(sql, c.env.FIRMWARE), 200, {
@@ -108,9 +106,10 @@ api.use("*", (c, next) =>
 api.get("/boards", async (c) =>
   c.json(await searchBoards(c.get("sql"), c.req.query("q"))),
 );
-api.get("/auth/me", async (c) =>
-  c.json({ handle: (await identify(c)).handle }),
-);
+api.get("/auth/me", async (c) => {
+  await identify(c);
+  return c.json({ authenticated: true });
+});
 async function authenticatedDevice(c) {
   const t = c.req
     .header("Authorization")

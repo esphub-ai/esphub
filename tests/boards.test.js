@@ -16,9 +16,9 @@ test(
         const published = [{ id: "hello", description: "Print hello", upstream: "https://example.com",
           source_url: "https://source.example/hello", entrypoint: "main.c" }];
         await tx`INSERT INTO esphub.boards
-          (id, source_revision, name, model, chip, flash_mb, bootloader, default_example, examples, preview,
+          (id, source_revision, name, model, chip, flash_mb, bootloader, default_example, preview,
            published_examples, bootloader_source_url)
-          SELECT ${id}, revision, 'Unlisted name', 'Test Model', 'esp32s3', 16, 'esp32s3-16mb', 'hello', '[{"id":"hello","description":"Print hello","entrypoint":"examples/hello/main.c","upstream":"https://example.com"}]'::jsonb, true,
+          SELECT ${id}, revision, 'Unlisted name', 'Test Model', 'esp32s3', 16, 'esp32s3-16mb', 'hello', true,
             ${tx.json(published)}, 'https://source.example/bootloader'
           FROM esphub.board_sources WHERE is_current`;
         const search = (query) =>

@@ -14,14 +14,6 @@
       "bootloader": "esp32s31-16mb",
       "preview": true,
       "default_example": "hello-world",
-      "examples": [
-        {
-          "id": "hello-world",
-          "description": "Display Hello World and update a counter on touch. Modify the GSP scene and touch controller to build a new interface.",
-          "entrypoint": "examples/hello-world/project/main/main.c",
-          "upstream": "https://github.com/esp-mosaico/esp-mosaico-utils/tree/f58f4f9e5363f908b17a8e1ea8fdf4dd77561ef1/mosaico-tools/templates/hello_world"
-        }
-      ],
       "published_examples": [
         {
           "id": "hello-world",
@@ -44,14 +36,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "hello-display",
-      "examples": [
-        {
-          "id": "hello-display",
-          "description": "Show Hello World on the e-paper display and serial console. Edit the text and font size.",
-          "entrypoint": "examples/hello-display/main.cpp",
-          "upstream": "https://docs.m5stack.com/en/arduino/m5air_quality/program"
-        }
-      ],
       "published_examples": [
         {
           "id": "hello-display",
@@ -74,14 +58,6 @@
       "bootloader": "esp32-8mb",
       "preview": false,
       "default_example": "buttons",
-      "examples": [
-        {
-          "id": "buttons",
-          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
-          "entrypoint": "examples/buttons/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "buttons",
@@ -104,14 +80,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "tones",
-      "examples": [
-        {
-          "id": "tones",
-          "description": "Play alternating high and low tones on the speaker. Change their frequencies and durations.",
-          "entrypoint": "examples/tones/main.cpp",
-          "upstream": "https://docs.m5stack.com/en/arduino/atom_echos3r/program"
-        }
-      ],
       "published_examples": [
         {
           "id": "tones",
@@ -134,20 +102,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "display-shapes",
-      "examples": [
-        {
-          "id": "display-shapes",
-          "description": "Draw randomly positioned colored circles and rectangles on the LCD. Change the primitives and colors in the drawing loop.",
-          "entrypoint": "examples/display-shapes/main.cpp",
-          "upstream": "https://github.com/m5stack/M5AtomS3/blob/8accfe68d45ac8b31580e3067a0ecedfbf2d49c7/examples/Basics/display/display.ino"
-        },
-        {
-          "id": "buttons",
-          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
-          "entrypoint": "examples/buttons/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "display-shapes",
@@ -179,14 +133,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "buttons",
-      "examples": [
-        {
-          "id": "buttons",
-          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
-          "entrypoint": "examples/buttons/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "buttons",
@@ -209,14 +155,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "bar-graph",
-      "examples": [
-        {
-          "id": "bar-graph",
-          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
-          "entrypoint": "examples/bar-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "bar-graph",
@@ -239,14 +177,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "camera-frame",
-      "examples": [
-        {
-          "id": "camera-frame",
-          "description": "Initialize the onboard camera and report the dimensions and byte count of each RGB565 frame. Read pixels in the capture loop to add image processing.",
-          "entrypoint": "examples/camera-frame/main.cpp",
-          "upstream": "https://github.com/m5stack/M5AtomS3/blob/8accfe68d45ac8b31580e3067a0ecedfbf2d49c7/examples/Basics/camera/camera.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "camera-frame",
@@ -269,14 +199,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "buttons",
-      "examples": [
-        {
-          "id": "buttons",
-          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
-          "entrypoint": "examples/buttons/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "buttons",
@@ -299,14 +221,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "hello-serial",
-      "examples": [
-        {
-          "id": "hello-serial",
-          "description": "Print a greeting once per second on the serial console. The SDK connects in parallel using the saved Wi-Fi credentials.",
-          "entrypoint": "examples/hello-serial/main.cpp",
-          "upstream": "https://docs.m5stack.com/en/arduino/m5atoms3u/program"
-        }
-      ],
       "published_examples": [
         {
           "id": "hello-serial",
@@ -329,14 +243,6 @@
       "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "scroll-text",
-      "examples": [
-        {
-          "id": "scroll-text",
-          "description": "Scroll multilingual text on the display with an offscreen canvas. Replace the string or adjust the font and scroll speed.",
-          "entrypoint": "examples/scroll-text/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/LongTextScroll/LongTextScroll.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "scroll-text",
@@ -359,14 +265,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "buttons",
-      "examples": [
-        {
-          "id": "buttons",
-          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
-          "entrypoint": "examples/buttons/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "buttons",
@@ -389,20 +287,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "display-shapes",
-      "examples": [
-        {
-          "id": "display-shapes",
-          "description": "Draw randomly positioned colored circles and rectangles on the LCD. Change the primitives and colors in the drawing loop.",
-          "entrypoint": "examples/display-shapes/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Cardputer/blob/bf64d3178ab43928fa02365fbe3937cec99716ad/examples/Basic/display/display.ino"
-        },
-        {
-          "id": "buttons",
-          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
-          "entrypoint": "examples/buttons/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "display-shapes",
@@ -434,20 +318,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "display-shapes",
-      "examples": [
-        {
-          "id": "display-shapes",
-          "description": "Draw randomly positioned colored circles and rectangles on the LCD. Change the primitives and colors in the drawing loop.",
-          "entrypoint": "examples/display-shapes/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Cardputer/blob/bf64d3178ab43928fa02365fbe3937cec99716ad/examples/Basic/display/display.ino"
-        },
-        {
-          "id": "buttons",
-          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
-          "entrypoint": "examples/buttons/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "display-shapes",
@@ -479,14 +349,6 @@
       "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "bar-graph",
-      "examples": [
-        {
-          "id": "bar-graph",
-          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
-          "entrypoint": "examples/bar-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "bar-graph",
@@ -509,14 +371,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "key-press",
-      "examples": [
-        {
-          "id": "key-press",
-          "description": "Read Key 1 and report press and release transitions over serial. Use it as the start of a hardware shortcut.",
-          "entrypoint": "examples/key-press/main.cpp",
-          "upstream": "https://docs.m5stack.com/en/arduino/chain_dualkey/program"
-        }
-      ],
       "published_examples": [
         {
           "id": "key-press",
@@ -539,20 +393,6 @@
       "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "scroll-graph",
-      "examples": [
-        {
-          "id": "scroll-graph",
-          "description": "Scroll six colored traces across the screen. Replace the generated samples with live measurements.",
-          "entrypoint": "examples/scroll-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/ScrollGraph/ScrollGraph.ino"
-        },
-        {
-          "id": "touch-drag",
-          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
-          "entrypoint": "examples/touch-drag/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "scroll-graph",
@@ -584,14 +424,6 @@
       "bootloader": "esp32c61-16mb",
       "preview": false,
       "default_example": "heart",
-      "examples": [
-        {
-          "id": "heart",
-          "description": "Draw a heart from a 16-row bitmap on the LED matrix. Edit the bitmap to design a different icon.",
-          "entrypoint": "examples/heart/main.cpp",
-          "upstream": "https://docs.m5stack.com/en/arduino/corematrix/program"
-        }
-      ],
       "published_examples": [
         {
           "id": "heart",
@@ -614,20 +446,6 @@
       "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "bar-graph",
-      "examples": [
-        {
-          "id": "bar-graph",
-          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
-          "entrypoint": "examples/bar-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
-        },
-        {
-          "id": "touch-drag",
-          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
-          "entrypoint": "examples/touch-drag/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "bar-graph",
@@ -659,14 +477,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "display-shapes",
-      "examples": [
-        {
-          "id": "display-shapes",
-          "description": "Draw randomly placed, colored circles and squares on the LCD. Change the drawing routine to build a display application.",
-          "entrypoint": "examples/display-shapes/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Dial/blob/735eb55beefe6577c646ebf164a19793a01375d4/examples/Basic/display/display.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "display-shapes",
@@ -689,14 +499,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "hello-display",
-      "examples": [
-        {
-          "id": "hello-display",
-          "description": "Draw positioned text on the LCD and print the greeting over serial. Adjust the cursor coordinates to change the layout.",
-          "entrypoint": "examples/hello-display/main.cpp",
-          "upstream": "https://docs.m5stack.com/en/arduino/m5dinmeter/program"
-        }
-      ],
       "published_examples": [
         {
           "id": "hello-display",
@@ -719,14 +521,6 @@
       "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "bar-graph",
-      "examples": [
-        {
-          "id": "bar-graph",
-          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
-          "entrypoint": "examples/bar-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "bar-graph",
@@ -749,14 +543,6 @@
       "bootloader": "esp32c6-16mb",
       "preview": false,
       "default_example": "bar-graph",
-      "examples": [
-        {
-          "id": "bar-graph",
-          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
-          "entrypoint": "examples/bar-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "bar-graph",
@@ -779,14 +565,6 @@
       "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "color-bands",
-      "examples": [
-        {
-          "id": "color-bands",
-          "description": "Draw six colored bands and a multicolored label on the e-paper display using an offscreen canvas.",
-          "entrypoint": "examples/color-bands/main.cpp",
-          "upstream": "https://docs.m5stack.com/en/arduino/papercolor/program"
-        }
-      ],
       "published_examples": [
         {
           "id": "color-bands",
@@ -809,14 +587,6 @@
       "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "scroll-text",
-      "examples": [
-        {
-          "id": "scroll-text",
-          "description": "Scroll multilingual text on the display with an offscreen canvas. Replace the string or adjust the font and scroll speed.",
-          "entrypoint": "examples/scroll-text/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/LongTextScroll/LongTextScroll.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "scroll-text",
@@ -839,14 +609,6 @@
       "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "bar-graph",
-      "examples": [
-        {
-          "id": "bar-graph",
-          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
-          "entrypoint": "examples/bar-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "bar-graph",
@@ -869,14 +631,6 @@
       "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "bar-graph",
-      "examples": [
-        {
-          "id": "bar-graph",
-          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
-          "entrypoint": "examples/bar-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "bar-graph",
@@ -899,14 +653,6 @@
       "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "bar-graph",
-      "examples": [
-        {
-          "id": "bar-graph",
-          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
-          "entrypoint": "examples/bar-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "bar-graph",
@@ -929,20 +675,6 @@
       "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "bar-graph",
-      "examples": [
-        {
-          "id": "bar-graph",
-          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
-          "entrypoint": "examples/bar-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
-        },
-        {
-          "id": "touch-drag",
-          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
-          "entrypoint": "examples/touch-drag/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "bar-graph",
@@ -974,14 +706,6 @@
       "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "blink",
-      "examples": [
-        {
-          "id": "blink",
-          "description": "Blink the onboard LEDs white and black at half-second intervals. Change the brightness or colors.",
-          "entrypoint": "examples/blink/main.cpp",
-          "upstream": "https://docs.m5stack.com/en/arduino/powerhub/program"
-        }
-      ],
       "published_examples": [
         {
           "id": "blink",
@@ -1004,14 +728,6 @@
       "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "rgb-led",
-      "examples": [
-        {
-          "id": "rgb-led",
-          "description": "Cycle eight colors across the twelve RGB LEDs on the body, six per side. Edit the palette or animation speed.",
-          "entrypoint": "examples/rgb-led/main.cpp",
-          "upstream": "https://github.com/m5stack/StackChan-BSP/blob/e2f3b02dbe7f28e26a02adc72bef3aa2c545e4a0/examples/RGB_LED/RGB_LED.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "rgb-led",
@@ -1034,14 +750,6 @@
       "bootloader": "esp32c6-16mb",
       "preview": false,
       "default_example": "hello-serial",
-      "examples": [
-        {
-          "id": "hello-serial",
-          "description": "Print a greeting once per second on the serial console. The SDK connects in parallel using the saved Wi-Fi credentials.",
-          "entrypoint": "examples/hello-serial/main.cpp",
-          "upstream": "https://docs.m5stack.com/en/arduino/m5stamp_c6lora/program"
-        }
-      ],
       "published_examples": [
         {
           "id": "hello-serial",
@@ -1064,14 +772,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "color-button",
-      "examples": [
-        {
-          "id": "color-button",
-          "description": "Switch the onboard RGB LED color when the Stamp-S3 button is pressed. Edit the palette and event handler.",
-          "entrypoint": "examples/color-button/main.cpp",
-          "upstream": "https://github.com/m5stack/STAMP-S3/blob/6b64d431f930ff5e2bd770a07003ac983c24bc3f/examples/Led/Led.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "color-button",
@@ -1094,14 +794,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "hello-serial",
-      "examples": [
-        {
-          "id": "hello-serial",
-          "description": "Print a greeting once per second on the serial console. The SDK connects in parallel using the saved Wi-Fi credentials.",
-          "entrypoint": "examples/hello-serial/main.cpp",
-          "upstream": "https://docs.m5stack.com/en/arduino/m5stamp_s3bat/program"
-        }
-      ],
       "published_examples": [
         {
           "id": "hello-serial",
@@ -1124,14 +816,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "display",
-      "examples": [
-        {
-          "id": "display",
-          "description": "Cycle the LCD through solid colors, text and basic shapes. Edit the drawing sequence to build a control panel.",
-          "entrypoint": "examples/display/main.cpp",
-          "upstream": "https://github.com/m5stack/M5StamPLC/blob/aebe5711205618ec65e885d6e2d93c5c751c23ef/examples/Basic/Display/Display.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "display",
@@ -1154,14 +838,6 @@
       "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "buttons",
-      "examples": [
-        {
-          "id": "buttons",
-          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
-          "entrypoint": "examples/buttons/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "buttons",
@@ -1184,20 +860,6 @@
       "bootloader": "esp32-8mb",
       "preview": false,
       "default_example": "display-shapes",
-      "examples": [
-        {
-          "id": "display-shapes",
-          "description": "Draw randomly placed, colored circles and squares on the LCD. Change the drawing routine to build a display application.",
-          "entrypoint": "examples/display-shapes/main.cpp",
-          "upstream": "https://github.com/m5stack/M5StickCPlus2/blob/921ec0c0634b6b93873fe123f3a8d1714c68b8f4/examples/Basic/display/display.ino"
-        },
-        {
-          "id": "buttons",
-          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
-          "entrypoint": "examples/buttons/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "display-shapes",
@@ -1229,14 +891,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "scroll-graph",
-      "examples": [
-        {
-          "id": "scroll-graph",
-          "description": "Scroll six colored traces across the screen. Replace the generated samples with live measurements.",
-          "entrypoint": "examples/scroll-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/ScrollGraph/ScrollGraph.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "scroll-graph",
@@ -1259,20 +913,6 @@
       "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "bar-graph",
-      "examples": [
-        {
-          "id": "bar-graph",
-          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
-          "entrypoint": "examples/bar-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
-        },
-        {
-          "id": "buttons",
-          "description": "Read button transitions and click counts. The serial log identifies the button and gesture; screens also show a colored indicator.",
-          "entrypoint": "examples/buttons/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Button/Button.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "bar-graph",
@@ -1304,20 +944,6 @@
       "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "bar-graph",
-      "examples": [
-        {
-          "id": "bar-graph",
-          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
-          "entrypoint": "examples/bar-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
-        },
-        {
-          "id": "touch-drag",
-          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
-          "entrypoint": "examples/touch-drag/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "bar-graph",
@@ -1349,20 +975,6 @@
       "bootloader": "esp32c5-16mb",
       "preview": false,
       "default_example": "bar-graph",
-      "examples": [
-        {
-          "id": "bar-graph",
-          "description": "Animate colored bars and peak markers on the onboard display. Change the palette or feed sensor readings into the plotted heights.",
-          "entrypoint": "examples/bar-graph/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/BarGraph/BarGraph.ino"
-        },
-        {
-          "id": "touch-drag",
-          "description": "Drag colored boxes on the touchscreen. Edit the touch handlers and drawing code to build an interactive interface.",
-          "entrypoint": "examples/touch-drag/main.cpp",
-          "upstream": "https://github.com/m5stack/M5Unified/blob/96576a14247ddc935149145aa6b51943464120f1/examples/Basic/Touch/DragDrop/DragDrop.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "bar-graph",
@@ -1394,14 +1006,6 @@
       "bootloader": "esp32s3-32mb",
       "preview": false,
       "default_example": "chip-info",
-      "examples": [
-        {
-          "id": "chip-info",
-          "description": "Print the ESP32-S3 revision, radio features, flash size and free heap. This ESP-IDF chip example runs without the proprietary TriviaPOD game or peripheral drivers.",
-          "entrypoint": "examples/chip-info/main.cpp",
-          "upstream": "https://github.com/espressif/esp-idf/blob/v5.4.1/examples/get-started/hello_world/main/hello_world_main.c"
-        }
-      ],
       "published_examples": [
         {
           "id": "chip-info",
@@ -1424,14 +1028,6 @@
       "bootloader": "esp32c6-16mb",
       "preview": false,
       "default_example": "game-of-life",
-      "examples": [
-        {
-          "id": "game-of-life",
-          "description": "Render Conway’s Game of Life on the display. Change the initial cells or simulation rules.",
-          "entrypoint": "examples/game-of-life/main.cpp",
-          "upstream": "https://github.com/m5stack/M5GFX/blob/28d47949bdc84f30881623476f555398e2194313/examples/Basic/GameOfLife/GameOfLife.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "game-of-life",
@@ -1454,14 +1050,6 @@
       "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "button",
-      "examples": [
-        {
-          "id": "button",
-          "description": "Report presses and releases of the user button over serial. Use the input handler to trigger an application action.",
-          "entrypoint": "examples/button/main.cpp",
-          "upstream": "https://github.com/m5stack/UnitCamS3-UserDemo/blob/50410249ece3f92f414a222c859dd48d5958fd97/platforms/unitcam_s3_5mp/main/hal_unitcam_s3_5mp/components/hal_gamepad.cpp"
-        }
-      ],
       "published_examples": [
         {
           "id": "button",
@@ -1484,14 +1072,6 @@
       "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "button",
-      "examples": [
-        {
-          "id": "button",
-          "description": "Report presses and releases of the user button over serial. Use the input handler to trigger an application action.",
-          "entrypoint": "examples/button/main.cpp",
-          "upstream": "https://github.com/m5stack/M5PoECAM/blob/d9b08c6363084add434dfb211a0e56d0fdcd70a4/examples/button/button.ino"
-        }
-      ],
       "published_examples": [
         {
           "id": "button",
@@ -1514,14 +1094,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "bus-voltage",
-      "examples": [
-        {
-          "id": "bus-voltage",
-          "description": "Read the onboard INA226 bus voltage and display volts twice per second. Change the sampling interval or add a voltage history view.",
-          "entrypoint": "examples/bus-voltage/main.cpp",
-          "upstream": "https://github.com/m5stack/VAMeter-Firmware/blob/5e8f847bbc771da2d354be7472c6345acb5655ac/platforms/vameter/main/hal_vameter/components/hal_power_monitor.cpp"
-        }
-      ],
       "published_examples": [
         {
           "id": "bus-voltage",
@@ -1544,14 +1116,6 @@
       "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "back-button",
-      "examples": [
-        {
-          "id": "back-button",
-          "description": "Report presses and releases of the user button over serial. Use the input handler to trigger an application action.",
-          "entrypoint": "examples/back-button/main.cpp",
-          "upstream": "https://github.com/m5stack/XiaoZhi-Card/blob/44aa2f2b91c3e938932bb41f670e984cf752b731/main/boards/xiaozhi-card/config.h"
-        }
-      ],
       "published_examples": [
         {
           "id": "back-button",
