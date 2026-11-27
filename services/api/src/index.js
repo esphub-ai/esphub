@@ -6,6 +6,7 @@ import { boardPhotos } from "./board-photos.js";
 import { boardPhotoOrigin } from "../../../shared/identity.js";
 import { uuidPattern } from "./ids.js";
 import { releaseResponse } from "./releases.js";
+import { bootloaderResponse } from "./firmware.js";
 import { Hono } from "hono";
 import { withDatabase } from "./database.js";
 import { bodyLimit } from "hono/body-limit";
@@ -35,6 +36,12 @@ api.get("/releases/:group/:project/:asset", (c) => {
   const tag = c.req.query("tag");
   return withDatabase(c.env, (sql) =>
     releaseResponse(board, asset, tag, sql, c.env.FIRMWARE),
+  );
+});
+api.get("/bootloaders/:id/:version/:file", (c) => {
+  const { id, version, file } = c.req.param();
+  return withDatabase(c.env, (sql) =>
+    bootloaderResponse(sql, c.env.FIRMWARE, id, version, file),
   );
 });
 api.get("/boards/gallery", (c) =>

@@ -1,4 +1,4 @@
-import { releaseUrl } from "../../../shared/identity.js";
+import { apiOrigin, bootloaderUrl, releaseUrl } from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
 import { issueBle } from "./ble.js";
 import { connectedSince, publishDownlink } from "./iot.js";
@@ -6,6 +6,7 @@ import { appAlignment, maxAppSize, maxFlashBytes, minLittleFSBytes, validLayout 
 import { artifactBase, maxUploadBytes } from "./uploads.js";
 import { boardIdPattern, boardImageUrl, getBoard, searchBoards } from "./boards.js";
 import { updateSources } from "./update-sources.js";
+import { boardFirmware, bootloaderSet, latestBootloader } from "./firmware.js";
 import { releaseFile } from "./releases.js";
 import { fail } from "./auth.js";
 import { createDeviceSetup } from "./setup.js";
@@ -15,6 +16,11 @@ const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
 const id = strings("device_id");
 const otaKind = { type: "string", enum: ["bootloader", "app"] };
+const bootloaderBase = apiOrigin + "/bootloaders/";
+async function boardSources(db, board) {
+  const profile = await getBoard(db, board);
+  return updateSources(profile, (await boardFirmware(db, profile)).firmware);
+}
 const additive = {
   readOnlyHint: false,
   destructiveHint: false,
@@ -34,10 +40,21 @@ const defs = [
   [
     "devices_create",
     additive,
-    "Registers a physical device with its name and group/project board ID (for example, m5stack/cardputer-adv). Returns its device ID, a short-lived private NVS image download, a pinned USB setup manifest, and the installed example with its source and build command.",
+    "Registers a physical device with its name and group/project board ID (for example, m5stack/cardputer-adv). Ask the user for the Wi-Fi SSID and password first and pass them as wifi, so the board joins the network on first boot. Returns its device ID, a flash plan with every file of the first install (including the short-lived private NVS image), the esptool command and the installed example with its source and build command.",
     {
       ...strings("name"),
       board: { type: "string", description: "Exact board ID returned by boards_search." },
+      wifi: {
+        type: "object",
+        description: "Wi-Fi network written into the private NVS image.",
+        additionalProperties: false,
+        properties: {
+          ssid: { type: "string" },
+          password: { type: "string" },
+          hidden: { type: "boolean" },
+        },
+        required: ["ssid"],
+      },
     },
   ],
   [
@@ -191,7 +208,7 @@ export const tools = defs.map(
         ...(queueable(name) ? strings("request_id") : {}),
       },
       required: Object.keys(properties).filter(
-        (k) => name === "logs_read" ? k === "device_id" : !["password", "url", "query", "erase_littlefs", "image_size_bytes"].includes(k),
+        (k) => name === "logs_read" ? k === "device_id" : !["password", "url", "query", "erase_littlefs", "image_size_bytes", "wifi"].includes(k),
       ),
     },
   }),
@@ -318,7 +335,11 @@ export async function operate(c, owner, name, a) {
   if (name === "boards_search") return searchBoards(db, a.query);
   if (name === "devices_create_virtual") return createVirtual(db, owner);
   if (name === "devices_create") {
-    return createDeviceSetup(c, owner, { name: a.name, board: a.board });
+    return createDeviceSetup(c, owner, {
+      name: a.name,
+      board: a.board,
+      ...(a.wifi !== undefined && { wifi: a.wifi }),
+    });
   }
   const ds =
     await db`SELECT d.id,d.name,d.board,d.kind,d.ble_address,d.created_at,d.cert_ready,d.mqtt_connected_since,d.boot_info,
@@ -349,7 +370,7 @@ export async function operate(c, owner, name, a) {
       board: d.board,
       kind: d.kind,
       ...(await summary(c, d)),
-      ...(d.kind === "physical" ? updateSources(await getBoard(db, d.board)) : {}),
+      ...(d.kind === "physical" ? await boardSources(db, d.board) : {}),
     };
   if (name === "devices_delete") {
     await db`DELETE FROM esphub.devices WHERE id=${d.id} AND owner=${owner}`;
@@ -426,16 +447,23 @@ export async function operate(c, owner, name, a) {
   if (name === "ota_install") {
     if (info?.role !== "bootloader")
       fail(409, "Enter EspHub Bootloader mode first using bootloader_enter");
-    const asset = a.kind === "bootloader" ? "ota" : "app";
-    const official = releaseUrl(d.board, asset);
     let url = a.url, imageSize = a.image_size_bytes;
     if (url?.startsWith(artifactBase)) {
       ({ size: imageSize } = await internal(c, d.id, "check-upload", { url, kind: a.kind }));
-    } else if (!url || url.split("?")[0] === official) {
+    } else if (a.kind === "app" && (!url || url.split("?")[0] === releaseUrl(d.board, "app"))) {
       const tag = (url && new URL(url).searchParams.get("tag")) || undefined;
-      const file = await releaseFile(db, d.board, asset, tag);
+      const file = await releaseFile(db, d.board, tag);
       imageSize = file.size ?? (await c.env.FIRMWARE.head(file.object_key))?.size;
-      url = releaseUrl(d.board, asset, file.tag);
+      url = releaseUrl(d.board, "app", file.tag);
+    } else if (a.kind === "bootloader" && (!url || url.startsWith(bootloaderBase))) {
+      const { bootloader: id } = await getBoard(db, d.board);
+      const [, version, file] = url ? url.slice(bootloaderBase.length).split("/") : [];
+      if (url && (url !== bootloaderUrl(id, version, file) || file !== "launcher"))
+        fail(400, "Use this board's published Launcher or an uploaded image");
+      const launcher = url ? await bootloaderSet(db, id, version) : await latestBootloader(db, id);
+      if (!launcher) fail(url ? 404 : 503, "No bootloader is published for this board yet");
+      imageSize = launcher.launcher_size;
+      url = bootloaderUrl(launcher.id, launcher.version, "launcher");
     }
     if (a.kind === "app" && validLayout(info.layout) && imageSize > info.layout.app_size_bytes)
       fail(409, `Image ${imageSize} bytes, app slot ${info.layout.app_size_bytes}, maximum after resize ${maxAppSize(info.layout)}`);
@@ -462,8 +490,8 @@ export async function operate(c, owner, name, a) {
   }
   if (name === "devices_reset") op = "provision.reset";
   if (name === "firmware_get") {
-    const [profile, state] = await Promise.all([getBoard(db, d.board), summary(c, d)]);
-    return { ...await queue("status", {}), software: state.software, ...updateSources(profile) };
+    const [sources, state] = await Promise.all([boardSources(db, d.board), summary(c, d)]);
+    return { ...await queue("status", {}), software: state.software, ...sources };
   }
   return queue(op, args);
 }

@@ -3,6 +3,7 @@ import test from "node:test";
 import postgres from "postgres";
 import { boardGallery } from "../services/api/src/boards.js";
 import { operate } from "../services/api/src/operations.js";
+import { bootloaderSet } from "./fixtures/firmware.mjs";
 
 test(
   "board discovery reflects published versions and keeps previously returned downloads pinned",
@@ -32,9 +33,9 @@ test(
         assert.deepEqual(await search("_"), []);
 
         await tx`INSERT INTO esphub.firmware_releases (board, kind, version, tag)
-          VALUES (${id}, 'app', '1.0.9', 'test-app-1.0.9'), (${id}, 'setup', '2.0.1', 'test-setup-2.0.1')`;
+          VALUES (${id}, 'app', '1.0.9', 'test-app-1.0.9')`;
         const [before] = await search(id);
-        assert.equal(before.firmware.setup.version, "2.0.1");
+        assert.deepEqual(Object.keys(before.firmware), ["app"]);
         assert.equal(before.firmware.app.version, "1.0.9");
         const old = new URL(before.firmware.app.download_url);
         await tx`UPDATE esphub.firmware_releases SET version = '1.0.10', tag = 'test-app-1.0.10'
@@ -42,14 +43,24 @@ test(
         const [after] = await search(id);
         assert.equal(after.firmware.app.version, "1.0.10");
         assert.notEqual(after.firmware.app.download_url, old.href);
-        assert.equal(
-          after.firmware.setup.download_url,
-          before.firmware.setup.download_url,
-        );
         assert.equal(old.pathname, "/releases/" + id + "/app");
         assert.equal(old.searchParams.get("tag"), "test-app-1.0.9");
 
+        // Boards share bootloader sets, and the latest version by number is current.
+        const loader = "catalog-test-" + key.slice(0, 8);
+        await tx`UPDATE esphub.boards SET bootloader = ${loader} WHERE id = ${id}`;
+        for (const version of ["2.0.9", "2.0.10"])
+          await tx`INSERT INTO esphub.bootloaders ${tx({
+            ...bootloaderSet(loader, version).row, chip: "esp32s3",
+          })}`;
+        const [shared] = await search(id);
+        assert.deepEqual(shared.firmware.bootloader, {
+          id: loader, version: "2.0.10",
+          download_url: `https://api.esphub.ai/bootloaders/${loader}/2.0.10/launcher`,
+        });
+
         await tx`DELETE FROM esphub.firmware_releases WHERE board = ${id}`;
+        await tx`DELETE FROM esphub.bootloaders WHERE id = ${loader}`;
         await tx`DELETE FROM esphub.boards WHERE id = ${id}`;
         await assert.rejects(
           operate({ sql: tx }, null, "devices_create", {

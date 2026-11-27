@@ -24,7 +24,8 @@
           "build_command": "python3 scripts/build-example.py espressif/esp-mosaico --example hello-world"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s31-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s31-16mb",
+      "bootloader": "esp32s31-16mb"
     },
     {
       "id": "m5stack/airq",
@@ -45,7 +46,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/airq --example hello-display"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/atom-psram",
@@ -66,7 +68,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/atom-psram --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-8mb",
+      "bootloader": "esp32-8mb"
     },
     {
       "id": "m5stack/atom-voices3r",
@@ -87,7 +90,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/atom-voices3r --example tones"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/atoms3",
@@ -117,7 +121,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/atoms3 --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/atoms3-lite",
@@ -138,7 +143,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/atoms3-lite --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/atoms3r",
@@ -159,7 +165,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/atoms3r --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/atoms3r-cam",
@@ -180,7 +187,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/atoms3r-cam --example camera-frame"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/atoms3r-ext",
@@ -201,7 +209,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/atoms3r-ext --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/atoms3u",
@@ -222,7 +231,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/atoms3u --example hello-serial"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/basic-v27",
@@ -243,7 +253,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/basic-v27 --example scroll-text"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
+      "bootloader": "esp32-16mb"
     },
     {
       "id": "m5stack/capsule",
@@ -264,7 +275,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/capsule --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/cardputer",
@@ -294,7 +306,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/cardputer --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/cardputer-adv",
@@ -324,7 +337,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/cardputer-adv --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/chain-captain",
@@ -345,7 +359,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/chain-captain --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
+      "bootloader": "esp32s3-16mb"
     },
     {
       "id": "m5stack/chain-dualkey",
@@ -366,7 +381,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/chain-dualkey --example key-press"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/core2",
@@ -396,7 +412,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/core2 --example touch-drag"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
+      "bootloader": "esp32-16mb"
     },
     {
       "id": "m5stack/corematrix",
@@ -417,7 +434,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/corematrix --example heart"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c61-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c61-16mb",
+      "bootloader": "esp32c61-16mb"
     },
     {
       "id": "m5stack/cores3",
@@ -447,7 +465,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/cores3 --example touch-drag"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
+      "bootloader": "esp32s3-16mb"
     },
     {
       "id": "m5stack/dial",
@@ -468,7 +487,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/dial --example display-shapes"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/dinmeter",
@@ -489,7 +509,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/dinmeter --example hello-display"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/fire-v27",
@@ -510,7 +531,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/fire-v27 --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
+      "bootloader": "esp32-16mb"
     },
     {
       "id": "m5stack/nesso-n1",
@@ -531,7 +553,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/nesso-n1 --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb",
+      "bootloader": "esp32c6-16mb"
     },
     {
       "id": "m5stack/paper-color",
@@ -552,7 +575,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/paper-color --example color-bands"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
+      "bootloader": "esp32s3-16mb"
     },
     {
       "id": "m5stack/paper-diy",
@@ -573,7 +597,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/paper-diy --example scroll-text"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
+      "bootloader": "esp32s3-16mb"
     },
     {
       "id": "m5stack/paper-v11",
@@ -594,7 +619,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/paper-v11 --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
+      "bootloader": "esp32-16mb"
     },
     {
       "id": "m5stack/papermono",
@@ -615,7 +641,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/papermono --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
+      "bootloader": "esp32s3-16mb"
     },
     {
       "id": "m5stack/papermono-lite",
@@ -636,7 +663,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/papermono-lite --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
+      "bootloader": "esp32s3-16mb"
     },
     {
       "id": "m5stack/papers3",
@@ -666,7 +694,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/papers3 --example touch-drag"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
+      "bootloader": "esp32s3-16mb"
     },
     {
       "id": "m5stack/powerhub",
@@ -687,7 +716,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/powerhub --example blink"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
+      "bootloader": "esp32s3-16mb"
     },
     {
       "id": "m5stack/stackchan",
@@ -708,7 +738,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/stackchan --example rgb-led"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
+      "bootloader": "esp32s3-16mb"
     },
     {
       "id": "m5stack/stamp-c6lora",
@@ -729,7 +760,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/stamp-c6lora --example hello-serial"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb",
+      "bootloader": "esp32c6-16mb"
     },
     {
       "id": "m5stack/stamp-s3",
@@ -750,7 +782,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/stamp-s3 --example color-button"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/stamp-s3bat",
@@ -771,7 +804,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/stamp-s3bat --example hello-serial"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/stamplc",
@@ -792,7 +826,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/stamplc --example display"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/station",
@@ -813,7 +848,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/station --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
+      "bootloader": "esp32-16mb"
     },
     {
       "id": "m5stack/stickc-plus2",
@@ -843,7 +879,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/stickc-plus2 --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-8mb",
+      "bootloader": "esp32-8mb"
     },
     {
       "id": "m5stack/sticks3",
@@ -864,7 +901,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/sticks3 --example scroll-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/stopwatch",
@@ -894,7 +932,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/stopwatch --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
+      "bootloader": "esp32s3-16mb"
     },
     {
       "id": "m5stack/tough",
@@ -924,7 +963,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/tough --example touch-drag"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
+      "bootloader": "esp32-16mb"
     },
     {
       "id": "m5stack/toughc5",
@@ -954,7 +994,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/toughc5 --example touch-drag"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c5-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c5-16mb",
+      "bootloader": "esp32c5-16mb"
     },
     {
       "id": "m5stack/triviapod",
@@ -975,7 +1016,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/triviapod --example chip-info"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-32mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-32mb",
+      "bootloader": "esp32s3-32mb"
     },
     {
       "id": "m5stack/unit-c6l",
@@ -996,7 +1038,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/unit-c6l --example game-of-life"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb",
+      "bootloader": "esp32c6-16mb"
     },
     {
       "id": "m5stack/unit-cams3-5mp",
@@ -1017,7 +1060,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/unit-cams3-5mp --example button"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
+      "bootloader": "esp32s3-16mb"
     },
     {
       "id": "m5stack/unit-poe-cam-w-v11",
@@ -1038,7 +1082,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/unit-poe-cam-w-v11 --example button"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
+      "bootloader": "esp32-16mb"
     },
     {
       "id": "m5stack/vameter",
@@ -1059,7 +1104,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/vameter --example bus-voltage"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     },
     {
       "id": "m5stack/xiaozhi-card",
@@ -1080,7 +1126,8 @@
           "build_command": "python3 scripts/build-example.py m5stack/xiaozhi-card --example back-button"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
+      "bootloader": "esp32s3-8mb"
     }
   ]
 }

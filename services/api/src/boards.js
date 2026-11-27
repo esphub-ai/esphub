@@ -1,4 +1,5 @@
-import { boardPhotoOrigin, releaseUrl } from "../../../shared/identity.js";
+import { boardPhotoOrigin } from "../../../shared/identity.js";
+import { firmwareSummary } from "./firmware.js";
 import { fail } from "./auth.js";
 
 export const boardIdPattern =
@@ -10,24 +11,18 @@ export async function searchBoards(sql, query = "") {
   if (query.includes("\0")) fail(400, "Invalid query");
   const rows =
     await sql`SELECT b.id, b.name, b.model, b.chip, b.flash_mb, b.default_example, b.preview, b.published_examples,
-      (SELECT jsonb_object_agg(r.kind, jsonb_build_object('version', r.version, 'tag', r.tag))
-       FROM esphub.firmware_releases r WHERE r.board = b.id) AS releases
+      (SELECT jsonb_build_object('version', r.version, 'tag', r.tag) FROM esphub.firmware_releases r
+       WHERE r.board = b.id AND r.kind = 'app') AS app,
+      (SELECT jsonb_build_object('id', l.id, 'version', l.version) FROM esphub.bootloaders l
+       WHERE l.id = b.bootloader ORDER BY string_to_array(l.version, '.')::int[] DESC LIMIT 1) AS bootloader
     FROM esphub.board_profiles b
     WHERE b.is_current AND strpos(b.id, ${query.trim().toLowerCase()}) > 0
     ORDER BY b.display_order NULLS LAST, b.id`;
-  return rows.map(({ releases, published_examples, ...board }) => ({
+  return rows.map(({ app, bootloader, published_examples, ...board }) => ({
     ...board,
     examples: published_examples,
     image_url: boardImageUrl(board.id),
-    firmware: Object.fromEntries(
-      Object.entries(releases ?? {}).map(([kind, { version, tag }]) => [
-        kind,
-        {
-          version,
-          download_url: releaseUrl(board.id, kind === "bootloader" ? "ota" : kind, tag),
-        },
-      ]),
-    ),
+    firmware: firmwareSummary(board.id, app, bootloader),
   }));
 }
 

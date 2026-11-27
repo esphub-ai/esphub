@@ -217,9 +217,10 @@ try {
   );
 
   assert.equal("token" in board, false);
+  const nvs = board.flash.files.find((file) => file.name === "nvs.bin");
   const nvsResponse = await fetch(
-    origin + "/backend" + new URL(board.nvs.url).pathname,
-    { headers: board.nvs.headers },
+    origin + "/backend" + new URL(nvs.url).pathname,
+    { headers: nvs.headers },
   );
   assert.equal(nvsResponse.status, 200);
   const boardToken = parseNvs(new Uint8Array(await nvsResponse.arrayBuffer())).eh.tok;

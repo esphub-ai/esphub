@@ -1,44 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { releaseFile, releaseResponse } from "../services/api/src/releases.js";
-import { releaseUrl } from "../shared/identity.js";
+import { bootloaderResponse } from "../services/api/src/firmware.js";
+import { bootloaderSet, fixtureBucket } from "./fixtures/firmware.mjs";
 
 const board = "m5stack/stopwatch";
 // Tags and object keys are opaque publisher records, so they need no particular naming.
 const index = [
   { tag: "app-one", asset: "app", board, object_key: "objects/app-one.bin", size: "3" },
   { tag: "app-two", asset: "app", board, object_key: "objects/app-two.bin", size: null },
-  { tag: "boot-one", asset: "ota", board, object_key: "objects/boot-one-ota.bin", size: "2" },
-  { tag: "kit-one", asset: "setup", board, object_key: "objects/kit-one.zip", size: "1" },
-  { tag: "kit-one", asset: "setup-manifest", board, object_key: "objects/kit-one.json", size: "40" },
 ];
-const latest = { app: "app-two", bootloader: "boot-one", setup: "kit-one" };
+const latest = "app-two";
 
-// Mirrors the two release queries: the latest release joins firmware_releases by tag.
+// Mirrors the two release queries: the latest app joins firmware_releases by tag.
 const sql = async (strings, ...values) => {
-  const [where, asset, tag] = values;
+  const [where, tag] = values;
   const isLatest = strings.join("?").includes("esphub.firmware_releases");
-  return index.filter((row) => row.board === where && row.asset === asset &&
-    (isLatest ? Object.values(latest).includes(row.tag) : row.tag === tag));
+  return index.filter((row) => row.board === where && (isLatest ? row.tag === latest : row.tag === tag));
 };
 
-function bucketWith(objects) {
-  return { async get(key) {
-    if (!objects.has(key)) return null;
-    const body = objects.get(key);
-    return {
-      size: body.length, body, httpEtag: '"test"', writeHttpMetadata() {},
-      json: async () => JSON.parse(new TextDecoder().decode(body)),
-    };
-  } };
-}
-
-test("files resolve from the publisher's index and latest downloads revalidate", async () => {
-  const objects = new Map([
+test("app files resolve from the publisher's index and latest downloads revalidate", async () => {
+  const bucket = fixtureBucket(new Map([
     ["objects/app-one.bin", Uint8Array.of(1, 1, 1)],
     ["objects/app-two.bin", Uint8Array.of(2, 2)],
-  ]);
-  const bucket = bucketWith(objects);
+  ]));
   const get = (where, asset, tag) => releaseResponse(where, asset, tag, sql, bucket);
 
   const pinned = await get(board, "app", "app-one");
@@ -48,32 +33,47 @@ test("files resolve from the publisher's index and latest downloads revalidate",
   assert.match(current.headers.get("Cache-Control"), /must-revalidate/);
   assert.deepEqual(new Uint8Array(await current.arrayBuffer()), Uint8Array.of(2, 2));
 
-  assert.deepEqual(await releaseFile(sql, board, "app", "app-one"),
+  assert.deepEqual(await releaseFile(sql, board, "app-one"),
     { tag: "app-one", asset: "app", board, object_key: "objects/app-one.bin", size: 3 });
-  assert.equal((await releaseFile(sql, board, "app")).size, null);
-  assert.equal((await releaseFile(sql, board, "ota")).tag, "boot-one");
+  assert.equal((await releaseFile(sql, board)).size, null);
 
   for (const [where, asset, tag] of [
     ["m5stack/core2", "app", "app-one"], // another board's download
-    [board, "ota", "app-one"], // a tag of another kind
     [board, "app", "app-three"],
-    [board, "firmware", undefined],
+    [board, "setup", undefined], // setup kits are no longer published
+    [board, "ota", undefined],
     ["../secrets", "app", undefined],
   ])
     await assert.rejects(get(where, asset, tag), (e) => e.status === 404, `${where} ${asset} ${tag}`);
-  objects.delete("objects/app-one.bin");
-  await assert.rejects(get(board, "app", "app-one"), (e) => e.status === 503);
+  const empty = fixtureBucket(new Map());
+  await assert.rejects(releaseResponse(board, "app", "app-one", sql, empty), (e) => e.status === 503);
 });
 
-test("a setup manifest links to the setup kit of the same release", async () => {
-  const manifest = { tag: "kit-one", board, version: "2.0.7" };
-  const bucket = bucketWith(new Map([
-    ["objects/kit-one.json", new TextEncoder().encode(JSON.stringify(manifest))],
-  ]));
-  for (const tag of [undefined, "kit-one"]) {
-    const response = await releaseResponse(board, "setup-manifest", tag, sql, bucket);
-    assert.match(response.headers.get("Cache-Control"), /must-revalidate/);
-    assert.deepEqual(await response.json(),
-      { ...manifest, download_url: releaseUrl(board, "setup", "kit-one") });
-  }
+test("bootloader set files download by ID, version and file with immutable caching", async () => {
+  const set = bootloaderSet("esp32s3-16mb");
+  const rows = [set.row];
+  const lookup = async (strings, ...values) => {
+    const [id, version] = values;
+    return rows.filter((row) => row.id === id && row.version === version);
+  };
+  const bucket = fixtureBucket(set.files);
+  const response = await bootloaderResponse(lookup, bucket, "esp32s3-16mb", "2.0.7", "launcher");
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("Cache-Control"), /immutable/);
+  assert.equal(response.headers.get("Content-Length"), "128");
+  assert.deepEqual(new Uint8Array(await response.arrayBuffer()), set.files.get(set.row.launcher_key));
+  const table = await bootloaderResponse(lookup, bucket, "esp32s3-16mb", "2.0.7", "partition-table");
+  assert.deepEqual(new Uint8Array(await table.arrayBuffer()), set.files.get(set.row.partition_table_key));
+
+  for (const [id, version, file] of [
+    ["esp32s3-16mb", "2.0.8", "launcher"],
+    ["esp32s3-16mb", "2.0.7", "app"],
+    ["esp32s3-16mb", "2.0.7", "toString"],
+    ["../secrets", "2.0.7", "launcher"],
+    ["esp32s3-16mb", "latest", "launcher"],
+  ])
+    await assert.rejects(bootloaderResponse(lookup, bucket, id, version, file),
+      (e) => e.status === 404, `${id} ${version} ${file}`);
+  await assert.rejects(bootloaderResponse(lookup, fixtureBucket(new Map()), "esp32s3-16mb", "2.0.7", "bootloader"),
+    (e) => e.status === 503);
 });
