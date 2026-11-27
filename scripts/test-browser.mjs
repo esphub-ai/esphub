@@ -91,7 +91,7 @@ try {
   await page.route("https://cdn.esphub.ai/boards/**", async (route) => {
     const url = new URL(route.request().url());
     photoRequests.push(url);
-    const response = await page.request.get(origin + "/backend" + url.pathname + url.search);
+    const response = await page.request.get(origin + "/backend/__cdn" + url.pathname + url.search);
     await route.fulfill({ response });
   });
   await page.goto(origin);
