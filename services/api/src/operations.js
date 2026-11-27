@@ -2,7 +2,7 @@ import { releaseUrl } from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
 import { newBleSecret, issueBle, normalizeBleAddress } from "./ble.js";
 import { connectedSince, publishDownlink } from "./iot.js";
-import { appAlignment, emptyLittleFS, maxAppSize, maxFlashBytes, minLittleFSBytes, validLayout } from "./layout.js";
+import { appAlignment, maxAppSize, maxFlashBytes, minLittleFSBytes, validLayout } from "./layout.js";
 import { artifactBase, maxUploadBytes } from "./uploads.js";
 import { boardIdPattern, boardImageUrl, getBoard, searchBoards } from "./boards.js";
 import { updateSources } from "./update-sources.js";
@@ -468,7 +468,7 @@ export async function operate(c, owner, name, a) {
       fail(400, "Changing the app slot erases LittleFS. Set erase_littlefs=true to authorize.");
     return queue("resize_app", {
       app_size_bytes: a.app_size_bytes, data_size_bytes: data, erase_littlefs: a.erase_littlefs === true,
-      empty_fs: emptyLittleFS(data), transfer_id: key,
+      transfer_id: key,
     }, d.boot_id);
   }
   if (name === "ota_install") {
