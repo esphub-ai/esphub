@@ -28,15 +28,34 @@ for (const worker of ["web", "api"]) {
       `import worker from "./index.js";
       export {Device} from "./index.js";
       const realFetch=globalThis.fetch.bind(globalThis);
-      globalThis.fetch=(input,init)=>{
+      let activeEnv;
+      globalThis.fetch=async (input,init)=>{
         const req=new Request(input,init), url=new URL(req.url);
         if (["iot.us-west-2.amazonaws.com","fixture-ats.iot.us-west-2.amazonaws.com"].includes(url.hostname))
           return realFetch(new Request(${JSON.stringify(broker.endpoint)}+url.pathname+url.search, req));
+        if (url.hostname==="fixture.r2.cloudflarestorage.com" && req.method==="PUT" && req.headers.get("x-amz-copy-source")) {
+          const srcKey=req.headers.get("x-amz-copy-source").replace(/^\\/esphub-firmware\\//,"");
+          const dstKey=url.pathname.replace(/^\\/esphub-firmware\\//,"");
+          const src=await activeEnv.FIRMWARE.get(srcKey);
+          if (!src) return new Response("NoSuchKey",{status:404});
+          const sha=req.headers.get("x-amz-meta-sha256");
+          await activeEnv.FIRMWARE.put(dstKey, await src.arrayBuffer(), {
+            httpMetadata:{contentType:req.headers.get("content-type")||"application/octet-stream"},
+            customMetadata: sha ? {sha256:sha} : {},
+          });
+          return new Response("<CopyObjectResult/>",{status:200});
+        }
         return realFetch(input,init);
       };
       // Production routes cdn.esphub.ai to this Worker by hostname. Locally, /__cdn stands in for it.
-      export default {...worker, fetch(req, env, ctx) {
+      export default {...worker, async fetch(req, env, ctx) {
+        activeEnv=env;
         const url=new URL(req.url);
+        if (url.pathname.startsWith("/__r2/esphub-firmware/") && req.method==="PUT") {
+          const key=url.pathname.slice("/__r2/esphub-firmware/".length);
+          await env.FIRMWARE.put(key, await req.arrayBuffer());
+          return new Response(null,{status:200});
+        }
         if (url.pathname.startsWith("/__cdn/"))
           return worker.fetch(new Request("https://cdn.esphub.ai"+url.pathname.slice(6)+url.search, req), env, ctx);
         return worker.fetch(req, env, ctx);
@@ -55,6 +74,11 @@ for (const worker of ["web", "api"]) {
       IOT_RELAY_SECRET: broker.secret,
       CLERK_SECRET_KEY: "sk_test_local_fixture",
       CLERK_JWT_KEY: jwtKey,
+      CLERK_API_MACHINE_ID: "mch_local_api",
+      CLERK_BOOTLOADER_MACHINE_ID: "mch_local_bootloader",
+      FIRMWARE_R2_ACCESS_KEY_ID: "fixture",
+      FIRMWARE_R2_SECRET_ACCESS_KEY: "fixture",
+      FIRMWARE_R2_ENDPOINT: "https://fixture.r2.cloudflarestorage.com",
     };
   }
   const file = root + "wrangler.e2e.json";

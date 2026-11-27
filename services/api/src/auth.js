@@ -44,6 +44,37 @@ export async function identify(c) {
   if (!auth.isAuthenticated) fail(401, "Invalid or expired Clerk session");
   return accountForSubject(c.get("sql"), auth.userId);
 }
+export async function identifyMachine(c) {
+  const raw = c.req.header("Authorization")?.match(/^Bearer (\S+)$/i)?.[1];
+  if (!raw) fail(401, "Machine token required");
+  const allowed = c.env.CLERK_BOOTLOADER_MACHINE_ID;
+  if (!allowed) fail(503, "Machine authentication unavailable");
+  const clerk = createClerkClient({
+    secretKey: c.env.CLERK_SECRET_KEY,
+    machineSecretKey: c.env.CLERK_MACHINE_SECRET_KEY,
+    publishableKey: c.env.CLERK_PUBLISHABLE_KEY,
+  });
+  const state = await clerk.authenticateRequest(
+    new Request(c.req.url, { headers: { Authorization: `Bearer ${raw}` } }),
+    {
+      acceptsToken: "m2m_token",
+      jwtKey: c.env.CLERK_JWT_KEY,
+    },
+  );
+  if (state.reason === "jwk-remote-failed-to-load")
+    fail(503, "Identity service unavailable");
+  const auth = state.toAuth();
+  if (!auth.isAuthenticated || auth.tokenType !== "m2m_token")
+    fail(401, "Invalid or expired machine token");
+  if (auth.subject !== allowed) fail(403, "Machine not authorized");
+  if (
+    c.env.CLERK_API_MACHINE_ID &&
+    (!Array.isArray(auth.scopes) ||
+      !auth.scopes.includes(c.env.CLERK_API_MACHINE_ID))
+  )
+    fail(403, "Machine scope not authorized");
+  return { id: auth.id, subject: auth.subject, scopes: auth.scopes };
+}
 export async function accountForSubject(sql, subject) {
   if (typeof subject !== "string" || !/^user_[a-zA-Z0-9]+$/.test(subject))
     fail(401, "Clerk user required");

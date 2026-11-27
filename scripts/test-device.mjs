@@ -41,6 +41,16 @@ function issueSession(sub = subject) {
 }
 const sessionJwt = await issueSession();
 const otherSessionJwt = await issueSession(otherSubject);
+function issueM2M(sub = "mch_local_bootloader", scopes = "mch_local_api") {
+  return new SignJWT({ jti: "mt_" + randomUUID().replaceAll("-", ""), scopes })
+    .setProtectedHeader({ alg: "RS256", kid: "test", typ: "JWT", cat: "cl_B7d4PD333AAA" })
+    .setSubject(sub)
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(privateKey);
+}
+const m2mJwt = await issueM2M();
+const wrongM2mJwt = await issueM2M("mch_unauthorized");
 const nvsOf = (setup) => setup.flash.files.find((file) => file.name === "nvs.bin");
 // The public files of a first install download through the Hub and match their sha256.
 async function checkFlashFiles(setup) {
@@ -744,8 +754,137 @@ try {
   );
   await op("devices_delete", { device_id: watch.id });
   await op("devices_delete", id);
+
+  // Internal bootloader publishing via Clerk M2M + presigned R2 staging + release promotion.
+  const publishLoaderId = "esp32s3-e2e" + randomUUID().slice(0, 6) + "mb";
+  const publishVersion = "deadbeef";
+  try {
+    assert.equal(
+      (await fetch(base + "/backend/internal/uploads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ count: 3 }),
+      })).status,
+      401,
+    );
+    assert.equal(
+      (await fetch(base + "/backend/internal/uploads", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + sessionJwt, "Content-Type": "application/json" },
+        body: JSON.stringify({ count: 3 }),
+      })).status,
+      401,
+    );
+    assert.equal(
+      (await fetch(base + "/backend/internal/uploads", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + wrongM2mJwt, "Content-Type": "application/json" },
+        body: JSON.stringify({ count: 3 }),
+      })).status,
+      403,
+    );
+    const uploadsRes = await fetch(base + "/backend/internal/uploads", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + m2mJwt, "Content-Type": "application/json" },
+      body: JSON.stringify({ count: 3 }),
+    });
+    assert.equal(uploadsRes.status, 201);
+    const { uploads } = await uploadsRes.json();
+    assert.equal(uploads.length, 3);
+    const binaries = [
+      Buffer.alloc(64, 0xe9),
+      Buffer.alloc(32, 0xaa),
+      Buffer.alloc(128, 0xe9),
+    ];
+    for (let i = 0; i < 3; i++) {
+      const signed = new URL(uploads[i].url);
+      assert.equal(signed.searchParams.get("X-Amz-Algorithm"), "AWS4-HMAC-SHA256");
+      const put = await fetch(base + "/backend/__r2" + signed.pathname, {
+        method: "PUT",
+        headers: uploads[i].headers,
+        body: binaries[i],
+      });
+      assert.equal(put.status, 200);
+    }
+    const blPayload = {
+      id: publishLoaderId,
+      version: publishVersion,
+      chip: "esp32s3",
+      flash_mode: "dio",
+      flash_size: "16MB",
+      flash_freq: "80m",
+      app_offset: 0x2a0000,
+      nvs_offset: 0x9000,
+      nvs_size: 0x6000,
+      files: {
+        bootloader: {
+          upload_id: uploads[0].id,
+          offset: 0,
+          size: binaries[0].length,
+          sha256: createHash("sha256").update(binaries[0]).digest("hex"),
+        },
+        partition_table: {
+          upload_id: uploads[1].id,
+          offset: 0x8000,
+          size: binaries[1].length,
+          sha256: createHash("sha256").update(binaries[1]).digest("hex"),
+        },
+        launcher: {
+          upload_id: uploads[2].id,
+          offset: 0x20000,
+          size: binaries[2].length,
+          sha256: createHash("sha256").update(binaries[2]).digest("hex"),
+        },
+      },
+    };
+    const createRes = await fetch(base + "/backend/internal/bootloaders", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + m2mJwt, "Content-Type": "application/json" },
+      body: JSON.stringify(blPayload),
+    });
+    assert.equal(createRes.status, 201, await createRes.clone().text());
+    const idempotentRes = await fetch(base + "/backend/internal/bootloaders", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + m2mJwt, "Content-Type": "application/json" },
+      body: JSON.stringify(blPayload),
+    });
+    assert.equal(idempotentRes.status, 200);
+    const conflictRes = await fetch(base + "/backend/internal/bootloaders", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + m2mJwt, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...blPayload, flash_freq: "40m" }),
+    });
+    assert.equal(conflictRes.status, 409);
+    const missingPromote = await fetch(
+      base + `/backend/internal/bootloaders/${publishLoaderId}/current`,
+      {
+        method: "PUT",
+        headers: { Authorization: "Bearer " + m2mJwt, "Content-Type": "application/json" },
+        body: JSON.stringify({ version: "0123456" }),
+      },
+    );
+    assert.equal(missingPromote.status, 404);
+    const promoteRes = await fetch(
+      base + `/backend/internal/bootloaders/${publishLoaderId}/current`,
+      {
+        method: "PUT",
+        headers: { Authorization: "Bearer " + m2mJwt, "Content-Type": "application/json" },
+        body: JSON.stringify({ version: publishVersion }),
+      },
+    );
+    assert.equal(promoteRes.status, 200);
+    assert.equal((await promoteRes.json()).version, publishVersion);
+    const dlLauncher = await fetch(
+      base + `/backend/bootloaders/${publishLoaderId}/${publishVersion}/launcher`,
+    );
+    assert.equal(dlLauncher.status, 200);
+    assert.ok(Buffer.from(await dlLauncher.arrayBuffer()).equals(binaries[2]));
+  } finally {
+    await sql`DELETE FROM esphub.bootloader_releases WHERE id = ${publishLoaderId}`;
+    await sql`DELETE FROM esphub.bootloaders WHERE id = ${publishLoaderId}`;
+  }
   console.log(
-    "PASS Clerk, virtual devices, broker enrollment, command dispatch, duplicate receipts, cloud Wi-Fi, BLE credentials, MQTT events, OTA, private file transfer and revocation",
+    "PASS Clerk, virtual devices, broker enrollment, command dispatch, duplicate receipts, cloud Wi-Fi, BLE credentials, MQTT events, OTA, private file transfer, revocation and bootloader M2M publishing",
   );
 } finally {
   mcu?.close();

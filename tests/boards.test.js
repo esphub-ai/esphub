@@ -46,20 +46,32 @@ test(
         assert.equal(old.pathname, "/releases/" + id + "/app");
         assert.equal(old.searchParams.get("tag"), "test-app-1.0.9");
 
-        // Boards share bootloader sets, and the latest version by number is current.
+        // Boards share bootloader sets, and bootloader_releases selects the active version.
         const loader = "catalog-test-" + key.slice(0, 8);
         await tx`UPDATE esphub.boards SET bootloader = ${loader} WHERE id = ${id}`;
-        for (const version of ["2.0.9", "2.0.10"])
+        for (const version of ["2.0.9", "2.0.10", "a1b2c3d"])
           await tx`INSERT INTO esphub.bootloaders ${tx({
             ...bootloaderSet(loader, version).row, chip: "esp32s3",
           })}`;
+        const [unpromoted] = await search(id);
+        assert.equal(unpromoted.firmware.bootloader, undefined);
+
+        await tx`INSERT INTO esphub.bootloader_releases (id, version) VALUES (${loader}, '2.0.10')`;
         const [shared] = await search(id);
         assert.deepEqual(shared.firmware.bootloader, {
           id: loader, version: "2.0.10",
           download_url: `https://api.esphub.ai/bootloaders/${loader}/2.0.10/launcher`,
         });
 
+        await tx`UPDATE esphub.bootloader_releases SET version = 'a1b2c3d', promoted_at = now() WHERE id = ${loader}`;
+        const [commit] = await search(id);
+        assert.deepEqual(commit.firmware.bootloader, {
+          id: loader, version: "a1b2c3d",
+          download_url: `https://api.esphub.ai/bootloaders/${loader}/a1b2c3d/launcher`,
+        });
+
         await tx`DELETE FROM esphub.firmware_releases WHERE board = ${id}`;
+        await tx`DELETE FROM esphub.bootloader_releases WHERE id = ${loader}`;
         await tx`DELETE FROM esphub.bootloaders WHERE id = ${loader}`;
         await tx`DELETE FROM esphub.boards WHERE id = ${id}`;
         await assert.rejects(
