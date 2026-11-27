@@ -11,7 +11,6 @@
       "model": "Espressif ESP-Mosaico",
       "chip": "esp32s31",
       "flash_mb": 16,
-      "bootloader": "esp32s31-16mb",
       "preview": true,
       "default_example": "hello-world",
       "published_examples": [
@@ -33,7 +32,6 @@
       "model": "M5Stack Air Quality",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "hello-display",
       "published_examples": [
@@ -55,7 +53,6 @@
       "model": "M5Stack Atom-PSRAM",
       "chip": "esp32",
       "flash_mb": 8,
-      "bootloader": "esp32-8mb",
       "preview": false,
       "default_example": "buttons",
       "published_examples": [
@@ -77,7 +74,6 @@
       "model": "M5Stack Atom VoiceS3R",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "tones",
       "published_examples": [
@@ -99,7 +95,6 @@
       "model": "M5Stack AtomS3",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "display-shapes",
       "published_examples": [
@@ -130,7 +125,6 @@
       "model": "M5Stack AtomS3-Lite",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "buttons",
       "published_examples": [
@@ -152,7 +146,6 @@
       "model": "M5Stack AtomS3R",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -174,7 +167,6 @@
       "model": "M5Stack AtomS3R-CAM",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "camera-frame",
       "published_examples": [
@@ -196,7 +188,6 @@
       "model": "M5Stack AtomS3R-Ext",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "buttons",
       "published_examples": [
@@ -218,7 +209,6 @@
       "model": "M5Stack AtomS3U",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "hello-serial",
       "published_examples": [
@@ -240,7 +230,6 @@
       "model": "M5Stack Basic v2.7",
       "chip": "esp32",
       "flash_mb": 16,
-      "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "scroll-text",
       "published_examples": [
@@ -262,7 +251,6 @@
       "model": "M5Stack Capsule",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "buttons",
       "published_examples": [
@@ -284,7 +272,6 @@
       "model": "M5Stack Cardputer",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "display-shapes",
       "published_examples": [
@@ -315,7 +302,6 @@
       "model": "M5Stack Cardputer-Adv",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "display-shapes",
       "published_examples": [
@@ -346,7 +332,6 @@
       "model": "M5Stack Chain Captain",
       "chip": "esp32s3",
       "flash_mb": 16,
-      "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -368,7 +353,6 @@
       "model": "M5Stack Chain DualKey",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "key-press",
       "published_examples": [
@@ -390,7 +374,6 @@
       "model": "M5Stack Core2",
       "chip": "esp32",
       "flash_mb": 16,
-      "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "scroll-graph",
       "published_examples": [
@@ -421,7 +404,6 @@
       "model": "M5Stack CoreMatrix",
       "chip": "esp32c61",
       "flash_mb": 16,
-      "bootloader": "esp32c61-16mb",
       "preview": false,
       "default_example": "heart",
       "published_examples": [
@@ -443,7 +425,6 @@
       "model": "M5Stack CoreS3",
       "chip": "esp32s3",
       "flash_mb": 16,
-      "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -474,7 +455,6 @@
       "model": "M5Stack Dial",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "display-shapes",
       "published_examples": [
@@ -496,7 +476,6 @@
       "model": "M5Stack DinMeter",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "hello-display",
       "published_examples": [
@@ -518,7 +497,6 @@
       "model": "M5Stack Fire v2.7",
       "chip": "esp32",
       "flash_mb": 16,
-      "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -540,7 +518,6 @@
       "model": "Arduino Nesso N1",
       "chip": "esp32c6",
       "flash_mb": 16,
-      "bootloader": "esp32c6-16mb",
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -562,7 +539,6 @@
       "model": "M5Stack Paper Color",
       "chip": "esp32s3",
       "flash_mb": 16,
-      "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "color-bands",
       "published_examples": [
@@ -584,7 +560,6 @@
       "model": "M5Stack PaperDIY",
       "chip": "esp32s3",
       "flash_mb": 16,
-      "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "scroll-text",
       "published_examples": [
@@ -606,7 +581,6 @@
       "model": "M5Stack Paper v1.1",
       "chip": "esp32",
       "flash_mb": 16,
-      "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -628,7 +602,6 @@
       "model": "M5Stack PaperMono",
       "chip": "esp32s3",
       "flash_mb": 16,
-      "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -650,7 +623,6 @@
       "model": "M5Stack PaperMono-Lite",
       "chip": "esp32s3",
       "flash_mb": 16,
-      "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -672,7 +644,6 @@
       "model": "M5Stack PaperS3",
       "chip": "esp32s3",
       "flash_mb": 16,
-      "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -703,7 +674,6 @@
       "model": "M5Stack PowerHub",
       "chip": "esp32s3",
       "flash_mb": 16,
-      "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "blink",
       "published_examples": [
@@ -725,7 +695,6 @@
       "model": "M5Stack StackChan",
       "chip": "esp32s3",
       "flash_mb": 16,
-      "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "rgb-led",
       "published_examples": [
@@ -747,7 +716,6 @@
       "model": "M5Stack Stamp C6LoRa",
       "chip": "esp32c6",
       "flash_mb": 16,
-      "bootloader": "esp32c6-16mb",
       "preview": false,
       "default_example": "hello-serial",
       "published_examples": [
@@ -769,7 +737,6 @@
       "model": "M5Stack Stamp-S3",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "color-button",
       "published_examples": [
@@ -791,7 +758,6 @@
       "model": "M5Stack Stamp-S3Bat",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "hello-serial",
       "published_examples": [
@@ -813,7 +779,6 @@
       "model": "M5Stack StamPLC",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "display",
       "published_examples": [
@@ -835,7 +800,6 @@
       "model": "M5Stack Station",
       "chip": "esp32",
       "flash_mb": 16,
-      "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "buttons",
       "published_examples": [
@@ -857,7 +821,6 @@
       "model": "M5Stack StickC-Plus2",
       "chip": "esp32",
       "flash_mb": 8,
-      "bootloader": "esp32-8mb",
       "preview": false,
       "default_example": "display-shapes",
       "published_examples": [
@@ -888,7 +851,6 @@
       "model": "M5Stack StickS3",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "scroll-graph",
       "published_examples": [
@@ -910,7 +872,6 @@
       "model": "M5Stack Stopwatch",
       "chip": "esp32s3",
       "flash_mb": 16,
-      "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -941,7 +902,6 @@
       "model": "M5Stack Tough",
       "chip": "esp32",
       "flash_mb": 16,
-      "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -972,7 +932,6 @@
       "model": "M5Stack ToughC5",
       "chip": "esp32c5",
       "flash_mb": 16,
-      "bootloader": "esp32c5-16mb",
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -1003,7 +962,6 @@
       "model": "M5Stack TriviaPOD",
       "chip": "esp32s3",
       "flash_mb": 32,
-      "bootloader": "esp32s3-32mb",
       "preview": false,
       "default_example": "chip-info",
       "published_examples": [
@@ -1025,7 +983,6 @@
       "model": "M5Stack Unit C6L",
       "chip": "esp32c6",
       "flash_mb": 16,
-      "bootloader": "esp32c6-16mb",
       "preview": false,
       "default_example": "game-of-life",
       "published_examples": [
@@ -1047,7 +1004,6 @@
       "model": "M5Stack Unit CamS3-5MP",
       "chip": "esp32s3",
       "flash_mb": 16,
-      "bootloader": "esp32s3-16mb",
       "preview": false,
       "default_example": "button",
       "published_examples": [
@@ -1069,7 +1025,6 @@
       "model": "M5Stack Unit PoE CAM-W v1.1",
       "chip": "esp32",
       "flash_mb": 16,
-      "bootloader": "esp32-16mb",
       "preview": false,
       "default_example": "button",
       "published_examples": [
@@ -1091,7 +1046,6 @@
       "model": "M5Stack VAMeter",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "bus-voltage",
       "published_examples": [
@@ -1113,7 +1067,6 @@
       "model": "M5Stack Xiaozhi Card",
       "chip": "esp32s3",
       "flash_mb": 8,
-      "bootloader": "esp32s3-8mb",
       "preview": false,
       "default_example": "back-button",
       "published_examples": [

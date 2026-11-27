@@ -6,20 +6,20 @@ import { releaseUrl } from "../shared/identity.js";
 const board = "m5stack/stopwatch";
 // Tags and object keys are opaque publisher records, so they need no particular naming.
 const index = [
-  { tag: "app-one", asset: "app", board, kind: "app", object_key: "objects/app-one.bin", size: "3" },
-  { tag: "app-two", asset: "app", board, kind: "app", object_key: "objects/app-two.bin", size: null },
-  { tag: "boot-one", asset: "ota", board, kind: "bootloader", object_key: "objects/boot-one-ota.bin", size: "2" },
-  { tag: "kit-one", asset: "setup", board, kind: "setup", object_key: "objects/kit-one.zip", size: "1" },
-  { tag: "kit-one", asset: "setup-manifest", board, kind: "setup", object_key: "objects/kit-one.json", size: "40" },
+  { tag: "app-one", asset: "app", board, object_key: "objects/app-one.bin", size: "3" },
+  { tag: "app-two", asset: "app", board, object_key: "objects/app-two.bin", size: null },
+  { tag: "boot-one", asset: "ota", board, object_key: "objects/boot-one-ota.bin", size: "2" },
+  { tag: "kit-one", asset: "setup", board, object_key: "objects/kit-one.zip", size: "1" },
+  { tag: "kit-one", asset: "setup-manifest", board, object_key: "objects/kit-one.json", size: "40" },
 ];
 const latest = { app: "app-two", bootloader: "boot-one", setup: "kit-one" };
 
-// Mirrors the two release queries: the latest release joins firmware_releases.
+// Mirrors the two release queries: the latest release joins firmware_releases by tag.
 const sql = async (strings, ...values) => {
   const [where, asset, tag] = values;
   const isLatest = strings.join("?").includes("esphub.firmware_releases");
   return index.filter((row) => row.board === where && row.asset === asset &&
-    (isLatest ? latest[row.kind] === row.tag : row.tag === tag));
+    (isLatest ? Object.values(latest).includes(row.tag) : row.tag === tag));
 };
 
 function bucketWith(objects) {
@@ -49,7 +49,7 @@ test("files resolve from the publisher's index and latest downloads revalidate",
   assert.deepEqual(new Uint8Array(await current.arrayBuffer()), Uint8Array.of(2, 2));
 
   assert.deepEqual(await releaseFile(sql, board, "app", "app-one"),
-    { tag: "app-one", asset: "app", board, kind: "app", object_key: "objects/app-one.bin", size: 3 });
+    { tag: "app-one", asset: "app", board, object_key: "objects/app-one.bin", size: 3 });
   assert.equal((await releaseFile(sql, board, "app")).size, null);
   assert.equal((await releaseFile(sql, board, "ota")).tag, "boot-one");
 

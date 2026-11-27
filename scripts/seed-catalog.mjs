@@ -26,12 +26,12 @@ try {
     if (existing) return;
     await tx`INSERT INTO esphub.board_sources (revision, sdk_version, sdk_source_url, is_current)
       VALUES (${source.revision}, ${source.sdk_version}, ${source.sdk_source_url}, true)`;
-    await tx`INSERT INTO esphub.boards (id, source_revision, name, model, chip, flash_mb, bootloader,
+    await tx`INSERT INTO esphub.boards (id, source_revision, name, model, chip, flash_mb,
         preview, display_order, default_example, published_examples, bootloader_source_url)
-      SELECT id, ${source.revision}, name, model, chip, flash_mb, bootloader,
+      SELECT id, ${source.revision}, name, model, chip, flash_mb,
         preview, display_order, default_example, published_examples, bootloader_source_url
       FROM jsonb_to_recordset(${tx.json(boards.map((board, i) => ({ ...board, display_order: i + 1 })))}::jsonb)
-        AS b(id text, name text, model text, chip text, flash_mb int, bootloader text, preview boolean,
+        AS b(id text, name text, model text, chip text, flash_mb int, preview boolean,
         display_order int, default_example text, published_examples jsonb, bootloader_source_url text)`;
     console.log(`Seeded ${boards.length} test boards`);
   });

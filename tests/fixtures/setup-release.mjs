@@ -1,4 +1,4 @@
-export const fixtureVersion = "2.0.7";
+const fixtureVersion = "2.0.7";
 
 // A setup release as the firmware publisher records it. The Hub treats tags and object
 // keys as opaque, so the fixture deliberately uses its own naming.
@@ -9,16 +9,16 @@ export function setupRelease(board, profile, example) {
   const keys = { setup: `fixture/${tag}/kit.zip`, "setup-manifest": `fixture/${tag}/kit.json` };
   const files = new Map([[keys["setup-manifest"], JSON.stringify(manifest)]]);
   const assets = Object.entries(keys).map(([asset, object_key]) => ({
-    tag, asset, board, kind: "setup", version: fixtureVersion, object_key, size: null,
+    tag, asset, board, object_key, size: null,
   }));
   return { tag, files, assets, manifest };
 }
 
 export async function recordRelease(sql, { tag, assets }) {
-  const [{ board, kind, version }] = assets;
+  const [{ board }] = assets;
   await sql`INSERT INTO esphub.release_assets ${sql(assets)} ON CONFLICT (tag, asset) DO NOTHING`;
   await sql`INSERT INTO esphub.firmware_releases (board, kind, version, tag)
-    VALUES (${board}, ${kind}, ${version}, ${tag})
+    VALUES (${board}, 'setup', ${fixtureVersion}, ${tag})
     ON CONFLICT (board, kind) DO UPDATE SET version = excluded.version, tag = excluded.tag`;
 }
 
