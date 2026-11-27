@@ -2,12 +2,20 @@ import { useState, type ImgHTMLAttributes } from "react";
 import { CpuIcon } from "@phosphor-icons/react";
 import { thumbnailWidths } from "../../../../shared/board-photo.js";
 
+export type BoardSpec = {
+  soc: string;
+  flash_mb: number;
+  flash_bus: "quad" | "octal";
+  psram: "quad" | "octal" | null;
+  console: "usb-serial-jtag" | "uart";
+};
+
 export type Board = {
   id: string;
   name: string;
   model: string;
-  chip: string;
-  flash_mb: number;
+  bootloader: string;
+  spec: BoardSpec;
   product_url: string | null;
   image_url: string;
 };

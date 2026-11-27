@@ -12,7 +12,7 @@ const uuid = new RegExp(uuidPattern.source, "i");
 
 async function setupPlan(db, env, board) {
   const [profile] =
-    await db`SELECT * FROM esphub.board_profiles WHERE id = ${board} AND is_current`;
+    await db`SELECT * FROM esphub.board_profiles WHERE id = ${board} AND NOT retired`;
   if (!profile) fail(400, "Unknown board");
   return { profile, plan: await flashPlan(db, env.FIRMWARE, profile) };
 }
@@ -76,7 +76,7 @@ async function setupResponse(c, device, profile, plan, { secret, bleSecret, wifi
     files,
     command: esptoolCommand(bootloader, files),
   };
-  const example = profile.published_examples.find(
+  const example = (profile.published_examples ?? []).find(
     (item) => item.id === profile.default_example,
   );
   return {

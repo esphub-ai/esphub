@@ -176,14 +176,14 @@ export function LandingDialog({
                   <div>
                     <dt>Chip</dt>
                     <dd>
-                      {board.chip
+                      {board.spec.soc
                         .toUpperCase()
                         .replace(/^ESP32([A-Z])/, "ESP32-$1")}
                     </dd>
                   </div>
                   <div>
                     <dt>Flash</dt>
-                    <dd>{board.flash_mb} MB</dd>
+                    <dd>{board.spec.flash_mb} MB</dd>
                   </div>
                 </dl>
                 <div className="ownership">

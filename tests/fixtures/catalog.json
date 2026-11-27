@@ -9,8 +9,14 @@
       "id": "espressif/esp-mosaico",
       "name": "ESP-Mosaico",
       "model": "Espressif ESP-Mosaico",
-      "chip": "esp32s31",
+      "soc": "esp32s31",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "uart",
+      "bootloader": "esp32s31-16mb",
+      "product_url": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s31/esp-mosaico/index.html",
+      "has_photo": true,
       "preview": true,
       "default_example": "hello-world",
       "published_examples": [
@@ -24,15 +30,20 @@
           "build_command": "python3 scripts/build-example.py espressif/esp-mosaico --example hello-world"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s31-16mb",
-      "bootloader": "esp32s31-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s31-16mb"
     },
     {
       "id": "m5stack/airq",
       "name": "Air Quality",
       "model": "M5Stack Air Quality",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/air-quality-kit-w-m5stamps3-sen55-scd40",
+      "has_photo": true,
       "preview": false,
       "default_example": "hello-display",
       "published_examples": [
@@ -46,15 +57,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/airq --example hello-display"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/atom-psram",
       "name": "Atom-PSRAM",
       "model": "M5Stack Atom-PSRAM",
-      "chip": "esp32",
+      "soc": "esp32",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "uart",
+      "bootloader": "esp32-8mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-atom-psram-lcd-display-driver-kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "buttons",
       "published_examples": [
@@ -68,15 +84,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/atom-psram --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-8mb",
-      "bootloader": "esp32-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-8mb"
     },
     {
       "id": "m5stack/atom-voices3r",
       "name": "Atom VoiceS3R",
       "model": "M5Stack Atom VoiceS3R",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/atom-echos3r-smart-speaker-dev-kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "tones",
       "published_examples": [
@@ -90,15 +111,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/atom-voices3r --example tones"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/atoms3",
       "name": "AtomS3",
       "model": "M5Stack AtomS3",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/atoms3-dev-kit-w-0-85-inch-screen",
+      "has_photo": true,
       "preview": false,
       "default_example": "display-shapes",
       "published_examples": [
@@ -121,15 +147,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/atoms3 --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/atoms3-lite",
       "name": "AtomS3-Lite",
       "model": "M5Stack AtomS3-Lite",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/atoms3-lite-esp32s3-dev-kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "buttons",
       "published_examples": [
@@ -143,15 +174,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/atoms3-lite --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/atoms3r",
       "name": "AtomS3R",
       "model": "M5Stack AtomS3R",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/atoms3r-dev-kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -165,15 +201,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/atoms3r --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/atoms3r-cam",
       "name": "AtomS3R-CAM",
       "model": "M5Stack AtomS3R-CAM",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": "octal",
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/atoms3r-camera-kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "camera-frame",
       "published_examples": [
@@ -187,15 +228,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/atoms3r-cam --example camera-frame"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/atoms3r-ext",
       "name": "AtomS3R-Ext",
       "model": "M5Stack AtomS3R-Ext",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/atoms3r-proto-kit-without-screen",
+      "has_photo": true,
       "preview": false,
       "default_example": "buttons",
       "published_examples": [
@@ -209,15 +255,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/atoms3r-ext --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/atoms3u",
       "name": "AtomS3U",
       "model": "M5Stack AtomS3U",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/atoms3u",
+      "has_photo": true,
       "preview": false,
       "default_example": "hello-serial",
       "published_examples": [
@@ -231,15 +282,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/atoms3u --example hello-serial"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/basic-v27",
       "name": "Basic v2.7",
       "model": "M5Stack Basic v2.7",
-      "chip": "esp32",
+      "soc": "esp32",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "uart",
+      "bootloader": "esp32-16mb",
+      "product_url": "https://shop.m5stack.com/products/esp32-basic-core-lot-development-kit-v2-7",
+      "has_photo": true,
       "preview": false,
       "default_example": "scroll-text",
       "published_examples": [
@@ -253,15 +309,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/basic-v27 --example scroll-text"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
-      "bootloader": "esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
     },
     {
       "id": "m5stack/capsule",
       "name": "Capsule",
       "model": "M5Stack Capsule",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-capsule-kit-w-m5stamps3",
+      "has_photo": true,
       "preview": false,
       "default_example": "buttons",
       "published_examples": [
@@ -275,15 +336,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/capsule --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/cardputer",
       "name": "Cardputer",
       "model": "M5Stack Cardputer",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-cardputer-kit-w-m5stamps3",
+      "has_photo": true,
       "preview": false,
       "default_example": "display-shapes",
       "published_examples": [
@@ -306,15 +372,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/cardputer --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/cardputer-adv",
       "name": "Cardputer-Adv",
       "model": "M5Stack Cardputer-Adv",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-cardputer-adv-version-esp32-s3",
+      "has_photo": true,
       "preview": false,
       "default_example": "display-shapes",
       "published_examples": [
@@ -337,15 +408,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/cardputer-adv --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/chain-captain",
       "name": "Chain Captain",
       "model": "M5Stack Chain Captain",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-16mb",
+      "product_url": "https://shop.m5stack.com/products/chain-captain-dev-kit-esp32-s3",
+      "has_photo": true,
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -359,15 +435,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/chain-captain --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
-      "bootloader": "esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
     },
     {
       "id": "m5stack/chain-dualkey",
       "name": "Chain DualKey",
       "model": "M5Stack Chain DualKey",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/chain-dual-key-with-esp32-s3",
+      "has_photo": true,
       "preview": false,
       "default_example": "key-press",
       "published_examples": [
@@ -381,15 +462,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/chain-dualkey --example key-press"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/core2",
       "name": "Core2",
       "model": "M5Stack Core2",
-      "chip": "esp32",
+      "soc": "esp32",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": "quad",
+      "console": "uart",
+      "bootloader": "esp32-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-core2-esp32-iot-development-kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "scroll-graph",
       "published_examples": [
@@ -412,15 +498,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/core2 --example touch-drag"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
-      "bootloader": "esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
     },
     {
       "id": "m5stack/corematrix",
       "name": "CoreMatrix",
       "model": "M5Stack CoreMatrix",
-      "chip": "esp32c61",
+      "soc": "esp32c61",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32c61-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-core-matrix-dev-kit-esp32-c61",
+      "has_photo": true,
       "preview": false,
       "default_example": "heart",
       "published_examples": [
@@ -434,15 +525,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/corematrix --example heart"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c61-16mb",
-      "bootloader": "esp32c61-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c61-16mb"
     },
     {
       "id": "m5stack/cores3",
       "name": "CoreS3",
       "model": "M5Stack CoreS3",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": "octal",
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-cores3-esp32s3-iotdevelopment-kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -465,15 +561,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/cores3 --example touch-drag"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
-      "bootloader": "esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
     },
     {
       "id": "m5stack/dial",
       "name": "Dial",
       "model": "M5Stack Dial",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-dial-esp32-s3-smart-rotary-knob-w-1-28-round-touch-screen",
+      "has_photo": true,
       "preview": false,
       "default_example": "display-shapes",
       "published_examples": [
@@ -487,15 +588,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/dial --example display-shapes"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/dinmeter",
       "name": "DinMeter",
       "model": "M5Stack DinMeter",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-din-meter-w-m5stamps3",
+      "has_photo": true,
       "preview": false,
       "default_example": "hello-display",
       "published_examples": [
@@ -509,15 +615,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/dinmeter --example hello-display"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/fire-v27",
       "name": "Fire v2.7",
       "model": "M5Stack Fire v2.7",
-      "chip": "esp32",
+      "soc": "esp32",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "uart",
+      "bootloader": "esp32-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-fire-iot-development-kit-psram-v2-7",
+      "has_photo": true,
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -531,15 +642,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/fire-v27 --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
-      "bootloader": "esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
     },
     {
       "id": "m5stack/nesso-n1",
       "name": "Arduino Nesso N1",
       "model": "Arduino Nesso N1",
-      "chip": "esp32c6",
+      "soc": "esp32c6",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32c6-16mb",
+      "product_url": "https://docs.m5stack.com/en/core/Arduino_Nesso_N1",
+      "has_photo": true,
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -553,15 +669,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/nesso-n1 --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb",
-      "bootloader": "esp32c6-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb"
     },
     {
       "id": "m5stack/paper-color",
       "name": "Paper Color",
       "model": "M5Stack Paper Color",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": "octal",
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5paper-color-esp32s3-dev-kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "color-bands",
       "published_examples": [
@@ -575,15 +696,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/paper-color --example color-bands"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
-      "bootloader": "esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
     },
     {
       "id": "m5stack/paper-diy",
       "name": "PaperDIY",
       "model": "M5Stack PaperDIY",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": "octal",
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-16mb",
+      "product_url": "https://shop.m5stack.com/products/paperdiy-assembly-kit-esp32-s3",
+      "has_photo": true,
       "preview": false,
       "default_example": "scroll-text",
       "published_examples": [
@@ -597,15 +723,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/paper-diy --example scroll-text"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
-      "bootloader": "esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
     },
     {
       "id": "m5stack/paper-v11",
       "name": "Paper v1.1",
       "model": "M5Stack Paper v1.1",
-      "chip": "esp32",
+      "soc": "esp32",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": "quad",
+      "console": "uart",
+      "bootloader": "esp32-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5paper-esp32-development-kit-v1-1-960x540-4-7-eink-display-235-ppi",
+      "has_photo": true,
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -619,15 +750,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/paper-v11 --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
-      "bootloader": "esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
     },
     {
       "id": "m5stack/papermono",
       "name": "PaperMono",
       "model": "M5Stack PaperMono",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": "octal",
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5papermono-with-lora-nfc-800x480-3-97-eink-display",
+      "has_photo": true,
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -641,15 +777,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/papermono --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
-      "bootloader": "esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
     },
     {
       "id": "m5stack/papermono-lite",
       "name": "PaperMono-Lite",
       "model": "M5Stack PaperMono-Lite",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": "octal",
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-16mb",
+      "product_url": "https://shop.m5stack.com/products/papermono-lite-dev-kit-800x480-3-97-e-ink-display",
+      "has_photo": true,
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -663,15 +804,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/papermono-lite --example bar-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
-      "bootloader": "esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
     },
     {
       "id": "m5stack/papers3",
       "name": "PaperS3",
       "model": "M5Stack PaperS3",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": "octal",
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5papers3-esp32s3-development-kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -694,15 +840,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/papers3 --example touch-drag"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
-      "bootloader": "esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
     },
     {
       "id": "m5stack/powerhub",
       "name": "PowerHub",
       "model": "M5Stack PowerHub",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-powerhub-iot-development-kit-esp32-s3",
+      "has_photo": true,
       "preview": false,
       "default_example": "blink",
       "published_examples": [
@@ -716,15 +867,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/powerhub --example blink"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
-      "bootloader": "esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
     },
     {
       "id": "m5stack/stackchan",
       "name": "StackChan",
       "model": "M5Stack StackChan",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-16mb",
+      "product_url": "https://shop.m5stack.com/products/stackchan-kawaii-co-created-open-source-ai-desktop-robot",
+      "has_photo": true,
       "preview": false,
       "default_example": "rgb-led",
       "published_examples": [
@@ -738,15 +894,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/stackchan --example rgb-led"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
-      "bootloader": "esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
     },
     {
       "id": "m5stack/stamp-c6lora",
       "name": "Stamp C6LoRa",
       "model": "M5Stack Stamp C6LoRa",
-      "chip": "esp32c6",
+      "soc": "esp32c6",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32c6-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5stamp-c6lora-module-esp32-c6-sx1262",
+      "has_photo": true,
       "preview": false,
       "default_example": "hello-serial",
       "published_examples": [
@@ -760,15 +921,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/stamp-c6lora --example hello-serial"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb",
-      "bootloader": "esp32c6-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb"
     },
     {
       "id": "m5stack/stamp-s3",
       "name": "Stamp-S3",
       "model": "M5Stack Stamp-S3",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/m5stamp-esp32s3-module",
+      "has_photo": true,
       "preview": false,
       "default_example": "color-button",
       "published_examples": [
@@ -782,15 +948,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/stamp-s3 --example color-button"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/stamp-s3bat",
       "name": "Stamp-S3Bat",
       "model": "M5Stack Stamp-S3Bat",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/m5stamps3-bat-module-with-battery-connector",
+      "has_photo": true,
       "preview": false,
       "default_example": "hello-serial",
       "published_examples": [
@@ -804,15 +975,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/stamp-s3bat --example hello-serial"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/stamplc",
       "name": "StamPLC",
       "model": "M5Stack StamPLC",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/m5stamp-plc-controller-with-m5stamps3",
+      "has_photo": true,
       "preview": false,
       "default_example": "display",
       "published_examples": [
@@ -826,15 +1002,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/stamplc --example display"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/station",
       "name": "Station",
       "model": "M5Stack Station",
-      "chip": "esp32",
+      "soc": "esp32",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "uart",
+      "bootloader": "esp32-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-station-esp32-iot-development-kit-battery-version",
+      "has_photo": true,
       "preview": false,
       "default_example": "buttons",
       "published_examples": [
@@ -848,15 +1029,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/station --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
-      "bootloader": "esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
     },
     {
       "id": "m5stack/stickc-plus2",
       "name": "StickC-Plus2",
       "model": "M5Stack StickC-Plus2",
-      "chip": "esp32",
+      "soc": "esp32",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "uart",
+      "bootloader": "esp32-8mb",
+      "product_url": "https://shop.m5stack.com/products/m5stickc-plus2-esp32-mini-iot-development-kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "display-shapes",
       "published_examples": [
@@ -879,15 +1065,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/stickc-plus2 --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-8mb",
-      "bootloader": "esp32-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-8mb"
     },
     {
       "id": "m5stack/sticks3",
       "name": "StickS3",
       "model": "M5Stack StickS3",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/m5sticks3-esp32s3-mini-iot-dev-kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "scroll-graph",
       "published_examples": [
@@ -901,15 +1092,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/sticks3 --example scroll-graph"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/stopwatch",
       "name": "StopWatch",
       "model": "M5Stack Stopwatch",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-stopwatch-dev-kit-esp32-s3",
+      "has_photo": true,
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -932,15 +1128,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/stopwatch --example buttons"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
-      "bootloader": "esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
     },
     {
       "id": "m5stack/tough",
       "name": "Tough",
       "model": "M5Stack Tough",
-      "chip": "esp32",
+      "soc": "esp32",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "uart",
+      "bootloader": "esp32-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-tough-esp32-iot-development-board-kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -963,15 +1164,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/tough --example touch-drag"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
-      "bootloader": "esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
     },
     {
       "id": "m5stack/toughc5",
       "name": "ToughC5",
       "model": "M5Stack ToughC5",
-      "chip": "esp32c5",
+      "soc": "esp32c5",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32c5-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-toughc5-iot-dev-kit-esp32-c5",
+      "has_photo": true,
       "preview": false,
       "default_example": "bar-graph",
       "published_examples": [
@@ -994,15 +1200,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/toughc5 --example touch-drag"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c5-16mb",
-      "bootloader": "esp32c5-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c5-16mb"
     },
     {
       "id": "m5stack/triviapod",
       "name": "TriviaPOD",
       "model": "M5Stack TriviaPOD",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 32,
+      "flash_bus": "quad",
+      "psram": "octal",
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-32mb",
+      "product_url": "https://shop.m5stack.com/products/triviapod",
+      "has_photo": true,
       "preview": false,
       "default_example": "chip-info",
       "published_examples": [
@@ -1016,15 +1227,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/triviapod --example chip-info"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-32mb",
-      "bootloader": "esp32s3-32mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-32mb"
     },
     {
       "id": "m5stack/unit-c6l",
       "name": "Unit C6L",
       "model": "M5Stack Unit C6L",
-      "chip": "esp32c6",
+      "soc": "esp32c6",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32c6-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-c6l-unit-for-meshtastic-sx1262-esp32-c6",
+      "has_photo": true,
       "preview": false,
       "default_example": "game-of-life",
       "published_examples": [
@@ -1038,15 +1254,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/unit-c6l --example game-of-life"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb",
-      "bootloader": "esp32c6-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32c6-16mb"
     },
     {
       "id": "m5stack/unit-cams3-5mp",
       "name": "Unit CamS3-5MP",
       "model": "M5Stack Unit CamS3-5MP",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-16mb",
+      "product_url": "https://shop.m5stack.com/products/unit-cams3-wi-fi-camera-5mp",
+      "has_photo": true,
       "preview": false,
       "default_example": "button",
       "published_examples": [
@@ -1060,15 +1281,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/unit-cams3-5mp --example button"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb",
-      "bootloader": "esp32s3-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-16mb"
     },
     {
       "id": "m5stack/unit-poe-cam-w-v11",
       "name": "Unit PoE CAM-W v1.1",
       "model": "M5Stack Unit PoE CAM-W v1.1",
-      "chip": "esp32",
+      "soc": "esp32",
       "flash_mb": 16,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "uart",
+      "bootloader": "esp32-16mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-poe-camera-with-wi-fi-ov3660",
+      "has_photo": true,
       "preview": false,
       "default_example": "button",
       "published_examples": [
@@ -1082,15 +1308,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/unit-poe-cam-w-v11 --example button"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb",
-      "bootloader": "esp32-16mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32-16mb"
     },
     {
       "id": "m5stack/vameter",
       "name": "VAMeter",
       "model": "M5Stack VAMeter",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://shop.m5stack.com/products/m5stack-voltage-and-amperage-meter-with-m5stamps3",
+      "has_photo": true,
       "preview": false,
       "default_example": "bus-voltage",
       "published_examples": [
@@ -1104,15 +1335,20 @@
           "build_command": "python3 scripts/build-example.py m5stack/vameter --example bus-voltage"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     },
     {
       "id": "m5stack/xiaozhi-card",
       "name": "Xiaozhi Card",
       "model": "M5Stack Xiaozhi Card",
-      "chip": "esp32s3",
+      "soc": "esp32s3",
       "flash_mb": 8,
+      "flash_bus": "quad",
+      "psram": null,
+      "console": "usb-serial-jtag",
+      "bootloader": "esp32s3-8mb",
+      "product_url": "https://docs.m5stack.com/en/core/Xiaozhi_Card_Kit",
+      "has_photo": true,
       "preview": false,
       "default_example": "back-button",
       "published_examples": [
@@ -1126,8 +1362,7 @@
           "build_command": "python3 scripts/build-example.py m5stack/xiaozhi-card --example back-button"
         }
       ],
-      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb",
-      "bootloader": "esp32s3-8mb"
+      "bootloader_source_url": "https://github.com/okou-ai/esphub-firmware/tree/ba0288a4943c487060559d1b7f476994c75e78e3/firmware/bootloader/esp32s3-8mb"
     }
   ]
 }
