@@ -14,11 +14,19 @@ EspHub provisions ESP32 devices over USB and manages them through the web and MC
 
 Use `boards_search` to find a board and its examples. Each entry includes a capability description, the upstream reference, a revision-pinned source URL, an entrypoint and a build command.
 
-`devices_create` registers the chosen board and returns a pinned USB setup manifest and its `setup_example`. The kit contains the EspHub Bootloader, the partition table and the board’s default application. Its manifest records the SHA-256 of both the kit and the application. Verify the kit hash before flashing. Installation erases the board.
+A first install writes three parts:
 
-Connect the board over USB and call `devices_create`. Besides the setup manifest, the response contains a private `nvs` download: an ESP-IDF NVS image with the Hub hostname, the device token, the BLE key and, when supplied through the setup API, Wi-Fi credentials. Download it from `nvs.url` with `nvs.headers` before `nvs.expires_at` (15 minutes), verify `nvs.sha256`, and flash it at `nvs.offset` together with the kit, as the kit's INSTALL.txt shows: `esptool.py --chip <chip> --port PORT write_flash --erase-all @flash_args <nvs.offset> nvs.bin`. The board then starts in the EspHub Bootloader and connects. `POST /setup/<device>/reissue` rotates the device credentials and returns a fresh image.
+- **Bootloader set.** Boards with the same bootloader ID (for example `esp32s3-16mb`) share one set: the ESP-IDF second-stage `bootloader.bin`, `partition-table.bin` and the EspHub Launcher. The publisher records each version in `esphub.bootloaders`, and `GET /bootloaders/<id>/<version>/<bootloader|partition-table|launcher>` serves the files with immutable caching.
+- **App.** The board's default example, built as one `app.bin` and served from `GET /releases/<board>/app`.
+- **Private NVS image.** The Hub generates it per device with the Hub hostname, the device token, the BLE key and the Wi-Fi network. It is downloadable for 15 minutes with its bearer header.
 
-To add Wi-Fi over Bluetooth, keep the board in the bootloader and pass `wifi_ble_credential` to `tools/ble-wifi/macos.py` on a Mac. Then call `bootloader_exit`, type `app` on USB, or power-cycle the board to start the application. Confirm that `devices_get` reports an online app and the version in the manifest. Check the behavior described in `setup_example.description`.
+Ask the user for the Wi-Fi SSID and password, connect the board over USB and call `devices_create` with `wifi`. The response's `flash` object lists every file with its offset, URL and sha256 (the NVS entry also carries its headers and `expires_at`), and the matching esptool command. Install esptool with `pip install esptool`, download and verify the files, then run the command, for example:
+
+```sh
+esptool.py --chip esp32s3 --port PORT write_flash --erase-all --flash_mode dio --flash_size 16MB --flash_freq 80m 0x0 bootloader.bin 0x8000 partition-table.bin 0x9000 nvs.bin 0x20000 launcher.bin 0x2a0000 app.bin
+```
+
+The board starts in the EspHub Bootloader and connects. Call `bootloader_exit`, type `app` on USB, or power-cycle the board to start the application. Confirm that `devices_get` reports an online app and `flash.app_version`, and check the behavior described in `setup_example.description`. `POST /setup` does the same for the web console, and `POST /setup/<device>/reissue` rotates the device credentials and returns a fresh plan.
 
 From the signed-in EspHub workspace, select **Bind my ESP32** and paste the prompt into your coding agent. The agent can guide board registration, USB setup and Wi-Fi, then confirm the device is online. Use **Manage devices** to open the management prompt.
 
@@ -32,7 +40,7 @@ EH-WIFI {"op":"wifi.status"}
 
 For an open network, use an empty password. A join is saved after the device gets an IP address. For direct USB console access, `wifi add <ssid> [password] [hidden]` saves a network immediately. Use the JSON commands for credentials containing spaces. BLE also supports offline setup. On an online device, use `wifi_add` with an SSID and optional password to save a network remotely. Read `commands_get` for the result.
 
-The first-time kit and an explicit bootloader entry set a one-shot hold flag. The bootloader consumes it and stays available for that boot. On the next power cycle it starts a valid app, or stays available if the app is missing or invalid. A Hub hello only reports the session.
+The first-install NVS image and an explicit bootloader entry set a one-shot hold flag. The bootloader consumes it and stays available for that boot. On the next power cycle it starts a valid app, or stays available if the app is missing or invalid. A Hub hello only reports the session.
 
 On ordinary boots, applications use the saved Wi-Fi networks and can initialize their own Bluetooth stack immediately. The bootloader advertises the EspHub provisioning service whenever it is running with a BLE bootstrap key, including when Wi-Fi is already configured. For offline recovery, expose an application menu item or startup key that calls `eh_enter_bootloader()` from the SDK.
 
@@ -56,7 +64,7 @@ The EspHub Bootloader checks TLS, the image header and chip, and checks its own 
 
 ### Build your own update
 
-Use `setup_example` for the exact sources of a newly installed kit. For another example use `boards_search` or `devices_get`, pick an entry by description, check out the revision in its `source_url` and edit its `entrypoint`. Run its `build_command` from the firmware repository root. The [build guide](https://github.com/esphub-ai/esphub-firmware/blob/main/docs/build-examples.md) describes the toolchain. Use kind `app` for the resulting image.
+Use `setup_example` for the sources of a newly installed app. For another example use `boards_search` or `devices_get`, pick an entry by description, check out the revision in its `source_url` and edit its `entrypoint`. Run its `build_command` from the firmware repository root. The [build guide](https://github.com/esphub-ai/esphub-firmware/blob/main/docs/build-examples.md) describes the toolchain. Use kind `app` for the resulting image.
 
 ### Upload a local file
 

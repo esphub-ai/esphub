@@ -41,6 +41,17 @@ function issueSession(sub = subject) {
 }
 const sessionJwt = await issueSession();
 const otherSessionJwt = await issueSession(otherSubject);
+const nvsOf = (setup) => setup.flash.files.find((file) => file.name === "nvs.bin");
+// The public files of a first install download through the Hub and match their sha256.
+async function checkFlashFiles(setup) {
+  for (const file of setup.flash.files.filter((item) => item.name !== "nvs.bin")) {
+    const url = new URL(file.url);
+    const res = await fetch(base + "/backend" + url.pathname + url.search);
+    assert.equal(res.status, 200, file.name);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), file.sha256, file.name);
+  }
+}
 async function downloadNvs(nvs) {
   const url = base + "/backend" + new URL(nvs.url).pathname;
   assert.equal((await fetch(url)).status, 403);
@@ -287,10 +298,16 @@ try {
       name: "Simulator",
     }),
     id = { device_id: d.id };
-  assert.match(d.prompt, /hidden SSID/);
+  assert.match(d.prompt, /pip install esptool/);
+  assert.match(d.prompt, /has no Wi-Fi network/);
+  assert.ok(d.prompt.includes(d.flash.command));
+  assert.match(d.flash.command, /^esptool\.py --chip esp32s3 --port PORT write_flash --erase-all /);
+  assert.deepEqual(d.flash.files.map(({ name }) => name),
+    ["bootloader.bin", "partition-table.bin", "nvs.bin", "launcher.bin", "app.bin"]);
+  await checkFlashFiles(d);
   assert.equal("token" in d, false);
   assert.equal("ble_secret" in d, false);
-  const dNvs = await downloadNvs(d.nvs);
+  const dNvs = await downloadNvs(nvsOf(d));
   const deviceToken = dNvs.eh.tok;
   const deviceBleSecret = dNvs.eh.ble_key;
   assert.match(deviceToken, /^eh_dev_/);
@@ -305,10 +322,6 @@ try {
       .update("esphub/wifi/tls-psk").digest("hex"),
   });
   assert.equal(d.setup_example.id, "color-bands");
-  const manifestUrl = new URL(d.setup_manifest);
-  assert.ok(manifestUrl.searchParams.has("tag"));
-  const manifest = await (await fetch(base + "/backend" + manifestUrl.pathname + manifestUrl.search)).json();
-  assert.deepEqual(d.setup_example, manifest.example);
   assert.ok(d.setup_example.build_command.includes(d.board));
   assert.deepEqual(Object.keys(d.sources).sort(), ["bootloader", "sdk"]);
   const offline = await op("devices_get", id, read);
@@ -331,7 +344,7 @@ try {
   const watch = await setupRes.json();
   assert.equal("token" in watch, false);
   assert.equal("ble_secret" in watch, false);
-  const watchNvs = await downloadNvs(watch.nvs);
+  const watchNvs = await downloadNvs(nvsOf(watch));
   const watchToken = watchNvs.eh.tok;
   assert.match(watchToken, /^eh_dev_/);
   assert.match(watchNvs.eh.ble_key, /^[0-9a-f]{64}$/);
@@ -340,7 +353,18 @@ try {
   ]);
   assert.equal(watch.setup_example.id, "bar-graph");
   assert.ok(watch.examples.some(e => e.id === "buttons"));
-  assert.match(watch.prompt, /Bootloader mode for the BLE connection/);
+  assert.match(watch.prompt, /already contains the Wi-Fi network/);
+  assert.doesNotMatch(watch.prompt, /lab-password/);
+  const mcpWifi = await op("devices_create", {
+    board: "m5stack/stopwatch",
+    name: "Watch over MCP",
+    wifi: { ssid: "McpNet", password: "mcp-password" },
+  });
+  assert.deepEqual(JSON.parse((await downloadNvs(nvsOf(mcpWifi))).eh.wifis), [
+    { s: "McpNet", p: "mcp-password" },
+  ]);
+  assert.match(mcpWifi.prompt, /already contains the Wi-Fi network/);
+  await op("devices_delete", { device_id: mcpWifi.id });
   const local = (url) => base + "/backend" + new URL(url).pathname;
   const localFiles = {};
   const imageSizes = { app: 4 * 1024 * 1024 + 1, bootloader: 200000 };
@@ -700,10 +724,10 @@ try {
   assert.equal("token" in reissued, false);
   assert.equal("ble_secret" in reissued, false);
   assert.equal(
-    (await fetch(base + "/backend" + new URL(d.nvs.url).pathname, { headers: d.nvs.headers })).status,
+    (await fetch(base + "/backend" + new URL(nvsOf(d).url).pathname, { headers: nvsOf(d).headers })).status,
     403,
   );
-  const reissuedNvs = await downloadNvs(reissued.nvs);
+  const reissuedNvs = await downloadNvs(nvsOf(reissued));
   assert.notEqual(reissuedNvs.eh.tok, deviceToken);
   assert.notEqual(reissuedNvs.eh.ble_key, deviceBleSecret);
   assert.deepEqual(JSON.parse(reissuedNvs.eh.wifis), [

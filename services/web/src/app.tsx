@@ -37,7 +37,7 @@ const prompts = {
   bind: `Connect to EspHub MCP at ${mcpEndpoint}. Use CIMD OAuth with devices:read and devices:write as needed.
 
 1. Ask me to connect my ESP32 over USB. Identify the manufacturer and model. Search the board ID with boards_search and pick the exact group/project ID and ask me to confirm it if it is unclear.
-2. Register the device with devices_create and follow the returned board-specific instructions for the firmware kit, private NVS image, and Wi-Fi. Ask before erasing existing data. Keep the NVS download credential and image private.
+2. Ask me for the Wi-Fi SSID and password, register the device with devices_create including wifi, and follow the returned esptool instructions for the bootloader, app and private NVS image. Ask before erasing existing data. Keep the NVS download credential and image private.
 3. Use devices_get to check the registered device. Report it as online only when online is true. If setup stalls, tell me which step needs attention.`,
 };
 

@@ -2,60 +2,19 @@
 import { digest, fail, token } from "./auth.js";
 import { newBleSecret } from "./ble.js";
 import { boardIdPattern } from "./boards.js";
-import {
-  buildDeviceNvs,
-  defaultNvsOffset,
-  defaultNvsSize,
-  PAGE_SIZE,
-  parseWifi,
-} from "./nvs.js";
+import { esptoolCommand, firmwareSummary, flashPlan } from "./firmware.js";
+import { buildDeviceNvs, parseWifi } from "./nvs.js";
 import { provisioning } from "./provisioning.js";
-import { releaseResponse } from "./releases.js";
 import { updateSources } from "./update-sources.js";
 import { uuidPattern } from "./ids.js";
 
 const uuid = new RegExp(uuidPattern.source, "i");
 
-function parseNvsPartition(manifest) {
-  const rawOffset = manifest.nvs?.offset ?? manifest.nvs_offset;
-  const rawSize = manifest.nvs?.size ?? manifest.nvs_size;
-  const offset =
-    rawOffset === undefined ? defaultNvsOffset : Number(rawOffset);
-  const size = rawSize === undefined ? defaultNvsSize : Number(rawSize);
-  if (
-    !Number.isSafeInteger(offset) ||
-    offset < 0 ||
-    offset % PAGE_SIZE !== 0 ||
-    !Number.isSafeInteger(size) ||
-    size < 3 * PAGE_SIZE ||
-    size % PAGE_SIZE !== 0
-  )
-    fail(503, "Board setup NVS partition layout invalid");
-  return { offset, size };
-}
-
-async function resolveSetupManifest(db, env, board) {
-  const [profile] = await db`SELECT b.*, r.tag AS setup_tag FROM esphub.board_profiles b
-    LEFT JOIN esphub.firmware_releases r ON r.board = b.id AND r.kind = 'setup'
-    WHERE b.id = ${board} AND b.is_current`;
+async function setupPlan(db, env, board) {
+  const [profile] =
+    await db`SELECT * FROM esphub.board_profiles WHERE id = ${board} AND is_current`;
   if (!profile) fail(400, "Unknown board");
-  if (!profile.setup_tag) fail(404, "No published setup kit for this board");
-  const tag = profile.setup_tag;
-  const response = await releaseResponse(
-    board,
-    "setup-manifest",
-    tag,
-    db,
-    env.FIRMWARE,
-  );
-  const manifest = await response.json();
-  if (
-    manifest.board !== board ||
-    manifest.tag !== tag ||
-    !manifest.example?.source_url
-  )
-    fail(503, "Board setup example unavailable");
-  return { profile, tag, manifest, nvsPartition: parseNvsPartition(manifest) };
+  return { profile, plan: await flashPlan(db, env.FIRMWARE, profile) };
 }
 
 async function stageNvs(c, deviceId, offset, bytes) {
@@ -84,6 +43,49 @@ async function revokeDevice(c, deviceId) {
   return json;
 }
 
+// Stage the device's private NVS image and describe every file of the first install.
+async function setupResponse(c, device, profile, plan, { secret, bleSecret, wifi }) {
+  const { bootloader, app } = plan;
+  const nvsBytes = buildDeviceNvs({
+    hub: "api.esphub.ai",
+    token: secret,
+    bleSecret,
+    wifi,
+    size: bootloader.nvs_size,
+  });
+  const nvs = await stageNvs(c, device.id, bootloader.nvs_offset, nvsBytes);
+  const files = [
+    ...plan.files,
+    {
+      name: "nvs.bin",
+      offset: nvs.offset,
+      url: nvs.url,
+      headers: nvs.headers,
+      sha256: nvs.sha256,
+      size: nvs.size,
+      expires_at: nvs.expires_at,
+    },
+  ].sort((a, b) => Number(a.offset) - Number(b.offset));
+  const flash = {
+    chip: bootloader.chip,
+    flash_mode: bootloader.flash_mode,
+    flash_size: bootloader.flash_size,
+    flash_freq: bootloader.flash_freq,
+    bootloader: { id: bootloader.id, version: bootloader.version },
+    app_version: app.version,
+    files,
+    command: esptoolCommand(bootloader, files),
+  };
+  const example = profile.published_examples.find(
+    (item) => item.id === profile.default_example,
+  );
+  return {
+    flash,
+    ...provisioning(profile, flash, example, wifi),
+    ...updateSources(profile, firmwareSummary(profile.id, app, bootloader)),
+  };
+}
+
 export async function createDeviceSetup(c, owner, input) {
   if (!input || typeof input !== "object" || Array.isArray(input))
     fail(400, "Expected a setup request object");
@@ -101,31 +103,17 @@ export async function createDeviceSetup(c, owner, input) {
   const wifi = parseWifi(input.wifi);
 
   const db = c.sql;
-  const { profile, tag, manifest, nvsPartition } = await resolveSetupManifest(
-    db,
-    c.env,
-    input.board,
-  );
+  const { profile, plan } = await setupPlan(db, c.env, input.board);
   const secret = token("eh_dev_");
   const bleSecret = newBleSecret();
   const [device] =
     await db`INSERT INTO esphub.devices(owner, name, board, token_hash, ble_secret)
       VALUES (${owner}, ${input.name.trim()}, ${input.board}, ${await digest(secret)}, ${bleSecret})
       RETURNING id, name, board, kind`;
-  const nvsBytes = buildDeviceNvs({
-    hub: "api.esphub.ai",
-    token: secret,
-    bleSecret,
-    wifi,
-    size: nvsPartition.size,
-  });
-  const nvs = await stageNvs(c, device.id, nvsPartition.offset, nvsBytes);
   return {
     ...device,
     hub: "api.esphub.ai",
-    nvs,
-    ...provisioning(profile, tag, manifest.example),
-    ...updateSources(profile),
+    ...(await setupResponse(c, device, profile, plan, { secret, bleSecret, wifi })),
   };
 }
 
@@ -145,11 +133,7 @@ export async function reissueDeviceSetup(c, owner, deviceId, input = {}) {
   if (device.kind !== "physical")
     fail(409, "Physical device required");
 
-  const { profile, tag, manifest, nvsPartition } = await resolveSetupManifest(
-    db,
-    c.env,
-    device.board,
-  );
+  const { profile, plan } = await setupPlan(db, c.env, device.board);
   const secret = token("eh_dev_");
   const bleSecret = newBleSecret();
   await db`UPDATE esphub.devices SET token_hash=${await digest(secret)},
@@ -157,19 +141,9 @@ export async function reissueDeviceSetup(c, owner, deviceId, input = {}) {
     mqtt_connected_since=NULL, boot_id=NULL, boot_info=NULL,
     ble_secret=${bleSecret} WHERE owner=${owner} AND id=${device.id}`;
   await revokeDevice(c, device.id);
-  const nvsBytes = buildDeviceNvs({
-    hub: "api.esphub.ai",
-    token: secret,
-    bleSecret,
-    wifi,
-    size: nvsPartition.size,
-  });
-  const nvs = await stageNvs(c, device.id, nvsPartition.offset, nvsBytes);
   return {
     ...device,
     hub: "api.esphub.ai",
-    nvs,
-    ...provisioning(profile, tag, manifest.example),
-    ...updateSources(profile),
+    ...(await setupResponse(c, device, profile, plan, { secret, bleSecret, wifi })),
   };
 }

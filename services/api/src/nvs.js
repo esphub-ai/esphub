@@ -3,7 +3,6 @@
 import { fail } from "./auth.js";
 
 export const PAGE_SIZE = 4096;
-export const defaultNvsOffset = 0x9000;
 export const defaultNvsSize = 0x6000;
 const ENTRY_SIZE = 32;
 const ENTRIES_PER_PAGE = 126;

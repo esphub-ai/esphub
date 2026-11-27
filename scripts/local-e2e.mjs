@@ -1,6 +1,3 @@
-import postgres from "postgres";
-import { getPlatformProxy } from "wrangler";
-import { recordRelease, setupRelease } from "../tests/fixtures/setup-release.mjs";
 import { generateKeyPair, exportSPKI, exportPKCS8 } from "jose";
 import { readFile, writeFile, rm } from "node:fs/promises";
 import { spawn, execFile } from "node:child_process";
@@ -10,22 +7,6 @@ import { startBroker } from "../tests/fixtures/iot/broker.mjs";
 const db = process.env.TEST_DATABASE_URL;
 if (!db || !["localhost", "127.0.0.1"].includes(new URL(db).hostname))
   throw Error("Require an isolated local PostgreSQL test database");
-// Publish fixture manifests into the same local R2 and PostgreSQL used by the Workers.
-const platform = await getPlatformProxy({ configPath: "services/api/wrangler.jsonc",
-  remoteBindings: false, persist: { path: ".wrangler/state/v3" } });
-const sql = postgres(db, { max: 1 });
-try {
-  for (const id of ["m5stack/paper-color", "m5stack/stopwatch", "m5stack/core2"]) {
-    const [profile] = await sql`SELECT * FROM esphub.board_profiles WHERE id = ${id}`;
-    const release = setupRelease(id, profile);
-    for (const [key, body] of release.files)
-      await platform.env.FIRMWARE.put(key, body, { httpMetadata: { contentType: "application/json" } });
-    await recordRelease(sql, release);
-  }
-} finally {
-  await platform.dispose();
-  await sql.end();
-}
 const port = Number(process.env.TEST_PORT || 18787),
   base = "http://localhost:" + port;
 const configs = [];

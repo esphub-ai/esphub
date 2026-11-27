@@ -13,3 +13,6 @@ export function releaseUrl(board, asset, tag) {
   const url = `${apiOrigin}/releases/${board}/${asset}`;
   return tag ? url + "?tag=" + encodeURIComponent(tag) : url;
 }
+export function bootloaderUrl(id, version, file) {
+  return `${apiOrigin}/bootloaders/${id}/${version}/${file}`;
+}

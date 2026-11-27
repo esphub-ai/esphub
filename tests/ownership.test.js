@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import postgres from "postgres";
-import { recordRelease, setupRelease, jsonBucket } from "./fixtures/setup-release.mjs";
+import { appRelease, bootloaderSet, fixtureBucket, recordFirmware } from "./fixtures/firmware.mjs";
 import { operate } from "../services/api/src/operations.js";
 import { reissueDeviceSetup } from "../services/api/src/setup.js";
 import { parseNvs } from "../services/api/src/nvs.js";
@@ -19,14 +19,14 @@ test(
           await tx`INSERT INTO esphub.accounts(clerk_subject) SELECT 'user_' || md5(random()::text) FROM generate_series(1, 2) RETURNING id`;
         const board = "m5stack/cardputer-adv";
         const [profile] = await tx`SELECT * FROM esphub.board_profiles WHERE id = ${board}`;
-        const release = setupRelease(board, profile);
-        await recordRelease(tx, release);
-        const { files } = release;
+        const set = bootloaderSet(profile.bootloader), app = appRelease(board);
+        for (const firmware of [set, app]) await recordFirmware(tx, firmware);
+        const files = new Map([...set.files, ...app.files]);
         let lastStaged = null;
         const c = {
           sql: tx,
           env: {
-            FIRMWARE: jsonBucket(files),
+            FIRMWARE: fixtureBucket(files),
             DEVICE: {
               idFromName: (id) => id,
               get: () => ({
