@@ -7,13 +7,14 @@ import { connectedSince } from "./iot.js";
 import { Uploads } from "./uploads.js";
 import { Stream } from "./streams.js";
 import { softwareInventory } from "./software.js";
+import { uuidPattern } from "./ids.js";
 export class Device extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.uploads = new Uploads(ctx, env.UART);
     this.db = ctx.storage.sql;
     this.db.exec(
-      "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,started TEXT,info TEXT); CREATE INDEX IF NOT EXISTS boots_software_ble ON boots(json_extract(info,'$.role'), json_extract(info,'$.ble_address')); CREATE TABLE IF NOT EXISTS current_device(id TEXT, pid TEXT); CREATE TABLE IF NOT EXISTS uplink_events(mid INTEGER PRIMARY KEY)",
+      "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,info TEXT); CREATE INDEX IF NOT EXISTS boots_software_ble ON boots(json_extract(info,'$.role'), json_extract(info,'$.ble_address')); CREATE TABLE IF NOT EXISTS current_device(pid TEXT); CREATE TABLE IF NOT EXISTS uplink_events(mid INTEGER PRIMARY KEY)",
     );
   }
   software(info) {
@@ -78,7 +79,6 @@ export class Device extends DurableObject {
       const info = row ? JSON.parse(row.info) : null;
       return Response.json({
         process_id: boot || null,
-        info,
         software: this.software(info),
       });
     }
@@ -140,7 +140,7 @@ export class Device extends DurableObject {
     const pid = m.boot_id;
     return withDatabase(this.env, async (db) => {
       const [d] =
-        await db`SELECT board,boot_id,boot_info FROM esphub.devices WHERE id=${device}
+        await db`SELECT boot_id,boot_info FROM esphub.devices WHERE id=${device}
         AND cert_ready AND cert_id=${principal}`;
       if (!d)
         return Response.json({ error: "Stale enrollment" }, { status: 409 });
@@ -164,7 +164,6 @@ export class Device extends DurableObject {
           );
         const bleAddress = normalizeBleAddress(m.ble_address);
         const info = JSON.stringify({
-          board: d.board,
           role: m.role,
           ble_address: bleAddress,
           net_mac: m.net_mac,
@@ -183,15 +182,10 @@ export class Device extends DurableObject {
         if (this.current()?.pid !== pid)
           this.db.exec("DELETE FROM uplink_events");
         this.db.exec("DELETE FROM current_device");
+        this.db.exec("INSERT INTO current_device(pid) VALUES(?)", pid);
         this.db.exec(
-          "INSERT INTO current_device(id,pid) VALUES(?,?)",
-          device,
+          "INSERT INTO boots(pid,info) VALUES(?,?) ON CONFLICT(pid) DO UPDATE SET info=excluded.info",
           pid,
-        );
-        this.db.exec(
-          "INSERT INTO boots(pid,started,info) VALUES(?,?,?) ON CONFLICT(pid) DO UPDATE SET info=excluded.info",
-          pid,
-          new Date().toISOString(),
           info,
         );
         await dispatch(db, this.env, device, pid, true);
@@ -209,7 +203,7 @@ export class Device extends DurableObject {
       if (m.t === "res") {
         if (
           typeof m.ok !== "boolean" ||
-          !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(m.id)
+          !uuidPattern.test(m.id)
         )
           return Response.json({ error: "Invalid receipt" }, { status: 400 });
         try {
@@ -234,7 +228,7 @@ export class Device extends DurableObject {
           new TextEncoder().encode(JSON.stringify(m.payload)).length > 1024 ||
           (Object.hasOwn(m, "reply_to") &&
             (typeof m.reply_to !== "string" ||
-              !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(
+              !uuidPattern.test(
                 m.reply_to,
               ))) ||
           m.confirm === true
@@ -272,7 +266,7 @@ export class Device extends DurableObject {
       if (m.name === "ota.layout") await saveLayout(m.data);
       if (
         ["install.done", "install.failed"].includes(m.name) &&
-        /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(
+        uuidPattern.test(
           m.data?.transfer_id,
         )
       ) {

@@ -10,6 +10,7 @@ import { provisioning } from "./provisioning.js";
 import { releaseFile, releaseResponse } from "./releases.js";
 import { digest, fail, token } from "./auth.js";
 import { createVirtual, operateVirtual } from "./virtual-device.js";
+import { uuidPattern } from "./ids.js";
 const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
 const id = strings("device_id");
@@ -222,7 +223,8 @@ function queueable(name) {
     ].includes(name)
   );
 }
-const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+// Accept either case from callers; Postgres compares UUIDs case-insensitively.
+const uuid = new RegExp(uuidPattern.source, "i");
 export function validate(name, a) {
   const t = tools.find((t) => t.name === name);
   if (!t) fail(404, "Unknown tool");
@@ -290,7 +292,7 @@ export function validate(name, a) {
   }
 }
 const stub = (c, id) => c.env.DEVICE.get(c.env.DEVICE.idFromName(id));
-export async function internal(c, id, path, args) {
+async function internal(c, id, path, args) {
   const r = await stub(c, id).fetch(
     "https://device/" + path,
     args ? { method: "POST", body: JSON.stringify(args) } : {},

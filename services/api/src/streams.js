@@ -7,19 +7,7 @@ export class Stream {
     this.prefix = prefix;
   }
   async head() {
-    return (
-      (await (await this.bucket.get(this.prefix))?.json()) || {
-        last: 0,
-        source: 0,
-      }
-    );
-  }
-  async init() {
-    if (!(await this.bucket.head(this.prefix)))
-      await this.bucket.put(
-        this.prefix,
-        JSON.stringify({ last: 0, source: 0 }),
-      );
+    return (await (await this.bucket.get(this.prefix))?.json()) || { last: 0 };
   }
   key(index) {
     return this.prefix + ".parts/" + String(index).padStart(10, "0");

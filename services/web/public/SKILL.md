@@ -10,7 +10,7 @@ Use EspHub to inspect and manage the user's ESP32 devices. Start with the action
 ## Connect
 
 1. Check whether the client already has an EspHub MCP connection. Reuse it if it points to `https://api.esphub.ai/mcp` and is authenticated.
-2. Add `https://api.esphub.ai/mcp` as a remote MCP server using Streamable HTTP. If migrating an existing connection, remove any static Authorization header or bearer-token setting so the client can start OAuth.
+2. Add `https://api.esphub.ai/mcp` as a remote MCP server using Streamable HTTP.
 3. Start the client's sign-in flow. Have the user sign in and approve access in the browser.
 4. Discover the server's tool schemas and call `devices_list`. Show the device name, board identifier, and online status. Ask which device or task the user wants to work on if they have not already specified it.
 

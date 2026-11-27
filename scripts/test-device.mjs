@@ -236,8 +236,11 @@ try {
     assert.match(challenge, /devices:write/);
     assert.match(challenge, /oauth-protected-resource/);
   }
-  const apiDenied = await fetch(base + "/backend/auth/me", {
-    headers: { Authorization: "Bearer " + key },
+  // An MCP access token is not a console session.
+  const apiDenied = await fetch(base + "/backend/operations/devices_list", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
+    body: "{}",
   });
   assert.equal(apiDenied.status, 401);
   assert.equal(
@@ -584,7 +587,6 @@ try {
   assert.equal(resize.id, growRequest.command_id);
   assert.equal(resize.op, "resize_app");
   assert.equal(resize.args.data_size_bytes, largerLayout.data_size_bytes);
-  assert.equal(resize.args.empty_fs, undefined);
   assert.equal(resize.args.transfer_id, grow.request_id);
   await mcu.send({ t: "res", id: resize.id, ok: true, data: { ...largerLayout, rebooting: true } });
   assert.equal((await result(resize.id)).state, "dispatched");

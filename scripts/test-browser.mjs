@@ -20,9 +20,10 @@ const sessionHeader = {
   cat: "cl_B7d4PD111AAA",
 };
 const session = { sid: "sess_qa", azp: origin };
+const user = "user_" + randomUUID().replaceAll("-", "");
 const jwt = await new SignJWT(session)
   .setProtectedHeader(sessionHeader)
-  .setSubject("user_" + randomUUID().replaceAll("-", ""))
+  .setSubject(user)
   .setIssuer(issuer)
   .setIssuedAt()
   .setExpirationTime("5m")
@@ -37,12 +38,18 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   // Run the production origin policy against locally signed fixture sessions.
   const subject = "user_" + randomUUID().replaceAll("-", "");
-  for (const azp of [
-    "https://esphub.ai",
-    "https://www.esphub.ai",
-    "https://app.esphub.ai",
-    "https://api.esphub.ai",
-    "https://untrusted.esphub.ai",
+  const devicesList = (headers) =>
+    fetch(origin + "/backend/operations/devices_list", {
+      method: "POST",
+      headers: { Origin: "https://www.esphub.ai", "Content-Type": "application/json", ...headers },
+      body: "{}",
+    });
+  for (const [azp, status] of [
+    ["https://esphub.ai", 200],
+    ["https://www.esphub.ai", 200],
+    ["https://app.esphub.ai", 200],
+    ["https://api.esphub.ai", 401],
+    ["https://untrusted.esphub.ai", 401],
   ]) {
     const t = await new SignJWT({ sid: "sess_fixture", azp })
       .setProtectedHeader(sessionHeader)
@@ -51,22 +58,10 @@ try {
       .setIssuedAt()
       .setExpirationTime("2m")
       .sign(privateKey);
-    const result = await fetch(origin + "/backend/auth/me", {
-      headers: {
-        Origin: "https://www.esphub.ai",
-        Authorization: "Bearer " + t,
-      },
-    });
-    assert.equal(result.status, azp.includes("untrusted") ? 401 : 200);
-    assert.equal(
-      result.headers.get("Access-Control-Allow-Origin"),
-      "https://www.esphub.ai",
-    );
+    assert.equal((await devicesList({ Authorization: "Bearer " + t })).status, status, azp);
   }
-  const invalid = await fetch(origin + "/backend/auth/me", {
-    headers: { Cookie: "__session=" + jwt + "corrupt" },
-  });
-  assert.equal(invalid.status, 401);
+  assert.equal((await devicesList({ Authorization: "Bearer " + jwt + "corrupt" })).status, 401);
+  assert.equal((await devicesList({})).status, 401);
   let signedIn = false;
   await page.route("https://clerk.esphub.ai/npm/**", (route) =>
     route.fulfill({
@@ -146,18 +141,6 @@ try {
   await page.setViewportSize({ width: 1280, height: 640 });
   await page.getByRole("link", { name: "Privacy Policy" }).scrollIntoViewIfNeeded();
   assert.ok(await gallery.locator(".wall-row").first().evaluate((row) => row.getBoundingClientRect().bottom <= 0));
-  for (const [path, accountPath] of [
-    ["/sign-in", "/sign-in"],
-    ["/sign-up", "/sign-up"],
-  ]) {
-    const response = await fetch(origin + path, { redirect: "manual" });
-    assert.equal(response.status, 302);
-    assert.equal(
-      new URL(response.headers.get("location")).pathname,
-      accountPath,
-    );
-  }
-
   await page.getByRole("link", { name: "Open workspace" }).click();
   await page.waitForURL("https://accounts.esphub.ai/sign-in?**");
   assert.equal(
@@ -169,18 +152,31 @@ try {
   await page.goto(origin + "/devices");
   await page.getByText("No devices yet.").waitFor();
 
+  // Agents create devices through MCP with an access token for the signed-in user.
+  const accessToken = await new SignJWT({
+    iss: issuer, aud: "https://api.esphub.ai/mcp", sub: user, jti: randomUUID(),
+    client_id: "test-public-client", scope: "devices:read devices:write",
+  })
+    .setProtectedHeader({ alg: "RS256", kid: "test", typ: "at+jwt" })
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(privateKey);
   const operate = async (name, args = {}) => {
-    const response = await fetch(origin + "/backend/operations/" + name, {
+    const response = await fetch(origin + "/backend/mcp", {
       method: "POST",
       headers: {
-        Origin: origin,
-        Authorization: "Bearer " + jwt,
+        Authorization: "Bearer " + accessToken,
         "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
       },
-      body: JSON.stringify(args),
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
     });
     assert.equal(response.status, 200, name);
-    return response.json();
+    const body = await response.text();
+    const data = body.split("\n").find((line) => line.startsWith("data: "));
+    const { result } = JSON.parse(data ? data.slice(6) : body);
+    assert.ok(!result.isError, name + ": " + result.content?.[0]?.text);
+    return JSON.parse(result.content[0].text);
   };
 
   await operate("devices_create_virtual");

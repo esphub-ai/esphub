@@ -1,5 +1,4 @@
 import { createClerkClient } from "@clerk/backend";
-import { getCookie } from "hono/cookie";
 import { browserOrigins, issuer } from "../../../shared/identity.js";
 import { HTTPException } from "hono/http-exception";
 export function fail(status, message) {
@@ -24,16 +23,12 @@ export function allowedOrigin(c, origin) {
   );
 }
 export async function identify(c) {
-  const header = c.req.header("Authorization");
-  const raw = header
-    ? header.match(/^Bearer (\S+)$/i)?.[1]
-    : getCookie(c, "__session");
+  const raw = c.req.header("Authorization")?.match(/^Bearer (\S+)$/i)?.[1];
   if (!raw) fail(401, "Sign in required");
   const clerk = createClerkClient({
     secretKey: c.env.CLERK_SECRET_KEY,
     publishableKey: c.env.CLERK_PUBLISHABLE_KEY,
   });
-  // Feed both existing credential carriers through Clerk's session-token verifier.
   const state = await clerk.authenticateRequest(
     new Request(c.req.url, { headers: { Authorization: `Bearer ${raw}` } }),
     {

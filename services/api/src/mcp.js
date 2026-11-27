@@ -23,15 +23,13 @@ const options = {
 };
 export const authenticateMcp = mcpAuth(options);
 const writeAccess = requireAdditionalScopes("devices:write");
-const readTools = new Set([
-  "boards_search",
-  "commands_get",
-  "logs_read",
-  "devices_list",
-  "devices_get",
-  "wifi_list",
-  "firmware_get",
-]);
+// Read scope covers read-only tools that stay on EspHub. An active Wi-Fi scan
+// observes nearby networks, so it also needs write scope.
+const readTools = new Set(
+  tools
+    .filter(({ annotations }) => annotations.readOnlyHint && !annotations.openWorldHint)
+    .map(({ name }) => name),
+);
 export function installMcpMetadata(app) {
   const resource = protectedResourceMetadataHandler(options);
   app.on(

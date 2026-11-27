@@ -35,7 +35,7 @@ ESP-IDF task logs (`ESP_LOGx`) use the original console at boot. To redirect the
 
 Use `logs_read` with `devices:read` to get console batches and structured events, including after the device goes offline. To continue a page, pass its `process_id` and its `cursor` as `after`. R2 records use Hub arrival time and order. New records include the wire `mid` to recover send order within the boot. `dropped_bytes` counts device-side truncation, ring overruns and known send failures. A QoS 0 message can also be lost after publication.
 
-Enabling capture allocates one session with a 2 KiB byte ring, a 384-byte drain buffer and a 672-byte wire buffer. The session uses PSRAM when available, with a heap fallback. Formatting an ESP-IDF log uses a 256-byte buffer on the caller's stack. Python writes go straight into the ring. Producers never publish. The agent handles control first, then drains at most one batch every 250 ms. Each `t: "log"` frame carries Base64 bytes on the existing uplink. Synchronous QoS 0 uses ESP-MQTT's existing transmit buffer, bypassing the JSON event queue and the QoS 1 retransmission outbox. The C library formatter, TLS and network stack have their own working memory.
+Enabling capture allocates one session with a 2 KiB byte ring, a 384-byte drain buffer and a 672-byte wire buffer. The session uses PSRAM when available, with a heap fallback. Formatting an ESP-IDF log uses a 256-byte buffer on the caller's stack. Producers never publish. The agent handles control first, then drains at most one batch every 250 ms. Each `t: "log"` frame carries Base64 bytes on the existing uplink. Synchronous QoS 0 uses ESP-MQTT's existing transmit buffer, bypassing the JSON event queue and the QoS 1 retransmission outbox. The C library formatter, TLS and network stack have their own working memory.
 
 ## Deployment
 
@@ -45,7 +45,7 @@ Enabling capture allocates one session with a 2 KiB byte ring, a 384-byte drain 
 
 ## Local verification
 
-`node scripts/local-e2e.mjs` requires an isolated PostgreSQL database, Chromium, Mosquitto and its command-line clients. The native USB test in `npm test` uses a C compiler, pkg-config and the cJSON development package. It exercises real MQTT QoS 1 traffic over loopback, the production Worker handlers, PostgreSQL and local R2. The fixture emulates AWS enrollment, principal projection and connectivity. Cloud policy enforcement and physical radio behavior require a deployed canary.
+`node scripts/local-e2e.mjs` requires an isolated PostgreSQL database, Chromium, Mosquitto and its command-line clients. It exercises real MQTT QoS 1 traffic over loopback, the production Worker handlers, PostgreSQL and local R2. The fixture emulates AWS enrollment, principal projection and connectivity. Cloud policy enforcement and physical radio behavior require a deployed canary.
 
 ## Application messages
 
