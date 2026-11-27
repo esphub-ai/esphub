@@ -35,7 +35,7 @@ test(
       return Response.json({});
     });
     const [owner] =
-      await db`INSERT INTO esphub.accounts DEFAULT VALUES RETURNING id`;
+      await db`INSERT INTO esphub.accounts(clerk_subject) VALUES(${"user_" + crypto.randomUUID().replaceAll("-", "")}) RETURNING id`;
     try {
       await db`INSERT INTO esphub.devices(id,owner,name,board,token_hash) VALUES(${id},${owner.id},'fixture','m5stack/stopwatch',${hash})`;
       await assert.rejects(enroll(env, db, id, hash, csr), /403/);

@@ -15,7 +15,7 @@ test(
     const db = postgres(process.env.TEST_DATABASE_URL);
     const boot = crypto.randomUUID().replaceAll("-", "");
     const [owner] =
-      await db`INSERT INTO esphub.accounts DEFAULT VALUES RETURNING id`;
+      await db`INSERT INTO esphub.accounts(clerk_subject) VALUES(${"user_" + crypto.randomUUID().replaceAll("-", "")}) RETURNING id`;
     try {
       const [device] =
         await db`INSERT INTO esphub.devices(owner,name,board,token_hash,boot_id) VALUES(${owner.id},'test','m5stack/paper-color',${crypto.randomUUID()},${boot}) RETURNING id`;

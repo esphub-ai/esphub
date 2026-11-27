@@ -1,6 +1,11 @@
 -- Columns that no code reads. Clerk subjects identify accounts, and the handle was a
 -- placeholder left from passkey sign-in. Virtual boots never recorded messages.
 ALTER TABLE esphub.accounts DROP COLUMN handle, DROP COLUMN created_at;
+
+-- Accounts without a Clerk subject are left from passkey sign-in and can no longer sign in.
+DELETE FROM esphub.accounts WHERE clerk_subject IS NULL;
+ALTER TABLE esphub.accounts ALTER COLUMN clerk_subject SET NOT NULL;
+
 ALTER TABLE esphub.device_commands DROP COLUMN created_at;
 ALTER TABLE esphub.virtual_boots DROP COLUMN messages;
 

@@ -13,7 +13,7 @@ test(
       const rollback = new Error("Roll back ownership test data");
       await assert.rejects(sql.begin(async (tx) => {
         const users =
-          await tx`INSERT INTO esphub.accounts SELECT FROM generate_series(1, 2) RETURNING id`;
+          await tx`INSERT INTO esphub.accounts(clerk_subject) SELECT 'user_' || md5(random()::text) FROM generate_series(1, 2) RETURNING id`;
         const board = "m5stack/cardputer-adv";
         const [profile] = await tx`SELECT * FROM esphub.board_profiles WHERE id = ${board}`;
         const release = setupRelease(board, profile);

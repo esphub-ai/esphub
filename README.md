@@ -10,11 +10,9 @@ EspHub provisions ESP32 devices over USB and manages them through the web and MC
 | cdn.esphub.ai | Board photos from R2, resized and cached at the Cloudflare edge |
 | api.esphub.ai/mcp | Streamable HTTP JSON-RPC using Clerk OAuth |
 
-See the [firmware glossary and flash layout](https://github.com/esphub-ai/esphub-firmware/blob/main/docs/firmware-terminology.md) for the EspHub Bootloader, SDK, and applications.
-
 ## Devices and releases
 
-Use `boards_search` to find a board and its examples. Each entry includes a capability description, the upstream reference, a revision-pinned source URL, an entrypoint and a build command. The [board matrix](https://github.com/esphub-ai/esphub-firmware/blob/main/docs/m5stack-boards.md) maps hardware revisions and bundles to board IDs.
+Use `boards_search` to find a board and its examples. Each entry includes a capability description, the upstream reference, a revision-pinned source URL, an entrypoint and a build command.
 
 `devices_create` registers the chosen board and returns a pinned USB setup manifest and its `setup_example`. The kit contains the EspHub Bootloader, the partition table and the board’s default application. Its manifest records the SHA-256 of both the kit and the application. Verify the kit hash before flashing. Installation erases the board.
 
@@ -92,7 +90,7 @@ Browser sign-in and sign-up use the Clerk production Account Portal at accounts.
 
 In the EspHub production Clerk instance, register https://api.esphub.ai/mcp under Agents → MCP servers and allow public clients to connect with CIMD. In OAuth applications → Settings, enable Publish CIMD support and leave Publish DCR support off. Use a client version that supports Client ID Metadata Documents (CIMD). Under OAuth applications, create and advertise `devices:read` and `devices:write`. Select both `devices:read` and `devices:write` in the default and allowed scopes for dynamic clients. Clerk uses `offline_access` for token refresh. Use the instance's secret key for the API Worker.
 
-Neon stores registrations, device-token hashes, boot metadata and the command queue. Each device’s Durable Object serializes incoming MQTT reports and records structured events in R2. [Device protocol and rollout](docs/iot.md).
+Neon stores registrations, device-token hashes, boot metadata and the command queue. Each device’s Durable Object serializes incoming MQTT reports and records structured events in R2.
 
 ## Delivery
 
