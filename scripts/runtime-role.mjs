@@ -13,7 +13,9 @@ try {
       await tx.unsafe(
         "CREATE ROLE esphub_runtime LOGIN PASSWORD '" + password + "'",
       );
-    await tx.unsafe("GRANT SELECT ON esphub.firmware_releases, esphub.release_assets, esphub.bootloaders, esphub.board_profiles, esphub.board_product_pages TO esphub_runtime");
+    await tx.unsafe("GRANT SELECT ON esphub.firmware_releases, esphub.release_assets, esphub.board_profiles, esphub.board_product_pages TO esphub_runtime");
+    await tx.unsafe("GRANT SELECT, INSERT ON esphub.bootloaders TO esphub_runtime");
+    await tx.unsafe("GRANT SELECT, INSERT, UPDATE ON esphub.bootloader_releases TO esphub_runtime");
     await tx.unsafe("GRANT USAGE ON SCHEMA esphub TO esphub_runtime");
     await tx.unsafe(
       "GRANT SELECT,INSERT,UPDATE,DELETE ON esphub.accounts, esphub.devices, esphub.virtual_boots, esphub.device_commands, esphub.iot_revocations TO esphub_runtime",
@@ -35,8 +37,15 @@ await writeFile(
   JSON.stringify({
     DATABASE_URL: uri.href,
     CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
+    ...(process.env.CLOUDFLARE_ACCOUNT_ID && {
+      FIRMWARE_R2_ENDPOINT: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    }),
     ...Object.fromEntries(
       [
+        "CLERK_MACHINE_SECRET_KEY",
+        "FIRMWARE_R2_ACCESS_KEY_ID",
+        "FIRMWARE_R2_SECRET_ACCESS_KEY",
+        "FIRMWARE_R2_ENDPOINT",
         "IOT_RELAY_SECRET",
         "IOT_ACCOUNT_ID",
         "IOT_DATA_ENDPOINT",

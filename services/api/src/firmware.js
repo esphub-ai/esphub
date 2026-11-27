@@ -1,8 +1,9 @@
 import { bootloaderUrl, releaseUrl } from "../../../shared/identity.js";
 import { fail } from "./auth.js";
 
-const segment = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const versionPattern = /^[0-9]+\.[0-9]+\.[0-9]+$/;
+export const bootloaderIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const versionPattern =
+  /^([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?|[0-9a-f]{7,40})$/;
 const hex = (n) => "0x" + Number(n).toString(16);
 
 // Files of a bootloader set, keyed by the download name the API exposes.
@@ -14,13 +15,16 @@ export const bootloaderFiles = {
 
 export async function latestBootloader(sql, id) {
   if (!id) return null;
-  const [row] = await sql`SELECT * FROM esphub.bootloaders WHERE id = ${id}
-    ORDER BY string_to_array(version, '.')::int[] DESC LIMIT 1`;
+  const [row] = await sql`SELECT b.*
+    FROM esphub.bootloader_releases r
+    JOIN esphub.bootloaders b ON b.id = r.id AND b.version = r.version
+    WHERE r.id = ${id}`;
   return row ?? null;
 }
 
 export async function bootloaderSet(sql, id, version) {
-  if (!id || !segment.test(id) || !versionPattern.test(version ?? "")) return null;
+  if (!id || !bootloaderIdPattern.test(id) || !versionPattern.test(version ?? ""))
+    return null;
   const [row] = await sql`SELECT * FROM esphub.bootloaders WHERE id = ${id} AND version = ${version}`;
   return row ?? null;
 }
@@ -89,7 +93,7 @@ export function esptoolCommand(bootloader, files) {
 
 export async function bootloaderResponse(sql, bucket, id, version, file) {
   const entry = Object.hasOwn(bootloaderFiles, file) ? bootloaderFiles[file] : null;
-  if (!segment.test(id) || !versionPattern.test(version) || !entry)
+  if (!bootloaderIdPattern.test(id) || !versionPattern.test(version) || !entry)
     fail(404, "Unknown bootloader file");
   const row = await bootloaderSet(sql, id, version);
   if (!row) fail(404, "Unknown bootloader file");

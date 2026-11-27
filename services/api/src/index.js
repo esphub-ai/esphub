@@ -11,7 +11,12 @@ import { Hono } from "hono";
 import { withDatabase } from "./database.js";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
-import { allowedOrigin, identify, digest, fail } from "./auth.js";
+import { allowedOrigin, identify, identifyMachine, digest, fail } from "./auth.js";
+import {
+  createBootloaderVersion,
+  createInternalUploads,
+  setCurrentBootloaderRelease,
+} from "./bootloader-publish.js";
 import { installMcpMetadata, serveMcp, authenticateMcp } from "./mcp.js";
 import { operate } from "./operations.js";
 import { createDeviceSetup, reissueDeviceSetup } from "./setup.js";
@@ -102,6 +107,17 @@ api.use(
   }),
 );
 api.all("/mcp", authenticateMcp, serveMcp);
+async function readJsonBody(c) {
+  try {
+    return await c.req.json();
+  } catch {
+    fail(400, "Invalid JSON body");
+  }
+}
+api.post("/internal/uploads", async (c) => {
+  await identifyMachine(c);
+  return c.json(await createInternalUploads(c.env, await readJsonBody(c)), 201);
+});
 api.use("*", (c, next) =>
   withDatabase(c.env, (sql) => {
     c.set("sql", sql);
@@ -161,6 +177,25 @@ api.post("/internal/iot/uplink", async (c) => {
       ...ack,
     });
   return c.json({ ok: true });
+});
+api.post("/internal/bootloaders", async (c) => {
+  await identifyMachine(c);
+  const { status, body } = await createBootloaderVersion(
+    c.env,
+    c.get("sql"),
+    await readJsonBody(c),
+  );
+  return c.json(body, status);
+});
+api.put("/internal/bootloaders/:id/current", async (c) => {
+  await identifyMachine(c);
+  return c.json(
+    await setCurrentBootloaderRelease(
+      c.get("sql"),
+      c.req.param("id"),
+      await readJsonBody(c),
+    ),
+  );
 });
 api.get("/api/device/artifacts/:artifact", async (c) => {
   const { stub } = await authenticatedDevice(c);

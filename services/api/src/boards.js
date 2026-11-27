@@ -13,8 +13,8 @@ export async function searchBoards(sql, query = "") {
     await sql`SELECT b.id, b.name, b.model, b.chip, b.flash_mb, b.default_example, b.preview, b.published_examples,
       (SELECT jsonb_build_object('version', r.version, 'tag', r.tag) FROM esphub.firmware_releases r
        WHERE r.board = b.id AND r.kind = 'app') AS app,
-      (SELECT jsonb_build_object('id', l.id, 'version', l.version) FROM esphub.bootloaders l
-       WHERE l.id = b.bootloader ORDER BY string_to_array(l.version, '.')::int[] DESC LIMIT 1) AS bootloader
+      (SELECT jsonb_build_object('id', r.id, 'version', r.version) FROM esphub.bootloader_releases r
+       WHERE r.id = b.bootloader) AS bootloader
     FROM esphub.board_profiles b
     WHERE b.is_current AND strpos(b.id, ${query.trim().toLowerCase()}) > 0
     ORDER BY b.display_order NULLS LAST, b.id`;

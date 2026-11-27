@@ -11,7 +11,11 @@
     { "pattern": "cdn.esphub.ai", "custom_domain": true }
   ],
   "images": { "binding": "IMAGES" },
-  "vars": { "CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZXNwaHViLmFpJA" },
+  "vars": {
+    "CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZXNwaHViLmFpJA",
+    "CLERK_API_MACHINE_ID": "mch_3MhSBT1QoRjoVw1qWzUwqONnYXG",
+    "CLERK_BOOTLOADER_MACHINE_ID": "mch_3MhST2ef8r2UxcPZcsFVQaayDhm"
+  },
   "durable_objects": {
     "bindings": [{ "name": "DEVICE", "class_name": "Device" }]
   },
