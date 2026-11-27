@@ -1,14 +1,14 @@
 import { releaseUrl } from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
-import { newBleSecret, issueBle, normalizeBleAddress } from "./ble.js";
+import { issueBle } from "./ble.js";
 import { connectedSince, publishDownlink } from "./iot.js";
 import { appAlignment, maxAppSize, maxFlashBytes, minLittleFSBytes, validLayout } from "./layout.js";
 import { artifactBase, maxUploadBytes } from "./uploads.js";
 import { boardIdPattern, boardImageUrl, getBoard, searchBoards } from "./boards.js";
 import { updateSources } from "./update-sources.js";
-import { provisioning } from "./provisioning.js";
-import { releaseFile, releaseResponse } from "./releases.js";
-import { digest, fail, token } from "./auth.js";
+import { releaseFile } from "./releases.js";
+import { fail } from "./auth.js";
+import { createDeviceSetup } from "./setup.js";
 import { createVirtual, operateVirtual } from "./virtual-device.js";
 import { uuidPattern } from "./ids.js";
 const strings = (...names) =>
@@ -34,7 +34,7 @@ const defs = [
   [
     "devices_create",
     additive,
-    "Registers a physical device with its name and group/project board ID (for example, m5stack/cardputer-adv). Returns its device ID, provisioning credentials, a pinned USB setup manifest, and the installed example with its source and build command.",
+    "Registers a physical device with its name and group/project board ID (for example, m5stack/cardputer-adv). Returns its device ID, a short-lived private NVS image download, a pinned USB setup manifest, and the installed example with its source and build command.",
     {
       ...strings("name"),
       board: { type: "string", description: "Exact board ID returned by boards_search." },
@@ -50,18 +50,6 @@ const defs = [
     "devices_get",
     readOnly,
     "Show device kind, identity and connection status. For a physical board, also return the reported application identity, bootloader and app downloads, and examples with pinned source and build instructions.",
-    id,
-  ],
-  [
-    "devices_bind_ble_address",
-    destructive,
-    "Bind the Bluetooth address reported over USB to your physical device registration. Replaces an earlier address.",
-    { ...id, ...strings("ble_address") },
-  ],
-  [
-    "devices_reissue",
-    destructive,
-    "Issue a replacement device token and BLE bootstrap key for USB setup and close the previous connection.",
     id,
   ],
   [
@@ -330,29 +318,7 @@ export async function operate(c, owner, name, a) {
   if (name === "boards_search") return searchBoards(db, a.query);
   if (name === "devices_create_virtual") return createVirtual(db, owner);
   if (name === "devices_create") {
-    const [profile] = await db`SELECT b.*, r.tag AS setup_tag FROM esphub.board_profiles b
-      LEFT JOIN esphub.firmware_releases r ON r.board = b.id AND r.kind = 'setup'
-      WHERE b.id = ${a.board} AND b.is_current`;
-    if (!profile) fail(400, "Unknown board");
-    if (!profile.setup_tag) fail(404, "No published setup kit for this board");
-    const tag = profile.setup_tag;
-    const response = await releaseResponse(a.board, "setup-manifest", tag, db, c.env.FIRMWARE);
-    const manifest = await response.json();
-    if (manifest.board !== a.board || manifest.tag !== tag || !manifest.example?.source_url)
-      fail(503, "Board setup example unavailable");
-    const secret = token("eh_dev_");
-    const bleSecret = newBleSecret();
-    const [device] = await db`INSERT INTO esphub.devices(owner, name, board, token_hash, ble_secret)
-      VALUES (${owner}, ${a.name.trim()}, ${a.board}, ${await digest(secret)}, ${bleSecret})
-      RETURNING id, name, board, kind`;
-    return {
-      ...device,
-      token: secret,
-      ble_secret: bleSecret,
-      hub: "api.esphub.ai",
-      ...provisioning(profile, tag, manifest.example),
-      ...updateSources(profile),
-    };
+    return createDeviceSetup(c, owner, { name: a.name, board: a.board });
   }
   const ds =
     await db`SELECT d.id,d.name,d.board,d.kind,d.ble_address,d.created_at,d.cert_ready,d.mqtt_connected_since,d.boot_info,
@@ -416,14 +382,6 @@ export async function operate(c, owner, name, a) {
     return { message_id };
   }
   if (d.kind === "virtual") return operateVirtual(db, d, name, a);
-  if (name === "devices_bind_ble_address") {
-    const address = normalizeBleAddress(a.ble_address);
-    if (!address) fail(400, "Invalid ble_address. Use six colon-separated hex octets.");
-    const [bound] = await db`UPDATE esphub.devices SET ble_address=${address}::macaddr
-      WHERE id=${d.id} AND owner=${owner} AND kind='physical' RETURNING id,ble_address`;
-    if (!bound) fail(404, "Device not found");
-    return bound;
-  }
   if (name === "wifi_ble_credential") return issueBle(db, owner, d.id);
   if (name === "logs_read") return internal(c, d.id, "logs", a);
   if (name === "commands_get") {
@@ -431,14 +389,6 @@ export async function operate(c, owner, name, a) {
       await db`SELECT id AS command_id,state,result,dispatched_boot AS process_id FROM esphub.device_commands WHERE device_id=${d.id} AND id=${a.command_id}`;
     if (!row) fail(404, "Unknown command");
     return row;
-  }
-  if (name === "devices_reissue") {
-    const secret = token("eh_dev_");
-    const bleSecret = newBleSecret();
-    await db`UPDATE esphub.devices SET token_hash=${await digest(secret)}, cert_id=NULL,cert_ready=false,cert_csr=NULL,cert_pem=NULL,mqtt_connected_since=NULL,boot_id=NULL,boot_info=NULL,
-      ble_secret=${bleSecret} WHERE owner=${owner} AND id=${d.id}`;
-    await internal(c, d.id, "revoke", { device: d.id });
-    return { id: d.id, hub: "api.esphub.ai", token: secret, ble_secret: bleSecret };
   }
   if (name === "ota_prepare_upload")
     return internal(c, d.id, "prepare-upload", a);

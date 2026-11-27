@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { operate, validate } from "../services/api/src/operations.js";
+import { parseNvs } from "../services/api/src/nvs.js";
 import { releaseUrl } from "../shared/identity.js";
 import { jsonBucket, setupRelease } from "./fixtures/setup-release.mjs";
 
@@ -9,11 +11,12 @@ const { source, boards } = JSON.parse(await readFile(new URL("./fixtures/catalog
 const profiles = Object.fromEntries(boards.map((board) => [board.id,
   { ...board, source_revision: source.revision, sdk_version: source.sdk_version, sdk_source_url: source.sdk_source_url, is_current: true }]));
 
-test("registration returns the exact example from the immutable kit when the catalog moves ahead", async () => {
+test("registration returns the exact example from the immutable kit and a private NVS image without raw secrets", async () => {
   const id = "m5stack/stopwatch", profile = profiles[id];
   const current = profile.published_examples.find((e) => e.id === profile.default_example);
   const kitExample = { ...current, source_url: "https://source.example/an-earlier-revision/" + current.id };
   const { tag, files, assets, manifest } = setupRelease(id, profile, kitExample);
+  let stagedBytes = null;
   const sql = async (query) => {
     const text = query.join("?");
     if (text.includes("INSERT INTO esphub.devices"))
@@ -22,10 +25,34 @@ test("registration returns the exact example from the immutable kit when the cat
       return assets.filter((row) => row.asset === "setup-manifest");
     return [{ ...profile, setup_tag: tag }];
   };
-  const result = await operate({ sql, env: { FIRMWARE: jsonBucket(files) } }, "owner",
+  const DEVICE = {
+    idFromName: (deviceId) => deviceId,
+    get: () => ({
+      async fetch(url, init) {
+        stagedBytes = new Uint8Array(await new Response(init.body).arrayBuffer());
+        const offset = Number(new URL(url).searchParams.get("offset"));
+        return Response.json({
+          url: "https://api.esphub.ai/setup/test-id/nvs-id",
+          headers: { Authorization: "Bearer eh_nvs_" + "A".repeat(43) },
+          offset: "0x" + offset.toString(16),
+          size: stagedBytes.byteLength,
+          sha256: createHash("sha256").update(stagedBytes).digest("hex"),
+          expires_at: new Date(Date.now() + 900000).toISOString(),
+        });
+      },
+    }),
+  };
+  const result = await operate({ sql, env: { FIRMWARE: jsonBucket(files), DEVICE } }, "owner",
     "devices_create", { board: id, name: "Watch" });
-  assert.match(result.token, /^eh_dev_/);
-  assert.match(result.ble_secret, /^[a-f0-9]{64}$/);
+  assert.equal("token" in result, false);
+  assert.equal("ble_secret" in result, false);
+  assert.equal(result.nvs.offset, "0x9000");
+  assert.equal(result.nvs.size, 0x6000);
+  const parsed = parseNvs(stagedBytes);
+  assert.match(parsed.eh.tok, /^eh_dev_/);
+  assert.match(parsed.eh.ble_key, /^[a-f0-9]{64}$/);
+  assert.equal(parsed.eh.hub, "api.esphub.ai");
+  assert.equal(parsed.eh.hold, 1);
   assert.deepEqual(result.setup_example, manifest.example);
   assert.equal(result.setup_manifest, releaseUrl(id, "setup-manifest", tag));
   assert.deepEqual(result.examples, profile.published_examples);

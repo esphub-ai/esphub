@@ -33,11 +33,11 @@ const prompts = {
 2. Use devices_get for details. For Wi-Fi, start with wifi_list and use wifi_scan, wifi_add, or wifi_remove as needed.
 3. Pick an example from boards_search or use the setup_example returned by devices_create. Edit its pinned source and build the app. For custom firmware, upload the binary with ota_prepare_upload. Enter Bootloader mode with bootloader_enter, call ota_install with kind app or bootloader, and verify the receipt and firmware version after reboot.
    In Launcher mode, use ota_resize_app to grow or shrink the app slot. Ask me before changing its size because this erases all LittleFS files.
-4. Use devices_reissue to replace USB credentials or devices_delete to remove a device. Confirm the target and effect with me first.`,
+4. Use devices_reset to clear device provisioning or devices_delete to remove a device. Confirm the target and effect with me first.`,
   bind: `Connect to EspHub MCP at ${mcpEndpoint}. Use CIMD OAuth with devices:read and devices:write as needed.
 
 1. Ask me to connect my ESP32 over USB. Identify the manufacturer and model. Search the board ID with boards_search and pick the exact group/project ID and ask me to confirm it if it is unclear.
-2. Register the device with devices_create and follow the returned board-specific instructions for firmware, registration credentials, and Wi-Fi. Ask before erasing existing data. Keep the device credentials private.
+2. Register the device with devices_create and follow the returned board-specific instructions for the firmware kit, private NVS image, and Wi-Fi. Ask before erasing existing data. Keep the NVS download credential and image private.
 3. Use devices_get to check the registered device. Report it as online only when online is true. If setup stalls, tell me which step needs attention.`,
 };
 

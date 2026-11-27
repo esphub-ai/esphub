@@ -13,6 +13,7 @@ import { HTTPException } from "hono/http-exception";
 import { allowedOrigin, identify, digest, fail } from "./auth.js";
 import { installMcpMetadata, serveMcp, authenticateMcp } from "./mcp.js";
 import { operate } from "./operations.js";
+import { createDeviceSetup, reissueDeviceSetup } from "./setup.js";
 export { Device } from "./device.js";
 const api = new Hono();
 api.onError((e, c) =>
@@ -48,6 +49,24 @@ api.use("*", async (c, next) => {
   if (origin && !allowedOrigin(c, origin)) fail(403, "Origin not allowed");
   await next();
   if (c.res.status !== 101) c.header("Cache-Control", "no-store");
+});
+api.get("/setup/:device/:nvs", async (c) => {
+  const { device, nvs } = c.req.param();
+  if (![device, nvs].every((id) => uuidPattern.test(id)))
+    fail(404, "Unknown setup image");
+  if (
+    !/^Bearer eh_nvs_[A-Za-z0-9_-]{43}$/.test(
+      c.req.header("Authorization") ?? "",
+    )
+  )
+    fail(403, "Setup credential required");
+  const stub = c.env.DEVICE.get(c.env.DEVICE.idFromName(device));
+  return stub.fetch(
+    new Request("https://device/setup-nvs/" + nvs, {
+      method: "GET",
+      headers: { Authorization: c.req.header("Authorization") },
+    }),
+  );
 });
 api.put("/uploads/:device/:artifact", async (c) => {
   const { device, artifact } = c.req.param();
@@ -140,6 +159,36 @@ api.get("/api/device/artifacts/:artifact", async (c) => {
   const { stub } = await authenticatedDevice(c);
   return stub.fetch(
     "https://device/artifacts/" + encodeURIComponent(c.req.param("artifact")),
+  );
+});
+api.post("/setup", async (c) => {
+  const user = await identify(c);
+  return c.json(
+    await createDeviceSetup(
+      { env: c.env, sql: c.get("sql") },
+      user.owner,
+      await c.req.json(),
+    ),
+  );
+});
+api.post("/setup/:device/reissue", async (c) => {
+  const user = await identify(c);
+  const text = await c.req.text();
+  let body = {};
+  if (text.trim().length) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      fail(400, "Invalid JSON body");
+    }
+  }
+  return c.json(
+    await reissueDeviceSetup(
+      { env: c.env, sql: c.get("sql") },
+      user.owner,
+      c.req.param("device"),
+      body,
+    ),
   );
 });
 // The console lists devices through the website. Agents use MCP for every other tool.

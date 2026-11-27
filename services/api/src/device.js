@@ -5,6 +5,7 @@ import { dispatch, enqueue, finishResize, receipt, retryDue, nextRetry } from ".
 import { DurableObject } from "cloudflare:workers";
 import { connectedSince } from "./iot.js";
 import { Uploads } from "./uploads.js";
+import { SetupNvs } from "./setup-nvs.js";
 import { Stream } from "./streams.js";
 import { softwareInventory } from "./software.js";
 import { uuidPattern } from "./ids.js";
@@ -12,6 +13,7 @@ export class Device extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.uploads = new Uploads(ctx, env.UART);
+    this.setupNvs = new SetupNvs(ctx, env.UART);
     this.db = ctx.storage.sql;
     this.db.exec(
       "CREATE TABLE IF NOT EXISTS boots(pid TEXT PRIMARY KEY,info TEXT); CREATE INDEX IF NOT EXISTS boots_software_ble ON boots(json_extract(info,'$.role'), json_extract(info,'$.ble_address')); CREATE TABLE IF NOT EXISTS current_device(pid TEXT); CREATE TABLE IF NOT EXISTS uplink_events(mid INTEGER PRIMARY KEY)",
@@ -47,11 +49,13 @@ export class Device extends DurableObject {
   }
   async processAlarm() {
     await this.uploads.expire();
+    await this.setupNvs.expire();
     const next = this.db
       .exec(
         "SELECT min(expires) AS expires FROM uploads",
       )
       .one().expires;
+    const nextSetup = this.setupNvs.nextExpiry();
     let retry;
     const id = await this.ctx.storage.get("commandDevice");
     if (id) {
@@ -61,7 +65,7 @@ export class Device extends DurableObject {
       });
       if (!retry) await this.ctx.storage.delete("commandDevice");
     }
-    const earliest = Math.min(next ?? Infinity, retry ?? Infinity);
+    const earliest = Math.min(next ?? Infinity, nextSetup ?? Infinity, retry ?? Infinity);
     if (Number.isFinite(earliest)) await this.ctx.storage.setAlarm(earliest);
   }
   async fetch(req) {
@@ -71,6 +75,14 @@ export class Device extends DurableObject {
       return this.uploads.put(path.slice("/uploads/".length), req);
     if (path.startsWith("/artifacts/"))
       return this.uploads.download(path.slice("/artifacts/".length));
+    if (path === "/stage-nvs" && req.method === "POST")
+      return this.setupNvs.stage(
+        url.searchParams.get("device"),
+        url.searchParams.get("offset"),
+        req,
+      );
+    if (path.startsWith("/setup-nvs/") && req.method === "GET")
+      return this.setupNvs.download(path.slice("/setup-nvs/".length), req);
     const boot = this.current()?.pid;
     if (path === "/summary") {
       const row =
@@ -85,6 +97,7 @@ export class Device extends DurableObject {
     if (path === "/revoke") {
       const { device } = await req.json();
       await this.armCommands(device);
+      await this.setupNvs.revokeAll();
       this.db.exec("UPDATE uploads SET write_until=0 WHERE write_until>0");
       this.db.exec("DELETE FROM current_device");
       return Response.json({ revoked: true });
