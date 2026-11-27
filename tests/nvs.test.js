@@ -26,7 +26,6 @@ test("buildDeviceNvs produces a valid ESP-IDF NVS v2 image with device and Wi-Fi
   const image = buildDeviceNvs({
     token: secret,
     bleSecret,
-    name: "Mosaico Lab",
     wifi,
   });
   assert.equal(image.byteLength, defaultNvsSize);
@@ -40,7 +39,6 @@ test("buildDeviceNvs produces a valid ESP-IDF NVS v2 image with device and Wi-Fi
       hub: "api.esphub.ai",
       tok: secret,
       ble_key: bleSecret,
-      name: "Mosaico Lab",
       wifis: JSON.stringify([
         { s: 'Cafe, "Guest" 2.4G', p: 'p@ss,word"with\\quotes', h: true },
       ]),
@@ -48,20 +46,11 @@ test("buildDeviceNvs produces a valid ESP-IDF NVS v2 image with device and Wi-Fi
   });
 });
 
-test("buildDeviceNvs omits wifis when not provided and truncates long UTF-8 names safely", () => {
+test("buildDeviceNvs writes only the keys the firmware reads", () => {
   const secret = "eh_dev_" + "B".repeat(43);
   const bleSecret = "cd".repeat(32);
-  const longName = "测试设备".repeat(5); // 60 UTF-8 bytes
-  const image = buildDeviceNvs({
-    token: secret,
-    bleSecret,
-    name: longName,
-  });
-  const parsed = parseNvs(image);
-  assert.equal(parsed.eh.wifis, undefined);
-  assert.equal(parsed.eh.hold, 1);
-  assert.ok(new TextEncoder().encode(parsed.eh.name).length <= 32);
-  assert.equal(parsed.eh.name, "测试设备测试设备测试");
+  const parsed = parseNvs(buildDeviceNvs({ token: secret, bleSecret }));
+  assert.deepEqual(parsed, { eh: { hold: 1, hub: "api.esphub.ai", tok: secret, ble_key: bleSecret } });
 });
 
 test("buildNvs spills across pages when entries exceed a single page", () => {
@@ -78,7 +67,6 @@ test("parseNvs detects corrupted CRC", () => {
   const image = buildDeviceNvs({
     token: "eh_dev_" + "C".repeat(43),
     bleSecret: "ef".repeat(32),
-    name: "Board",
   });
   image[64 + 24] ^= 0x01;
   assert.throws(() => parseNvs(image), /CRC mismatch/);

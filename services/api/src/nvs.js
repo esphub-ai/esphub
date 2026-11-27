@@ -239,18 +239,6 @@ export function parseNvs(bytes) {
   return result;
 }
 
-function truncateUtf8(str, maxBytes) {
-  let bytes = 0;
-  let out = "";
-  for (const ch of str) {
-    const len = encoder.encode(ch).length;
-    if (bytes + len > maxBytes) break;
-    out += ch;
-    bytes += len;
-  }
-  return out;
-}
-
 export function parseWifi(wifi) {
   if (wifi === undefined || wifi === null) return null;
   if (typeof wifi !== "object" || Array.isArray(wifi))
@@ -285,18 +273,14 @@ export function buildDeviceNvs({
   hub = "api.esphub.ai",
   token,
   bleSecret,
-  name,
   wifi,
   size = defaultNvsSize,
 }) {
-  const shortName =
-    typeof name === "string" ? truncateUtf8(name.trim(), 32) : "";
   const eh = {
     hold: 1,
     hub,
     tok: token,
     ble_key: bleSecret,
-    ...(shortName ? { name: shortName } : {}),
     ...(wifi ? { wifis: JSON.stringify([wifi]) } : {}),
   };
   return buildNvs({ eh }, size);
