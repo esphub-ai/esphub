@@ -1,5 +1,6 @@
 import { generateKeyPair, exportSPKI, exportPKCS8 } from "jose";
 import { readFile, writeFile, rm } from "node:fs/promises";
+import http from "node:http";
 import { spawn, execFile } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -15,6 +16,48 @@ const jwtKey = await exportSPKI(keys.publicKey);
 const testPrivateKey = await exportPKCS8(keys.privateKey);
 const mqttPort = Number(process.env.TEST_MQTT_PORT || 18884);
 const broker = await startBroker(base, mqttPort);
+const clerkStub = http.createServer(async (req, res) => {
+  let rawBody = "";
+  for await (const chunk of req) rawBody += chunk;
+  res.setHeader("Content-Type", "application/json");
+  if (req.method === "POST" && req.url?.endsWith("/api_keys/verify")) {
+    const { secret } = rawBody ? JSON.parse(rawBody) : {};
+    if (typeof secret === "string" && secret.startsWith("ak_local_subject_")) {
+      const subject = secret.slice("ak_local_subject_".length);
+      res.end(
+        JSON.stringify({
+          id: "ak_local_1",
+          type: "api_key",
+          name: "Local E2E Key",
+          subject,
+          scopes: [],
+          claims: null,
+          revoked: false,
+          revocation_reason: null,
+          expired: false,
+          expiration: null,
+          created_by: subject,
+          description: null,
+          last_used_at: null,
+          created_at: Date.now(),
+          updated_at: Date.now(),
+        }),
+      );
+      return;
+    }
+    res.statusCode = 404;
+    res.end(
+      JSON.stringify({
+        errors: [{ code: "api_key_not_found", message: "API key not found" }],
+      }),
+    );
+    return;
+  }
+  res.statusCode = 404;
+  res.end(JSON.stringify({ error: "Not found" }));
+});
+await new Promise((resolve) => clerkStub.listen(0, "127.0.0.1", resolve));
+const clerkApiUrl = `http://127.0.0.1:${clerkStub.address().port}`;
 for (const worker of ["web", "api"]) {
   const root = "services/" + worker + "/",
     cfg = JSON.parse(await readFile(root + "wrangler.jsonc", "utf8"));
@@ -53,7 +96,8 @@ for (const worker of ["web", "api"]) {
         const url=new URL(req.url);
         if (url.pathname.startsWith("/__r2/esphub-firmware/") && req.method==="PUT") {
           const key=url.pathname.slice("/__r2/esphub-firmware/".length);
-          await env.FIRMWARE.put(key, await req.arrayBuffer());
+          const contentType=req.headers.get("content-type");
+          await env.FIRMWARE.put(key, await req.arrayBuffer(), contentType ? { httpMetadata: { contentType } } : undefined);
           return new Response(null,{status:200});
         }
         if (url.pathname.startsWith("/__cdn/"))
@@ -73,6 +117,7 @@ for (const worker of ["web", "api"]) {
       IOT_DATA_ENDPOINT: "fixture-ats.iot.us-west-2.amazonaws.com",
       IOT_RELAY_SECRET: broker.secret,
       CLERK_SECRET_KEY: "sk_test_local_fixture",
+      CLERK_API_URL: clerkApiUrl,
       CLERK_JWT_KEY: jwtKey,
       CLERK_API_MACHINE_ID: "mch_local_api",
       CLERK_BOOTLOADER_MACHINE_ID: "mch_local_bootloader",
@@ -132,5 +177,6 @@ try {
     process.kill(-child.pid, "SIGTERM");
   } catch {}
   broker.close();
+  clerkStub.close();
   for (const p of configs) await rm(p, { force: true });
 }

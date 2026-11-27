@@ -28,6 +28,7 @@ export async function identify(c) {
   const clerk = createClerkClient({
     secretKey: c.env.CLERK_SECRET_KEY,
     publishableKey: c.env.CLERK_PUBLISHABLE_KEY,
+    ...(c.env.CLERK_API_URL ? { apiUrl: c.env.CLERK_API_URL } : {}),
   });
   const state = await clerk.authenticateRequest(
     new Request(c.req.url, { headers: { Authorization: `Bearer ${raw}` } }),
@@ -43,6 +44,53 @@ export async function identify(c) {
   const auth = state.toAuth();
   if (!auth.isAuthenticated) fail(401, "Invalid or expired Clerk session");
   return accountForSubject(c.get("sql"), auth.userId);
+}
+export async function identifyApiSubject(c) {
+  const raw = c.req.header("Authorization")?.match(/^Bearer (\S+)$/i)?.[1];
+  if (!raw) fail(401, "API key or sign in required");
+  if (!c.env.CLERK_SECRET_KEY) fail(503, "Identity service unavailable");
+  const clerk = createClerkClient({
+    secretKey: c.env.CLERK_SECRET_KEY,
+    publishableKey: c.env.CLERK_PUBLISHABLE_KEY,
+    ...(c.env.CLERK_API_URL ? { apiUrl: c.env.CLERK_API_URL } : {}),
+  });
+  const state = await clerk.authenticateRequest(
+    new Request(c.req.url, { headers: { Authorization: `Bearer ${raw}` } }),
+    {
+      acceptsToken: ["api_key", "session_token"],
+      jwtKey: c.env.CLERK_JWT_KEY,
+      issuer,
+      authorizedParties: c.env.APP_ORIGIN
+        ? [...browserOrigins, c.env.APP_ORIGIN]
+        : browserOrigins,
+    },
+  );
+  if (
+    state.reason === "jwk-remote-failed-to-load" ||
+    state.reason === "secret-key-invalid" ||
+    (state.reason === "unexpected-error" &&
+      /status=(?:5\d\d|n\/a)\)/.test(state.message ?? ""))
+  )
+    fail(503, "Identity service unavailable");
+  const auth = state.toAuth();
+  if (
+    !auth.isAuthenticated ||
+    (auth.tokenType !== "api_key" && auth.tokenType !== "session_token")
+  )
+    fail(401, "Invalid or expired credentials");
+  if (auth.tokenType === "api_key" && !auth.userId)
+    fail(403, "Personal user API key required");
+  if (
+    typeof auth.userId !== "string" ||
+    !/^user_[a-zA-Z0-9]+$/.test(auth.userId)
+  )
+    fail(401, "Clerk user required");
+  return { subject: auth.userId, tokenType: auth.tokenType };
+}
+export async function identifyApiUser(c) {
+  const { subject, tokenType } = await identifyApiSubject(c);
+  const account = await accountForSubject(c.get("sql"), subject);
+  return { ...account, subject, tokenType };
 }
 export async function identifyMachine(c) {
   const raw = c.req.header("Authorization")?.match(/^Bearer (\S+)$/i)?.[1];

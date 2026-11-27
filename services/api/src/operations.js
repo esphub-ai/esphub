@@ -1,4 +1,9 @@
-import { apiOrigin, bootloaderUrl, releaseUrl } from "../../../shared/identity.js";
+import {
+  apiOrigin,
+  bootloaderUrl,
+  projectAppUrl,
+  releaseUrl,
+} from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
 import { issueBle } from "./ble.js";
 import { connectedSince, publishDownlink } from "./iot.js";
@@ -7,6 +12,14 @@ import { artifactBase, maxUploadBytes } from "./uploads.js";
 import { boardIdPattern, boardImageUrl, getBoard, searchBoards } from "./boards.js";
 import { updateSources } from "./update-sources.js";
 import { boardFirmware, bootloaderSet, latestBootloader } from "./firmware.js";
+import {
+  createProject,
+  getProjectForMcp,
+  listOwnedProjects,
+  listPublicProjects,
+  parseProjectAppUrl,
+  projectAppFile,
+} from "./projects.js";
 import { releaseFile } from "./releases.js";
 import { fail } from "./auth.js";
 import { createDeviceSetup } from "./setup.js";
@@ -17,6 +30,7 @@ const strings = (...names) =>
 const id = strings("device_id");
 const otaKind = { type: "string", enum: ["bootloader", "app"] };
 const bootloaderBase = apiOrigin + "/bootloaders/";
+const projectAppBase = apiOrigin + "/projects/";
 async function boardSources(db, board) {
   const profile = await getBoard(db, board);
   return updateSources(profile, (await boardFirmware(db, profile)).firmware);
@@ -194,9 +208,53 @@ const defs = [
     "Read the state and execution receipt of a queued device command.",
     { ...id, ...strings("command_id") },
   ],
+  [
+    "projects_list",
+    readOnly,
+    "List all EspHub projects you own, including unpublished drafts, with their UUIDs and published board versions.",
+    {
+      include_archived: {
+        type: "boolean",
+        description: "Include archived projects.",
+      },
+    },
+    [],
+  ],
+  [
+    "projects_create",
+    additive,
+    "Create a new EspHub project owned by your account and allocate its UUID for publishing releases via /v1/projects.",
+    {
+      name: { type: "string", maxLength: 120 },
+      description: { type: "string", minLength: 0, maxLength: 4000 },
+      repo_url: { type: "string", maxLength: 512 },
+      repo_path: { type: "string", maxLength: 512 },
+    },
+    ["name"],
+  ],
+  [
+    "projects_get",
+    readOnly,
+    "Show a project's metadata, preview images and latest per-board releases. Reads any public published project or your own draft/archived project.",
+    strings("project_id"),
+    ["project_id"],
+  ],
+  [
+    "projects_search",
+    readOnly,
+    "Search public published EspHub projects by optional exact board ID (vendor/slug) and/or literal case-insensitive substring of name or description.",
+    {
+      board: {
+        type: "string",
+        description: "Filter to projects supporting this exact board ID (vendor/slug).",
+      },
+      query: { type: "string" },
+    },
+    [],
+  ],
 ];
 export const tools = defs.map(
-  ([name, annotations, description, properties]) => ({
+  ([name, annotations, description, properties, required]) => ({
     name,
     annotations,
     description,
@@ -207,9 +265,21 @@ export const tools = defs.map(
         ...properties,
         ...(queueable(name) ? strings("request_id") : {}),
       },
-      required: Object.keys(properties).filter(
-        (k) => name === "logs_read" ? k === "device_id" : !["password", "url", "query", "erase_littlefs", "image_size_bytes", "wifi"].includes(k),
-      ),
+      required:
+        required ??
+        Object.keys(properties).filter(
+          (k) =>
+            name === "logs_read"
+              ? k === "device_id"
+              : ![
+                  "password",
+                  "url",
+                  "query",
+                  "erase_littlefs",
+                  "image_size_bytes",
+                  "wifi",
+                ].includes(k),
+        ),
     },
   }),
 );
@@ -243,7 +313,7 @@ export function validate(name, a) {
     if (
       (p.type === "string" &&
         (typeof v !== "string" ||
-          !v.length ||
+          v.length < (p.minLength ?? 1) ||
           v.length > (p.maxLength ?? 4096))) ||
       (p.type === "boolean" && typeof v !== "boolean") ||
       (p.enum && !p.enum.includes(v)) ||
@@ -258,11 +328,13 @@ export function validate(name, a) {
     (a.process_id && !/^[a-f0-9]{32}$/.test(a.process_id)) ||
     (a.command_id && !uuid.test(a.command_id)) ||
     (a.device_id && !uuid.test(a.device_id)) ||
+    (a.project_id && !uuid.test(a.project_id)) ||
     (a.request_id && !uuid.test(a.request_id))
   )
     fail(400, "Invalid identifier");
   if (a.board && !boardIdPattern.test(a.board)) fail(400, "Invalid board");
-  if (a.name?.trim().length === 0 || a.name?.length > 64)
+  const maxName = name === "projects_create" ? 120 : 64;
+  if (a.name?.trim().length === 0 || a.name?.length > maxName)
     fail(400, "Invalid name");
   for (const [k, max] of [
     ["ssid", 32],
@@ -333,6 +405,14 @@ export async function operate(c, owner, name, a) {
   validate(name, a);
   const db = c.sql;
   if (name === "boards_search") return searchBoards(db, a.query);
+  if (name === "projects_list")
+    return listOwnedProjects(db, owner, {
+      includeArchived: a.include_archived === true,
+    });
+  if (name === "projects_create") return createProject(db, owner, a);
+  if (name === "projects_get") return getProjectForMcp(db, owner, a.project_id);
+  if (name === "projects_search")
+    return listPublicProjects(db, { board: a.board, query: a.query ?? "" });
   if (name === "devices_create_virtual") return createVirtual(db, owner);
   if (name === "devices_create") {
     return createDeviceSetup(c, owner, {
@@ -450,6 +530,13 @@ export async function operate(c, owner, name, a) {
     let url = a.url, imageSize = a.image_size_bytes;
     if (url?.startsWith(artifactBase)) {
       ({ size: imageSize } = await internal(c, d.id, "check-upload", { url, kind: a.kind }));
+    } else if (a.kind === "app" && url?.startsWith(projectAppBase)) {
+      const ref = parseProjectAppUrl(url);
+      if (ref.boardId !== d.board)
+        fail(400, `Project release is for ${ref.boardId}, not ${d.board}`);
+      const file = await projectAppFile(db, ref.projectId, ref.boardId, ref.version);
+      imageSize = file.app_size;
+      url = projectAppUrl(file.project_id, file.board_id, file.version);
     } else if (a.kind === "app" && (!url || url.split("?")[0] === releaseUrl(d.board, "app"))) {
       const tag = (url && new URL(url).searchParams.get("tag")) || undefined;
       const file = await releaseFile(db, d.board, tag);
