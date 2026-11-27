@@ -10,20 +10,13 @@ EspHub provisions ESP32 devices over USB and manages them through the web and MC
 | cdn.esphub.ai | Board photos from R2, resized and cached at the Cloudflare edge |
 | api.esphub.ai/mcp | Streamable HTTP JSON-RPC using Clerk OAuth |
 
-See the [firmware glossary and partition mapping](docs/firmware-terminology.md) for the EspHub Bootloader, SDK, and applications.
+See the [firmware glossary and flash layout](https://github.com/esphub-ai/esphub-firmware/blob/main/docs/firmware-terminology.md) for the EspHub Bootloader, SDK, and applications.
 
 ## Devices and releases
 
 Use `boards_search` to find a board and its examples. Each entry includes a capability description, the upstream reference, a revision-pinned source URL, an entrypoint and a build command. The [board matrix](https://github.com/esphub-ai/esphub-firmware/blob/main/docs/m5stack-boards.md) maps hardware revisions and bundles to board IDs.
 
 `devices_create` registers the chosen board and returns a pinned USB setup manifest and its `setup_example`. The kit contains the EspHub Bootloader, the partition table and the board’s default application. Its manifest records the SHA-256 of both the kit and the application. Verify the kit hash before flashing. Installation erases the board.
-
-To build the shared bootloader locally, check out [esphub-firmware](https://github.com/esphub-ai/esphub-firmware) at the revision in the board's `sources.bootloader.directory_url` and use ESP-IDF 5.4.1 from the selected `firmware/bootloader/<target>-<size>mb/` directory. Use ESP-IDF 5.5.4 for `esp32c5-16mb` and `esp32c61-16mb`. Select the `bootloader` identifier from the board’s `firmware/board/<group>/<project>/board.json`. For example, build the 16 MiB ESP32-S3 variant with the following command.
-
-```sh
-cd firmware/bootloader/esp32s3-16mb
-idf.py build
-```
 
 Connect the board over USB and call `devices_create`. Download and flash the matching setup kit. Pipe the private registration result into `python3 provision_usb.py PORT` from the kit (requires pyserial and an authenticated Okou CLI). This sends the token and BLE bootstrap key at 115200 baud and binds the returned Bluetooth address to the registration through MCP. The USB request is:
 
@@ -99,7 +92,7 @@ Neon stores registrations, device-token hashes, boot metadata and the command qu
 
 ## Delivery
 
-Install dependencies with `npm ci`. After `npm run migrate`, seed a fresh local database with the test board catalog using `node scripts/seed-catalog.mjs` and import the local R2 gallery with `node scripts/migrate-board-gallery.mjs --local`. `npm run build` bundles the browser code. npm test runs unit tests, and TEST_DATABASE_URL enables the PostgreSQL ownership test. npm run migrate takes MIGRATION_DATABASE_URL and serializes checksum-verified migrations under an advisory lock.
+Install dependencies with `npm ci`. After `npm run migrate`, seed a fresh local database and local R2 with the test board catalog and photos using `node scripts/seed-catalog.mjs`. `npm run build` bundles the browser code. npm test runs unit tests, and TEST_DATABASE_URL enables the PostgreSQL ownership test. npm run migrate takes MIGRATION_DATABASE_URL and serializes checksum-verified migrations under an advisory lock.
 
 Pushes to main run verification on an ephemeral PostgreSQL instance, migrate production Neon, deploy the Hono API then the website, and check public domains and authentication boundaries. Required repository secrets are CLERK_SECRET_KEY (EspHub production instance), MIGRATION_DATABASE_URL, RUNTIME_DB_PASSWORD (64 lowercase hex characters), and CLOUDFLARE_API_TOKEN. CLOUDFLARE_ACCOUNT_ID is a repository variable. CI ensures the esphub-production R2 bucket exists. The migration role creates a restricted runtime role; the API Worker receives the runtime database URL and the Clerk credential. Configure the production environment to suit the organization's deployment policy.
 
@@ -107,7 +100,7 @@ Firmware builds, SDK version automation and release publication live in [esphub-
 
 ## Origin
 
-The board bring-up and bootloader SDK are adapted from the MIT-licensed e7h4n/esp-bootloader validation project; see [firmware/LICENSE](https://github.com/esphub-ai/esphub-firmware/blob/main/firmware/LICENSE). The product reference is https://esphub-device-console.okou.app/. The Instrument Sans font license is included with the web assets.
+The product reference is https://esphub-device-console.okou.app/. The Instrument Sans font license is included with the web assets.
 
 ### Resize the application slot
 

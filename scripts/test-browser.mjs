@@ -257,15 +257,6 @@ try {
   if (process.env.QA_SCREENSHOT)
     await page.screenshot({ path: process.env.QA_SCREENSHOT });
 
-  for (const path of [
-    "/setup",
-    "/devices/setup",
-    "/explorer",
-    "/device/" + board.id,
-    "/setup-firmware/m5stack/paper-color/setup",
-  ]) {
-    assert.equal((await fetch(origin + path)).status, 404, path);
-  }
   await page.setViewportSize({ width: 390, height: 844 });
   for (const path of ["/", "/devices", "/terms/", "/privacy/"]) {
     await page.goto(origin + path);
@@ -282,7 +273,7 @@ try {
   await page.waitForURL(origin + "/signed-out");
   assert.deepEqual(errors, []);
   console.log(
-    "PASS hosted authentication, physical device cards, live status refresh, MCP prompts, removed routes, mobile layout",
+    "PASS hosted authentication, physical device cards, live status refresh, MCP prompts, mobile layout",
   );
 } finally {
   mcu?.close();

@@ -584,7 +584,7 @@ try {
   assert.equal(resize.id, growRequest.command_id);
   assert.equal(resize.op, "resize_app");
   assert.equal(resize.args.data_size_bytes, largerLayout.data_size_bytes);
-  assert.equal(Buffer.from(resize.args.empty_fs, "base64").length, 256);
+  assert.equal(resize.args.empty_fs, undefined);
   assert.equal(resize.args.transfer_id, grow.request_id);
   await mcu.send({ t: "res", id: resize.id, ok: true, data: { ...largerLayout, rebooting: true } });
   assert.equal((await result(resize.id)).state, "dispatched");

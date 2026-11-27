@@ -4,13 +4,6 @@ import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-// Migrations rewritten without changing their effect, mapped to the hash recorded
-// before the rewrite. Databases that applied the original record the new hash instead.
-export const rewrittenMigrations = new Map([
-  // Inlined the release tag rule instead of importing it from the firmware submodule.
-  ["017_remove_release_manifest_copy.mjs", "ddc249ba66ef46cb9339e24728525d80736d5f8776dbdcdefaab2428e4ad1412"],
-]);
-
 export async function migrate(tx) {
   await tx`SELECT pg_advisory_xact_lock(1764692911)`;
   await tx`CREATE TABLE IF NOT EXISTS public.esphub_migrations(name text PRIMARY KEY, sha256 text NOT NULL, applied_at timestamptz DEFAULT now())`;
@@ -23,10 +16,7 @@ export async function migrate(tx) {
     const [old] =
       await tx`SELECT sha256 FROM public.esphub_migrations WHERE name=${file}`;
     if (old) {
-      if (old.sha256 === hash) continue;
-      if (rewrittenMigrations.get(file) !== old.sha256) throw Error("Changed migration: " + file);
-      await tx`UPDATE public.esphub_migrations SET sha256=${hash} WHERE name=${file}`;
-      console.log("Recorded rewritten", file);
+      if (old.sha256 !== hash) throw Error("Changed migration: " + file);
       continue;
     }
     if (file.endsWith(".sql")) {
