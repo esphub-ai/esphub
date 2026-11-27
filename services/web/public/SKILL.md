@@ -22,7 +22,7 @@ EspHub's default grant includes `devices:read` and `devices:write`. A read-only 
 
 ## Bind a new ESP32
 
-First-time setup requires a physical USB connection. If you are running remotely, ask the user to plug the board into their local computer with a USB data cable. Use Computer Use on that same computer to guide the local setup, including the local Chrome USB picker when the board instructions use it. Ask the user to select the device and approve access if Chrome requires it. If you cannot access their computer through Computer Use, guide the user through the local steps and resume once they are done.
+First-time setup requires a physical USB connection. If you are running remotely, ask the user to plug the board into their local computer with a USB data cable. Use Computer Use on that same computer to guide the local setup. If you cannot access their computer through Computer Use, guide the user through the local steps and resume once they are done.
 
 1. Identify the exact USB-connected board from its markings or local hardware information. Confirm an ambiguous model with the user. Call `boards_search` with a partial `group/project` ID, such as `cardputer`. Use the exact returned ID for registration. Each matching board includes the latest published version and pinned download URL for each available firmware kind.
 2. Call `devices_create` for a new registration. Keep the returned device credentials private and follow the returned board-specific setup instructions for the official firmware kit, USB registration, and Wi-Fi. Obtain confirmation before erasing existing data.

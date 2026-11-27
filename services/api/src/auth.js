@@ -35,7 +35,7 @@ export async function identify(c) {
       acceptsToken: "session_token",
       jwtKey: c.env.CLERK_JWT_KEY,
       issuer,
-      authorizedParties: [...browserOrigins, c.env.APP_ORIGIN],
+      authorizedParties: c.env.APP_ORIGIN ? [...browserOrigins, c.env.APP_ORIGIN] : browserOrigins,
     },
   );
   if (state.reason === "jwk-remote-failed-to-load")

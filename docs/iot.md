@@ -10,7 +10,7 @@ The bootloader and applications share one device agent. Firmware keeps a single 
 | Save a network remotely | Cloud `wifi_add` via MQTT | Receipt after the NVS write. The queue erases the password on completion or timeout |
 | Obtain MQTT credentials | HTTPS `POST /api/device/iot/enroll` with `{csr}` | NVS stores the certificate, broker endpoint and device ID, bound to the registration and hub. The private key stays on the board |
 | Receive a command | QoS 1 MQTT downlink `{boot_id, command: {id, seq, op, args}}` | The device executes it and returns `{t:"res", id, ok, data}` or an error |
-| Report device state and execution | QoS 1 MQTT publish to `devices/<uuid>/up` | The hub processes hello, receipts and events, including drawing events and final OTA results |
+| Report device state and execution | QoS 1 MQTT publish to `devices/<uuid>/up` | The hub processes hello, receipts and events, including final OTA results |
 | Download an OTA artifact | The bootloader persists the job, destroys its MQTT client and streams an HTTPS GET | After HTTPS cleanup, a terminal MQTT event reports success or failure. Its receipt survives a reboot |
 
 ## Command delivery and receipts
