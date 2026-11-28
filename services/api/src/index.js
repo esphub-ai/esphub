@@ -36,6 +36,7 @@ import {
   listPublicProjects,
   listPublicProjectsPage,
   projectAppResponse,
+  projectPartitionResponse,
   removeProjectBoard,
   setCurrentProjectBoardRelease,
   setProjectVisibility,
@@ -79,6 +80,26 @@ api.get("/projects/:id/boards/:vendor/:slug/releases/:version/app", (c) => {
   const { id, vendor, slug, version } = c.req.param();
   return withDatabase(c.env, (sql) =>
     projectAppResponse(sql, c.env.FIRMWARE, id, `${vendor}/${slug}`, version, {
+      secret: c.env.IOT_RELAY_SECRET,
+      exp: c.req.query("exp"),
+      sig: c.req.query("sig"),
+    }),
+  );
+});
+api.get("/projects/:id/boards/:vendor/:slug/partitions/:label", (c) => {
+  const { id, vendor, slug, label } = c.req.param();
+  return withDatabase(c.env, (sql) =>
+    projectPartitionResponse(sql, c.env.FIRMWARE, id, `${vendor}/${slug}`, undefined, label, {
+      secret: c.env.IOT_RELAY_SECRET,
+      exp: c.req.query("exp"),
+      sig: c.req.query("sig"),
+    }),
+  );
+});
+api.get("/projects/:id/boards/:vendor/:slug/releases/:version/partitions/:label", (c) => {
+  const { id, vendor, slug, version, label } = c.req.param();
+  return withDatabase(c.env, (sql) =>
+    projectPartitionResponse(sql, c.env.FIRMWARE, id, `${vendor}/${slug}`, version, label, {
       secret: c.env.IOT_RELAY_SECRET,
       exp: c.req.query("exp"),
       sig: c.req.query("sig"),

@@ -22,6 +22,12 @@ export function projectAppUrl(projectId, boardId, version) {
     ? `${apiOrigin}/projects/${projectId}/boards/${boardId}/app`
     : `${apiOrigin}/projects/${projectId}/boards/${boardId}/releases/${encodeURIComponent(version)}/app`;
 }
+export function projectPartitionUrl(projectId, boardId, version, label) {
+  const encLabel = encodeURIComponent(label);
+  return version === undefined
+    ? `${apiOrigin}/projects/${projectId}/boards/${boardId}/partitions/${encLabel}`
+    : `${apiOrigin}/projects/${projectId}/boards/${boardId}/releases/${encodeURIComponent(version)}/partitions/${encLabel}`;
+}
 export function projectImageUrl(projectId, sha256, ext) {
   return `${boardPhotoOrigin}/projects/${projectId}/images/${sha256}.${ext}`;
 }

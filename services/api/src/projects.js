@@ -1,12 +1,25 @@
 // Multi-board projects: personal upload presigning, project metadata and preview
 // images, immutable per-board app releases, public discovery, and downloads.
-import { apiOrigin, projectAppUrl, projectImageUrl } from "../../../shared/identity.js";
+import {
+  apiOrigin,
+  projectAppUrl,
+  projectImageUrl,
+  projectPartitionUrl,
+} from "../../../shared/identity.js";
 import { fail } from "./auth.js";
 import { boardIdPattern } from "./boards.js";
 import { inTransaction } from "./database.js";
 import { versionPattern } from "./firmware.js";
 import { uuidPattern } from "./ids.js";
-import { maxFlashBytes } from "./layout.js";
+import {
+  appAlignment,
+  maxFlashBytes,
+  maxTailPartitions,
+  parsePartitionSubtype,
+  parsePartitionType,
+  partitionLabelPattern,
+  sectorSize,
+} from "./layout.js";
 import {
   copyStagedObject,
   r2Config,
@@ -90,13 +103,26 @@ const releaseKeys = new Set([
   "source_revision",
   "promote",
   "app",
+  "app_slot_size",
+  "partitions",
 ]);
 const releaseAppKeys = new Set(["upload_id", "size", "sha256", "elf_sha256"]);
+const releasePartitionKeys = new Set([
+  "label",
+  "type",
+  "subtype",
+  "size",
+  "upload_id",
+  "image_size",
+  "sha256",
+]);
 
 export const projectImageObjectKey = (projectId, sha256, ext) =>
   `projects/${projectId}/images/${sha256}.${ext}`;
 export const projectReleaseObjectKey = (projectId, boardId, version) =>
   `projects/${projectId}/releases/${boardId}/${version}/app.bin`;
+export const projectPartitionObjectKey = (projectId, boardId, version, label) =>
+  `projects/${projectId}/releases/${boardId}/${version}/partitions/${label}.bin`;
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -367,26 +393,60 @@ function formatProjectDetail(
     ...(includeArchived ? { archived: Boolean(project.archived) } : {}),
     cover_image_url: cover ? cover.url : null,
     images: formattedImages,
-    boards: boards.map((b) => ({
-      board_id: b.board_id,
-      version: b.version,
-      app_size: Number(b.app_size),
-      app_sha256: b.app_sha256,
-      app_elf_sha256: b.app_elf_sha256 ?? null,
-      sdk_version: b.sdk_version,
-      idf_version: b.idf_version ?? null,
-      source_revision: b.source_revision ?? null,
-      download_url: projectAppUrl(project.id, b.board_id, b.version),
-      latest_url: projectAppUrl(project.id, b.board_id),
-      created_at: b.created_at,
-      updated_at: b.updated_at,
-    })),
+    boards: boards.map((b) => {
+      const parts = parseJsonValue(b.partitions) ?? [];
+      return {
+        board_id: b.board_id,
+        version: b.version,
+        app_size: Number(b.app_size),
+        app_sha256: b.app_sha256,
+        app_elf_sha256: b.app_elf_sha256 ?? null,
+        ...(b.app_slot_size !== null && b.app_slot_size !== undefined
+          ? { app_slot_size: Number(b.app_slot_size) }
+          : {}),
+        ...(parts.length > 0
+          ? {
+              partitions: parts.map((p) => ({
+                label: p.label,
+                type: Number(p.type),
+                subtype: Number(p.subtype),
+                size: Number(p.size),
+                ...(p.image_size !== null && p.image_size !== undefined
+                  ? {
+                      image_size: Number(p.image_size),
+                      image_sha256: p.image_sha256,
+                      download_url: projectPartitionUrl(
+                        project.id,
+                        b.board_id,
+                        b.version,
+                        p.label,
+                      ),
+                      latest_url: projectPartitionUrl(
+                        project.id,
+                        b.board_id,
+                        undefined,
+                        p.label,
+                      ),
+                    }
+                  : {}),
+              })),
+            }
+          : {}),
+        sdk_version: b.sdk_version,
+        idf_version: b.idf_version ?? null,
+        source_revision: b.source_revision ?? null,
+        download_url: projectAppUrl(project.id, b.board_id, b.version),
+        latest_url: projectAppUrl(project.id, b.board_id),
+        created_at: b.created_at,
+        updated_at: b.updated_at,
+      };
+    }),
     created_at: project.created_at,
     updated_at: project.updated_at,
   };
 }
 
-function formatRelease(row, promoted) {
+function formatRelease(row, promoted, partitions = []) {
   return {
     project_id: row.project_id,
     board_id: row.board_id,
@@ -395,6 +455,9 @@ function formatRelease(row, promoted) {
     sdk_version: row.sdk_version,
     idf_version: row.idf_version ?? null,
     source_revision: row.source_revision ?? null,
+    ...(row.app_slot_size !== null && row.app_slot_size !== undefined
+      ? { app_slot_size: Number(row.app_slot_size) }
+      : {}),
     app: {
       upload_id: row.app_upload_id,
       key: row.app_key,
@@ -403,6 +466,30 @@ function formatRelease(row, promoted) {
       elf_sha256: row.app_elf_sha256 ?? null,
       download_url: projectAppUrl(row.project_id, row.board_id, row.version),
     },
+    ...(partitions.length > 0
+      ? {
+          partitions: partitions.map((p) => ({
+            label: p.label,
+            type: Number(p.type),
+            subtype: Number(p.subtype),
+            size: Number(p.size),
+            ...(p.image_size !== null && p.image_size !== undefined
+              ? {
+                  upload_id: p.upload_id,
+                  key: p.object_key,
+                  image_size: Number(p.image_size),
+                  image_sha256: p.image_sha256,
+                  download_url: projectPartitionUrl(
+                    row.project_id,
+                    row.board_id,
+                    row.version,
+                    p.label,
+                  ),
+                }
+              : {}),
+          })),
+        }
+      : {}),
     created_at: row.created_at,
   };
 }
@@ -515,8 +602,25 @@ async function fetchProjectDetails(sql, projectId, authorId = null, ownerId = nu
       WHERE project_id = ${projectId}
       ORDER BY position ASC`,
     sql`SELECT pb.board_id, pb.latest_version AS version, pb.updated_at,
-        r.app_size, r.app_sha256, r.app_elf_sha256,
-        r.sdk_version, r.idf_version, r.source_revision, r.created_at
+        r.app_size, r.app_sha256, r.app_elf_sha256, r.app_slot_size,
+        r.sdk_version, r.idf_version, r.source_revision, r.created_at,
+        COALESCE(
+          (SELECT jsonb_agg(
+              jsonb_build_object(
+                'label', p.label,
+                'type', p.type,
+                'subtype', p.subtype,
+                'size', p.size,
+                'image_size', p.image_size,
+                'image_sha256', p.image_sha256
+              ) ORDER BY p.position ASC
+            )
+           FROM esphub.project_release_partitions p
+           WHERE p.project_id = pb.project_id
+             AND p.board_id = pb.board_id
+             AND p.version = pb.latest_version),
+          '[]'::jsonb
+        ) AS partitions
       FROM esphub.project_boards pb
       JOIN esphub.project_releases r
         ON r.project_id = pb.project_id
@@ -1406,8 +1510,97 @@ function parseReleasePayload(projectId, input) {
     app_elf_sha256 = input.app.elf_sha256;
   }
 
+  let app_slot_size = null;
+  if (input.app_slot_size !== undefined && input.app_slot_size !== null) {
+    if (
+      !Number.isInteger(input.app_slot_size) ||
+      input.app_slot_size < appAlignment ||
+      input.app_slot_size > maxFlashBytes ||
+      input.app_slot_size % appAlignment !== 0
+    )
+      fail(400, "Invalid app_slot_size");
+    if (input.app_slot_size < input.app.size)
+      fail(400, "app_slot_size must be at least app.size");
+    app_slot_size = input.app_slot_size;
+  }
+
+  const partitions = [];
+  if (input.partitions !== undefined) {
+    if (!Array.isArray(input.partitions) || input.partitions.length > maxTailPartitions - 1)
+      fail(400, `partitions must be an array of at most ${maxTailPartitions - 1} entries`);
+    const seenLabels = new Set(["app"]);
+    const seenUploads = new Set([input.app.upload_id]);
+    for (let i = 0; i < input.partitions.length; i++) {
+      const entry = input.partitions[i];
+      if (!isPlainObject(entry)) fail(400, `Invalid partitions[${i}]`);
+      assertAllowedKeys(entry, releasePartitionKeys, `partitions[${i}].`);
+      if (typeof entry.label !== "string" || !partitionLabelPattern.test(entry.label))
+        fail(400, `Invalid partitions[${i}].label`);
+      if (seenLabels.has(entry.label))
+        fail(400, `Duplicate or reserved partition label at partitions[${i}]`);
+      seenLabels.add(entry.label);
+
+      const type = parsePartitionType(entry.type, 1);
+      if (type !== 1) fail(400, `Invalid partitions[${i}].type`);
+      const subtype = parsePartitionSubtype(entry.subtype);
+      if (subtype === null) fail(400, `Invalid partitions[${i}].subtype`);
+      if (
+        !Number.isInteger(entry.size) ||
+        entry.size < sectorSize ||
+        entry.size > maxFlashBytes ||
+        entry.size % sectorSize !== 0
+      )
+        fail(400, `Invalid partitions[${i}].size`);
+
+      const hasUpload =
+        entry.upload_id !== undefined ||
+        entry.image_size !== undefined ||
+        entry.sha256 !== undefined;
+      let object_key = null;
+      let image_size = null;
+      let image_sha256 = null;
+      let upload_id = null;
+      if (hasUpload) {
+        if (typeof entry.upload_id !== "string" || !uuidPattern.test(entry.upload_id))
+          fail(400, `Invalid partitions[${i}].upload_id`);
+        if (seenUploads.has(entry.upload_id))
+          fail(400, `Duplicate upload_id at partitions[${i}]`);
+        seenUploads.add(entry.upload_id);
+        if (
+          !Number.isInteger(entry.image_size) ||
+          entry.image_size < 1 ||
+          entry.image_size > entry.size
+        )
+          fail(400, `Invalid partitions[${i}].image_size`);
+        if (typeof entry.sha256 !== "string" || !sha256Pattern.test(entry.sha256))
+          fail(400, `Invalid partitions[${i}].sha256`);
+        object_key = projectPartitionObjectKey(
+          projectId,
+          input.board_id,
+          input.version,
+          entry.label,
+        );
+        image_size = entry.image_size;
+        image_sha256 = entry.sha256;
+        upload_id = entry.upload_id;
+      }
+      partitions.push({
+        position: i,
+        label: entry.label,
+        type,
+        subtype,
+        size: entry.size,
+        object_key,
+        image_size,
+        image_sha256,
+        upload_id,
+      });
+    }
+  }
+
   return {
     promote,
+    partitions,
     row: {
       project_id: projectId,
       board_id: input.board_id,
@@ -1416,6 +1609,7 @@ function parseReleasePayload(projectId, input) {
       app_size: input.app.size,
       app_sha256: input.app.sha256,
       app_elf_sha256,
+      app_slot_size,
       app_upload_id: input.app.upload_id,
       sdk_version,
       idf_version,
@@ -1424,12 +1618,34 @@ function parseReleasePayload(projectId, input) {
   };
 }
 
-function releaseMatches(existing, candidate) {
+function partitionsMatch(existing, candidate) {
+  if (existing.length !== candidate.length) return false;
+  for (let i = 0; i < existing.length; i++) {
+    const a = existing[i];
+    const b = candidate[i];
+    if (
+      Number(a.position) !== Number(b.position) ||
+      a.label !== b.label ||
+      Number(a.type) !== Number(b.type) ||
+      Number(a.subtype) !== Number(b.subtype) ||
+      Number(a.size) !== Number(b.size) ||
+      (a.object_key ?? null) !== (b.object_key ?? null) ||
+      (a.image_size === null || a.image_size === undefined ? null : Number(a.image_size)) !==
+        (b.image_size ?? null) ||
+      (a.image_sha256 ?? null) !== (b.image_sha256 ?? null)
+    )
+      return false;
+  }
+  return true;
+}
+
+function releaseMatches(existing, candidate, existingParts = [], candidateParts = []) {
   const fields = [
     "app_key",
     "app_size",
     "app_sha256",
     "app_elf_sha256",
+    "app_slot_size",
     "sdk_version",
     "idf_version",
     "source_revision",
@@ -1439,7 +1655,14 @@ function releaseMatches(existing, candidate) {
     const b = candidate[field] === null || candidate[field] === undefined ? null : String(candidate[field]);
     if (a !== b) return false;
   }
-  return true;
+  return partitionsMatch(existingParts, candidateParts);
+}
+
+async function fetchReleasePartitions(sql, projectId, boardId, version) {
+  return sql`SELECT position, label, type, subtype, size, object_key, image_size, image_sha256, upload_id
+    FROM esphub.project_release_partitions
+    WHERE project_id = ${projectId} AND board_id = ${boardId} AND version = ${version}
+    ORDER BY position ASC`;
 }
 
 async function isCurrentRelease(sql, projectId, boardId, version) {
@@ -1450,7 +1673,7 @@ async function isCurrentRelease(sql, projectId, boardId, version) {
 
 export async function createProjectRelease(env, sql, owner, rawId, input) {
   const projectId = parseProjectId(rawId);
-  const { promote, row } = parseReleasePayload(projectId, input);
+  const { promote, partitions, row } = parseReleasePayload(projectId, input);
 
   const [project] =
     await sql`SELECT id, archived FROM esphub.projects WHERE id = ${projectId} AND owner = ${owner}`;
@@ -1461,80 +1684,148 @@ export async function createProjectRelease(env, sql, owner, rawId, input) {
     await sql`SELECT id, flash_mb, retired FROM esphub.boards WHERE id = ${row.board_id}`;
   if (!board) fail(404, "Unknown board");
   if (board.retired) fail(400, "Board is retired");
-  if (row.app_size > Number(board.flash_mb) * 1024 * 1024)
+  const flashBytes = Number(board.flash_mb) * 1024 * 1024;
+  if (row.app_size > flashBytes)
     fail(400, "App binary exceeds board flash size");
+  const appSlot = row.app_slot_size ?? Math.ceil(row.app_size / appAlignment) * appAlignment;
+  const totalTail = appSlot + partitions.reduce((sum, p) => sum + p.size, 0);
+  if (totalTail > flashBytes)
+    fail(400, "Release partitions exceed board flash size");
 
   const [existing] = await sql`SELECT * FROM esphub.project_releases
     WHERE project_id = ${projectId} AND board_id = ${row.board_id} AND version = ${row.version}`;
   if (existing) {
-    if (releaseMatches(existing, row)) {
+    const existingParts = await fetchReleasePartitions(sql, projectId, row.board_id, row.version);
+    if (releaseMatches(existing, row, existingParts, partitions)) {
       const promoted = await isCurrentRelease(sql, projectId, row.board_id, row.version);
-      return { status: 200, body: formatRelease(existing, promoted) };
+      return { status: 200, body: formatRelease(existing, promoted, existingParts) };
     }
     fail(409, "Project release already exists with different content");
   }
 
   const s3 = r2Config(env);
   const srcKey = stagingKey(row.app_upload_id);
-  const head = await env.FIRMWARE.head(srcKey);
-  if (!head) fail(400, "Staging upload not found: app");
-  if (head.size !== row.app_size) fail(400, "Staging upload size mismatch: app");
-  if (
-    head.httpMetadata?.contentType &&
-    head.httpMetadata.contentType !== "application/octet-stream"
-  )
-    fail(400, "Staging upload content_type mismatch: app");
+  const stagedFiles = [
+    {
+      label: "app",
+      srcKey,
+      destKey: row.app_key,
+      expectedSize: row.app_size,
+      expectedSha: row.app_sha256,
+    },
+    ...partitions
+      .filter((p) => p.upload_id !== null)
+      .map((p) => ({
+        label: `partitions.${p.label}`,
+        srcKey: stagingKey(p.upload_id),
+        destKey: p.object_key,
+        expectedSize: p.image_size,
+        expectedSha: p.image_sha256,
+      })),
+  ];
 
-  await copyStagedObject(env, s3, {
-    label: "app",
-    srcKey,
-    destKey: row.app_key,
-    contentType: "application/octet-stream",
-    expectedSize: row.app_size,
-    expectedSha: row.app_sha256,
-  });
-
-  const [inserted] = await sql`WITH ins AS (
-      INSERT INTO esphub.project_releases (
-        project_id, board_id, version,
-        app_key, app_size, app_sha256, app_elf_sha256, app_upload_id,
-        sdk_version, idf_version, source_revision
-      ) VALUES (
-        ${row.project_id}, ${row.board_id}, ${row.version},
-        ${row.app_key}, ${row.app_size}, ${row.app_sha256}, ${row.app_elf_sha256}, ${row.app_upload_id},
-        ${row.sdk_version}, ${row.idf_version}, ${row.source_revision}
+  await Promise.all(
+    stagedFiles.map(async (item) => {
+      const head = await env.FIRMWARE.head(item.srcKey);
+      if (!head) fail(400, `Staging upload not found: ${item.label}`);
+      if (head.size !== item.expectedSize)
+        fail(400, `Staging upload size mismatch: ${item.label}`);
+      if (
+        head.httpMetadata?.contentType &&
+        head.httpMetadata.contentType !== "application/octet-stream"
       )
-      ON CONFLICT (project_id, board_id, version) DO NOTHING
-      RETURNING *
-    ),
-    pb AS (
-      INSERT INTO esphub.project_boards (project_id, board_id, latest_version, updated_at)
-      SELECT project_id, board_id, version, now()
-      FROM ins
-      WHERE ${promote}::boolean
-      ON CONFLICT (project_id, board_id) DO UPDATE
-        SET latest_version = EXCLUDED.latest_version, updated_at = now()
-    ),
-    touch AS (
-      UPDATE esphub.projects
-      SET updated_at = now()
-      WHERE id = (SELECT project_id FROM ins)
-    )
-    SELECT * FROM ins`;
+        fail(400, `Staging upload content_type mismatch: ${item.label}`);
+    }),
+  );
 
+  await Promise.all(
+    stagedFiles.map((item) =>
+      copyStagedObject(env, s3, {
+        label: item.label,
+        srcKey: item.srcKey,
+        destKey: item.destKey,
+        contentType: "application/octet-stream",
+        expectedSize: item.expectedSize,
+        expectedSha: item.expectedSha,
+      }),
+    ),
+  );
+
+  const [insertedRows] = await inTransaction(sql, (tx) => {
+    const queries = [
+      tx`WITH ins AS (
+          INSERT INTO esphub.project_releases (
+            project_id, board_id, version,
+            app_key, app_size, app_sha256, app_elf_sha256, app_slot_size, app_upload_id,
+            sdk_version, idf_version, source_revision
+          ) VALUES (
+            ${row.project_id}, ${row.board_id}, ${row.version},
+            ${row.app_key}, ${row.app_size}, ${row.app_sha256}, ${row.app_elf_sha256},
+            ${row.app_slot_size}, ${row.app_upload_id},
+            ${row.sdk_version}, ${row.idf_version}, ${row.source_revision}
+          )
+          ON CONFLICT (project_id, board_id, version) DO NOTHING
+          RETURNING *
+        ),
+        pb AS (
+          INSERT INTO esphub.project_boards (project_id, board_id, latest_version, updated_at)
+          SELECT project_id, board_id, version, now()
+          FROM ins
+          WHERE ${promote}::boolean
+          ON CONFLICT (project_id, board_id) DO UPDATE
+            SET latest_version = EXCLUDED.latest_version, updated_at = now()
+        ),
+        touch AS (
+          UPDATE esphub.projects
+          SET updated_at = now()
+          WHERE id = (SELECT project_id FROM ins)
+        )
+        SELECT * FROM ins`,
+    ];
+    if (partitions.length > 0) {
+      queries.push(
+        tx`INSERT INTO esphub.project_release_partitions (
+            project_id, board_id, version, position, label, type, subtype, size,
+            object_key, image_size, image_sha256, upload_id
+          )
+          SELECT ${row.project_id}::uuid, ${row.board_id}, ${row.version},
+            x.position, x.label, x.type, x.subtype, x.size,
+            x.object_key, x.image_size, x.image_sha256, x.upload_id
+          FROM jsonb_to_recordset(${JSON.stringify(partitions)}::text::jsonb) AS x(
+            position integer,
+            label text,
+            type smallint,
+            subtype smallint,
+            size integer,
+            object_key text,
+            image_size integer,
+            image_sha256 text,
+            upload_id uuid
+          )
+          ON CONFLICT (project_id, board_id, version, label) DO NOTHING`,
+      );
+    }
+    return queries;
+  });
+  const inserted = insertedRows?.[0];
+
+  const cleanupKeys = stagedFiles.map((item) => item.srcKey);
   if (!inserted) {
     const [raced] = await sql`SELECT * FROM esphub.project_releases
       WHERE project_id = ${projectId} AND board_id = ${row.board_id} AND version = ${row.version}`;
-    if (raced && releaseMatches(raced, row)) {
-      await env.FIRMWARE.delete(srcKey).catch(() => {});
+    const racedParts = raced
+      ? await fetchReleasePartitions(sql, projectId, row.board_id, row.version)
+      : [];
+    if (raced && releaseMatches(raced, row, racedParts, partitions)) {
+      await env.FIRMWARE.delete(cleanupKeys).catch(() => {});
       const promoted = await isCurrentRelease(sql, projectId, row.board_id, row.version);
-      return { status: 200, body: formatRelease(raced, promoted) };
+      return { status: 200, body: formatRelease(raced, promoted, racedParts) };
     }
     fail(409, "Project release already exists with different content");
   }
 
-  await env.FIRMWARE.delete(srcKey).catch(() => {});
-  return { status: 201, body: formatRelease(inserted, promote) };
+  await env.FIRMWARE.delete(cleanupKeys).catch(() => {});
+  return { status: 201, body: formatRelease(inserted, promote, partitions) };
 }
 
 export async function setCurrentProjectBoardRelease(sql, owner, rawId, boardId, input) {
@@ -1769,4 +2060,175 @@ export function parseProjectAppUrl(url) {
     return { projectId: projectId.toLowerCase(), boardId, version };
   }
   fail(400, "Invalid project app URL");
+}
+
+export async function signProjectPartitionUrl(
+  secret,
+  { projectId, boardId, version, label, ttlSeconds = privateDownloadTtlSeconds },
+) {
+  if (!secret) fail(503, "Private download signing unavailable");
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const ver = version ?? "latest";
+  const sig = await hmacHex(secret, `project-part:${projectId}:${boardId}:${ver}:${label}:${exp}`);
+  const base = projectPartitionUrl(projectId, boardId, version, label);
+  return `${base}?exp=${exp}&sig=${sig}`;
+}
+
+export async function verifyProjectPartitionSignature(
+  secret,
+  { projectId, boardId, version, label, exp, sig },
+) {
+  if (!secret || !exp || !sig || !/^\d+$/.test(String(exp)) || !/^[0-9a-f]{64}$/.test(sig)) {
+    return false;
+  }
+  const expNum = Number(exp);
+  if (!Number.isSafeInteger(expNum) || expNum < Math.floor(Date.now() / 1000)) {
+    return false;
+  }
+  const ver = version ?? "latest";
+  const expected = await hmacHex(
+    secret,
+    `project-part:${projectId}:${boardId}:${ver}:${label}:${expNum}`,
+  );
+  return constantTimeEqualHex(sig, expected);
+}
+
+export async function projectPartitionFile(
+  sql,
+  rawId,
+  boardId,
+  version,
+  label,
+  { owner = null, allowPrivate = false } = {},
+) {
+  if (
+    typeof rawId !== "string" ||
+    !uuidInsensitive.test(rawId) ||
+    typeof boardId !== "string" ||
+    !boardIdPattern.test(boardId) ||
+    typeof label !== "string" ||
+    !partitionLabelPattern.test(label) ||
+    (version !== undefined &&
+      (typeof version !== "string" || !versionPattern.test(version)))
+  )
+    fail(404, "Unknown project partition");
+  const projectId = rawId.toLowerCase();
+  const [row] =
+    version === undefined
+      ? await sql`SELECT prp.project_id, prp.board_id, prp.version, prp.label, prp.size,
+            prp.object_key, prp.image_size, prp.image_sha256, p.visibility, p.owner
+          FROM esphub.projects p
+          JOIN esphub.project_boards pb ON pb.project_id = p.id
+          JOIN esphub.project_release_partitions prp
+            ON prp.project_id = pb.project_id
+           AND prp.board_id = pb.board_id
+           AND prp.version = pb.latest_version
+           AND prp.label = ${label}
+          WHERE p.id = ${projectId}
+            AND NOT p.archived
+            AND pb.board_id = ${boardId}
+            AND prp.object_key IS NOT NULL
+            AND (p.visibility = 'public' OR ${Boolean(allowPrivate)}::boolean OR (${owner}::uuid IS NOT NULL AND p.owner = ${owner}::uuid))`
+      : await sql`SELECT prp.project_id, prp.board_id, prp.version, prp.label, prp.size,
+            prp.object_key, prp.image_size, prp.image_sha256, p.visibility, p.owner
+          FROM esphub.projects p
+          JOIN esphub.project_release_partitions prp ON prp.project_id = p.id
+          WHERE p.id = ${projectId}
+            AND NOT p.archived
+            AND prp.board_id = ${boardId}
+            AND prp.version = ${version}
+            AND prp.label = ${label}
+            AND prp.object_key IS NOT NULL
+            AND (p.visibility = 'public' OR ${Boolean(allowPrivate)}::boolean OR (${owner}::uuid IS NOT NULL AND p.owner = ${owner}::uuid))`;
+  if (!row) fail(404, "Unknown project partition");
+  return { ...row, size: Number(row.size), image_size: Number(row.image_size) };
+}
+
+export async function projectPartitionResponse(
+  sql,
+  bucket,
+  rawId,
+  boardId,
+  version,
+  label,
+  { secret, exp, sig } = {},
+) {
+  const projectId = typeof rawId === "string" ? rawId.toLowerCase() : "";
+  const signedOk =
+    Boolean(exp && sig) &&
+    (await verifyProjectPartitionSignature(secret, {
+      projectId,
+      boardId,
+      version,
+      label,
+      exp,
+      sig,
+    }));
+  const file = await projectPartitionFile(sql, rawId, boardId, version, label, {
+    allowPrivate: signedOk,
+  });
+  const object = await bucket.get(file.object_key);
+  if (!object) fail(503, "Published project partition unavailable");
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("Content-Type", "application/octet-stream");
+  headers.set("Content-Length", String(object.size));
+  headers.set("ETag", object.httpEtag);
+  headers.set(
+    "Cache-Control",
+    file.visibility !== "public"
+      ? "private, no-store"
+      : version === undefined
+        ? "public, max-age=0, must-revalidate"
+        : "public, max-age=31536000, immutable",
+  );
+  return new Response(object.body, { headers });
+}
+
+export function parseProjectPartitionUrl(url) {
+  if (typeof url !== "string" || !url.startsWith(projectAppBase)) return null;
+  const parsed = new URL(url);
+  if (parsed.origin !== apiOrigin || parsed.search || parsed.hash)
+    fail(400, "Invalid project partition URL");
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  // /projects/:id/boards/:vendor/:slug/partitions/:label
+  if (
+    segments.length === 7 &&
+    segments[0] === "projects" &&
+    segments[2] === "boards" &&
+    segments[5] === "partitions"
+  ) {
+    const projectId = segments[1];
+    const boardId = `${segments[3]}/${segments[4]}`;
+    const label = decodeURIComponent(segments[6]);
+    if (
+      !uuidInsensitive.test(projectId) ||
+      !boardIdPattern.test(boardId) ||
+      !partitionLabelPattern.test(label)
+    )
+      fail(400, "Invalid project partition URL");
+    return { projectId: projectId.toLowerCase(), boardId, version: undefined, label };
+  }
+  // /projects/:id/boards/:vendor/:slug/releases/:version/partitions/:label
+  if (
+    segments.length === 9 &&
+    segments[0] === "projects" &&
+    segments[2] === "boards" &&
+    segments[5] === "releases" &&
+    segments[7] === "partitions"
+  ) {
+    const projectId = segments[1];
+    const boardId = `${segments[3]}/${segments[4]}`;
+    const version = decodeURIComponent(segments[6]);
+    const label = decodeURIComponent(segments[8]);
+    if (
+      !uuidInsensitive.test(projectId) ||
+      !boardIdPattern.test(boardId) ||
+      !versionPattern.test(version) ||
+      !partitionLabelPattern.test(label)
+    )
+      fail(400, "Invalid project partition URL");
+    return { projectId: projectId.toLowerCase(), boardId, version, label };
+  }
+  fail(400, "Invalid project partition URL");
 }
