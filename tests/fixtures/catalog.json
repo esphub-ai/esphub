@@ -11,8 +11,7 @@
       "console": "uart",
       "bootloader": "esp32s31-16mb",
       "product_url": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s31/esp-mosaico/index.html",
-      "has_photo": true,
-      "preview": true
+      "has_photo": true
     },
     {
       "id": "m5stack/airq",
@@ -25,8 +24,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/air-quality-kit-w-m5stamps3-sen55-scd40",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/atom-psram",
@@ -39,8 +37,7 @@
       "console": "uart",
       "bootloader": "esp32-8mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-atom-psram-lcd-display-driver-kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/atom-voices3r",
@@ -53,8 +50,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/atom-echos3r-smart-speaker-dev-kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/atoms3",
@@ -67,8 +63,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/atoms3-dev-kit-w-0-85-inch-screen",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/atoms3-lite",
@@ -81,8 +76,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/atoms3-lite-esp32s3-dev-kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/atoms3r",
@@ -95,8 +89,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/atoms3r-dev-kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/atoms3r-cam",
@@ -109,8 +102,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/atoms3r-camera-kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/atoms3r-ext",
@@ -123,8 +115,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/atoms3r-proto-kit-without-screen",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/atoms3u",
@@ -137,8 +128,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/atoms3u",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/basic-v27",
@@ -151,8 +141,7 @@
       "console": "uart",
       "bootloader": "esp32-16mb",
       "product_url": "https://shop.m5stack.com/products/esp32-basic-core-lot-development-kit-v2-7",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/capsule",
@@ -165,8 +154,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-capsule-kit-w-m5stamps3",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/cardputer",
@@ -179,8 +167,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-cardputer-kit-w-m5stamps3",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/cardputer-adv",
@@ -193,8 +180,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-cardputer-adv-version-esp32-s3",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/chain-captain",
@@ -207,8 +193,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-16mb",
       "product_url": "https://shop.m5stack.com/products/chain-captain-dev-kit-esp32-s3",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/chain-dualkey",
@@ -221,8 +206,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/chain-dual-key-with-esp32-s3",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/core2",
@@ -235,8 +219,7 @@
       "console": "uart",
       "bootloader": "esp32-16mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-core2-esp32-iot-development-kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/corematrix",
@@ -249,8 +232,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32c61-16mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-core-matrix-dev-kit-esp32-c61",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/cores3",
@@ -263,8 +245,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-16mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-cores3-esp32s3-iotdevelopment-kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/dial",
@@ -277,8 +258,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-dial-esp32-s3-smart-rotary-knob-w-1-28-round-touch-screen",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/dinmeter",
@@ -291,8 +271,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-din-meter-w-m5stamps3",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/fire-v27",
@@ -305,8 +284,7 @@
       "console": "uart",
       "bootloader": "esp32-16mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-fire-iot-development-kit-psram-v2-7",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/nesso-n1",
@@ -319,8 +297,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32c6-16mb",
       "product_url": "https://docs.m5stack.com/en/core/Arduino_Nesso_N1",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/paper-color",
@@ -333,8 +310,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-16mb",
       "product_url": "https://shop.m5stack.com/products/m5paper-color-esp32s3-dev-kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/paper-diy",
@@ -347,8 +323,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-16mb",
       "product_url": "https://shop.m5stack.com/products/paperdiy-assembly-kit-esp32-s3",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/paper-v11",
@@ -361,8 +336,7 @@
       "console": "uart",
       "bootloader": "esp32-16mb",
       "product_url": "https://shop.m5stack.com/products/m5paper-esp32-development-kit-v1-1-960x540-4-7-eink-display-235-ppi",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/papermono",
@@ -375,8 +349,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-16mb",
       "product_url": "https://shop.m5stack.com/products/m5papermono-with-lora-nfc-800x480-3-97-eink-display",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/papermono-lite",
@@ -389,8 +362,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-16mb",
       "product_url": "https://shop.m5stack.com/products/papermono-lite-dev-kit-800x480-3-97-e-ink-display",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/papers3",
@@ -403,8 +375,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-16mb",
       "product_url": "https://shop.m5stack.com/products/m5papers3-esp32s3-development-kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/powerhub",
@@ -417,8 +388,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-16mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-powerhub-iot-development-kit-esp32-s3",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/stackchan",
@@ -431,8 +401,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-16mb",
       "product_url": "https://shop.m5stack.com/products/stackchan-kawaii-co-created-open-source-ai-desktop-robot",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/stamp-c6lora",
@@ -445,8 +414,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32c6-16mb",
       "product_url": "https://shop.m5stack.com/products/m5stamp-c6lora-module-esp32-c6-sx1262",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/stamp-s3",
@@ -459,8 +427,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/m5stamp-esp32s3-module",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/stamp-s3bat",
@@ -473,8 +440,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/m5stamps3-bat-module-with-battery-connector",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/stamplc",
@@ -487,8 +453,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/m5stamp-plc-controller-with-m5stamps3",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/station",
@@ -501,8 +466,7 @@
       "console": "uart",
       "bootloader": "esp32-16mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-station-esp32-iot-development-kit-battery-version",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/stickc-plus2",
@@ -515,8 +479,7 @@
       "console": "uart",
       "bootloader": "esp32-8mb",
       "product_url": "https://shop.m5stack.com/products/m5stickc-plus2-esp32-mini-iot-development-kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/sticks3",
@@ -529,8 +492,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/m5sticks3-esp32s3-mini-iot-dev-kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/stopwatch",
@@ -543,8 +505,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-16mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-stopwatch-dev-kit-esp32-s3",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/tough",
@@ -557,8 +518,7 @@
       "console": "uart",
       "bootloader": "esp32-16mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-tough-esp32-iot-development-board-kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/toughc5",
@@ -571,8 +531,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32c5-16mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-toughc5-iot-dev-kit-esp32-c5",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/triviapod",
@@ -585,8 +544,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-32mb",
       "product_url": "https://shop.m5stack.com/products/triviapod",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/unit-c6l",
@@ -599,8 +557,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32c6-16mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-c6l-unit-for-meshtastic-sx1262-esp32-c6",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/unit-cams3-5mp",
@@ -613,8 +570,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-16mb",
       "product_url": "https://shop.m5stack.com/products/unit-cams3-wi-fi-camera-5mp",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/unit-poe-cam-w-v11",
@@ -627,8 +583,7 @@
       "console": "uart",
       "bootloader": "esp32-16mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-poe-camera-with-wi-fi-ov3660",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/vameter",
@@ -641,8 +596,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://shop.m5stack.com/products/m5stack-voltage-and-amperage-meter-with-m5stamps3",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     },
     {
       "id": "m5stack/xiaozhi-card",
@@ -655,8 +609,7 @@
       "console": "usb-serial-jtag",
       "bootloader": "esp32s3-8mb",
       "product_url": "https://docs.m5stack.com/en/core/Xiaozhi_Card_Kit",
-      "has_photo": true,
-      "preview": false
+      "has_photo": true
     }
   ]
 }

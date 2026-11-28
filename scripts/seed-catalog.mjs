@@ -42,13 +42,13 @@ try {
     }));
     await tx`INSERT INTO esphub.boards
         (id, vendor, name, model, soc, flash_mb, flash_bus, psram, console,
-         bootloader, product_url, has_photo, preview, retired, display_order)
+         bootloader, product_url, has_photo, retired, display_order)
       SELECT id, vendor, name, model, soc, flash_mb, flash_bus, psram, console,
-        bootloader, product_url, has_photo, preview, false, display_order
+        bootloader, product_url, has_photo, false, display_order
       FROM jsonb_to_recordset(${tx.json(rows)}::jsonb)
         AS b(id text, vendor text, name text, model text, soc text, flash_mb int,
         flash_bus text, psram text, console text, bootloader text, product_url text,
-        has_photo boolean, preview boolean, display_order int)`;
+        has_photo boolean, display_order int)`;
     for (const firmware of sets) await recordFirmware(tx, firmware);
     console.log(`Seeded ${boards.length} test boards and ${sets.length} bootloader sets`);
   });
