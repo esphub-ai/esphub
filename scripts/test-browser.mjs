@@ -86,7 +86,7 @@ try {
   );
   await page.keyboard.press("Escape");
 
-  // Board gallery, detail dialog, and board-specific agent prompt.
+  // Board gallery navigates directly to the board detail page (no product modal).
   const gallery = page.getByRole("region", { name: "Board gallery" });
   await page.emulateMedia({ reducedMotion: "reduce" });
   const boards = await (
@@ -94,37 +94,18 @@ try {
   ).json();
   const selected = boards.find(({ id }) => id === "m5stack/stopwatch");
   assert.ok(selected);
-  const tile = gallery.getByRole("button", { name: selected.model, exact: true });
+  const tile = gallery.getByRole("link", { name: selected.model, exact: true });
   await tile.scrollIntoViewIfNeeded();
   await tile.click();
-  const product = page.getByRole("dialog", { name: selected.name, exact: true });
-  await product
+  await page.waitForURL(origin + "/boards/" + selected.id);
+  await page.getByRole("heading", { name: selected.name, exact: true }).waitFor();
+  await page
     .getByRole("img", { name: selected.model })
     .evaluate((img) => img.decode());
   assert.equal(
-    await product.getByRole("link", { name: "Product page" }).getAttribute("href"),
+    await page.getByRole("link", { name: "Product page" }).getAttribute("href"),
     selected.product_url,
   );
-  await product
-    .getByRole("button", { name: "Connect to my coding agent" })
-    .click();
-  await page.getByRole("button", { name: "Codex", exact: true }).click();
-  await connect.getByRole("button", { name: "Copy prompt" }).click();
-  assert.ok(
-    (await page.evaluate(() => navigator.clipboard.readText())).includes(
-      selected.id,
-    ),
-  );
-  await page.keyboard.press("Escape");
-
-  // Boards directory filtering and board detail page.
-  await page.getByRole("link", { name: "Boards", exact: true }).click();
-  await page.waitForURL(origin + "/boards");
-  await page.getByRole("heading", { name: "Supported ESP32 Boards." }).waitFor();
-  await page.getByRole("textbox", { name: "Search boards" }).fill("stopwatch");
-  await page.getByRole("link", { name: /StopWatch/ }).first().click();
-  await page.waitForURL(origin + "/boards/m5stack/stopwatch");
-  await page.getByRole("heading", { name: "StopWatch", exact: true }).waitFor();
   await page.getByRole("heading", { name: /Runnable Projects/ }).waitFor();
   assert.equal(
     await page.locator('a[href*="/bootloaders/"], a[href$="/app"]').count(),
@@ -132,13 +113,22 @@ try {
   );
   await page.getByRole("button", { name: /Connect to coding agent/ }).click();
   const detailPrompt = page.getByRole("dialog");
+  await detailPrompt.getByRole("button", { name: "Codex", exact: true }).click();
   await detailPrompt.getByRole("button", { name: /Copy prompt/ }).click();
   assert.ok(
     (await page.evaluate(() => navigator.clipboard.readText())).includes(
-      "m5stack/stopwatch",
+      selected.id,
     ),
   );
   await page.keyboard.press("Escape");
+
+  // Boards directory filtering back from detail page.
+  await page.getByRole("link", { name: /All boards/ }).click();
+  await page.waitForURL(origin + "/boards");
+  await page.getByRole("heading", { name: "Supported ESP32 Boards." }).waitFor();
+  await page.getByRole("textbox", { name: "Search boards" }).fill("stopwatch");
+  await page.getByRole("link", { name: /StopWatch/ }).first().click();
+  await page.waitForURL(origin + "/boards/m5stack/stopwatch");
 
   // Unauthenticated workspace redirect.
   await page.getByRole("link", { name: "Open workspace" }).click();

@@ -331,6 +331,9 @@ export default function Landing({
             <img src={logo} alt="EspHub" width="109" height="31" />
           </a>
           <nav className="masthead-nav" aria-label="Primary">
+            <a className="masthead-nav-link is-active" href="/" aria-current="page">
+              Home
+            </a>
             <a className="masthead-nav-link" href="/boards">
               Boards
             </a>
@@ -342,11 +345,7 @@ export default function Landing({
       </header>
       <main className="wall-story">
         <Hero open={setView} total={boards?.length} />
-        <BoardWall
-          boards={boards}
-          paused={view !== null}
-          onSelect={(board) => setView({ screen: "product", board })}
-        />
+        <BoardWall boards={boards} paused={view !== null} />
         {!boards?.length && (
           <p role="status" className="wall-status">
             {failed
@@ -367,7 +366,6 @@ export default function Landing({
         <LandingDialog
           view={view}
           setView={setView}
-          boards={boards ?? []}
           onClose={() => setView(null)}
         />
       )}
