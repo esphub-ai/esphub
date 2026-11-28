@@ -488,6 +488,64 @@ try {
     });
     assert.equal(relRes.status, 201, await relRes.clone().text());
 
+    // Newly created project defaults to private: hidden from public directory and unsigned downloads.
+    assert.equal(mcpProject.visibility, "private");
+    const privList = await (await api("/projects?board=m5stack/cardputer-adv&q=E2E")).json();
+    assert.equal(privList.some((p) => p.id === createdProjectId), false);
+    const privDl = await api(`/projects/${createdProjectId}/boards/m5stack/cardputer-adv/app`);
+    assert.equal(privDl.status, 404);
+
+    // Non-@okou.ai account cannot set official author_id or official tags (factory/example).
+    const badAuthorRes = await api(`/v1/projects/${createdProjectId}`, {
+      method: "PUT",
+      token: personalApiKey,
+      body: {
+        name: "Cardputer E2E Demo",
+        description: "Published E2E demo",
+        repo_url: "https://github.com/esphub-ai/esphub-projects",
+        repo_path: "projects/cardputer-e2e-demo",
+        author_id: "m5stack",
+      },
+    });
+    assert.equal(badAuthorRes.status, 403);
+    const badTagRes = await api(`/v1/projects/${createdProjectId}`, {
+      method: "PUT",
+      token: personalApiKey,
+      body: {
+        name: "Cardputer E2E Demo",
+        description: "Published E2E demo",
+        repo_url: "https://github.com/esphub-ai/esphub-projects",
+        repo_path: "projects/cardputer-e2e-demo",
+        tags: ["factory"],
+      },
+    });
+    assert.equal(badTagRes.status, 403);
+
+    // Owner can still flash their own private project during USB setup (signed URL).
+    const privSetupRes = await api("/setup", {
+      method: "POST",
+      token: sessionJwt,
+      body: {
+        board: "m5stack/cardputer-adv",
+        name: "Cardputer Private Flash",
+        project_id: createdProjectId,
+      },
+    });
+    assert.equal(privSetupRes.status, 200, await privSetupRes.clone().text());
+    const privDevice = await privSetupRes.json();
+    const signedAppUrl = privDevice.flash.files.find((f) => f.name === "app.bin").url;
+    assert.match(signedAppUrl, /\?exp=\d+&sig=[0-9a-f]{64}$/);
+    await checkFlashFiles(privDevice);
+    await op("devices_delete", { device_id: privDevice.id });
+
+    // Publish project via MCP projects_set_visibility -> visible publicly with owner profile.
+    const madePublic = await op("projects_set_visibility", {
+      project_id: createdProjectId,
+      visibility: "public",
+    });
+    assert.equal(madePublic.visibility, "public");
+    assert.equal(madePublic.owner?.name, "e2e_maker");
+
     const pubList = await (await api("/projects?board=m5stack/cardputer-adv&q=E2E")).json();
     assert.equal(pubList.some((p) => p.id === createdProjectId), true);
     const mcpSearch = await op("projects_search", { board: "m5stack/cardputer-adv", query: "E2E" }, read);

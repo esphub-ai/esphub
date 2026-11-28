@@ -58,6 +58,11 @@ type ProjectAuthor = {
   url: string | null;
 };
 
+type ProjectOwner = {
+  name: string | null;
+  avatar_url: string | null;
+};
+
 type PublicProjectSummary = {
   id: string;
   name: string;
@@ -67,6 +72,7 @@ type PublicProjectSummary = {
   upstream_url?: string | null;
   tags?: string[];
   author?: ProjectAuthor | null;
+  owner?: ProjectOwner | null;
   boards: ProjectBoardSummary[];
 };
 
@@ -79,6 +85,7 @@ type PublicProjectDetail = {
   upstream_url?: string | null;
   tags?: string[];
   author?: ProjectAuthor | null;
+  owner?: ProjectOwner | null;
   boards: {
     board_id: string;
     version: string;
@@ -204,6 +211,40 @@ function AuthorBadge({ author }: { author: ProjectAuthor }) {
       {content}
     </span>
   );
+}
+
+function OwnerBadge({ owner }: { owner: ProjectOwner }) {
+  if (!owner.name && !owner.avatar_url) return null;
+  const initial = owner.name?.trim().charAt(0).toUpperCase() || "?";
+  return (
+    <span className="pj-owner-chip" title={owner.name ?? undefined}>
+      {owner.avatar_url ? (
+        <img
+          className="pj-owner-avatar"
+          src={owner.avatar_url}
+          alt=""
+          loading="lazy"
+        />
+      ) : (
+        <span className="pj-owner-initial" aria-hidden="true">
+          {initial}
+        </span>
+      )}
+      {owner.name && <span className="pj-owner-name">{owner.name}</span>}
+    </span>
+  );
+}
+
+function ProjectAttribution({
+  author,
+  owner,
+}: {
+  author?: ProjectAuthor | null;
+  owner?: ProjectOwner | null;
+}) {
+  if (author) return <AuthorBadge author={author} />;
+  if (owner && (owner.name || owner.avatar_url)) return <OwnerBadge owner={owner} />;
+  return null;
 }
 
 function ProjectTagBadges({ tags }: { tags?: string[] }) {
@@ -542,10 +583,10 @@ function ProjectDetailView({
 
       <section className="pj-detail-header" aria-labelledby="project-detail-title">
         <div className="pj-detail-main">
-          {(project.author || project.tags?.length) && (
+          {(project.author || project.owner?.name || project.owner?.avatar_url || project.tags?.length) && (
             <div className="pj-detail-meta">
               <ProjectTagBadges tags={project.tags} />
-              {project.author && <AuthorBadge author={project.author} />}
+              <ProjectAttribution author={project.author} owner={project.owner} />
             </div>
           )}
 
@@ -1254,12 +1295,13 @@ export default function ProjectsPage({
                       const firstBoardId = project.boards[0]?.board_id ?? "";
                       return (
                         <article className="pj-card" key={project.id}>
-                          {(project.author || project.tags?.length) && (
+                          {(project.author || project.owner?.name || project.owner?.avatar_url || project.tags?.length) && (
                             <div className="pj-card-meta">
                               <ProjectTagBadges tags={project.tags} />
-                              {project.author && (
-                                <AuthorBadge author={project.author} />
-                              )}
+                              <ProjectAttribution
+                                author={project.author}
+                                owner={project.owner}
+                              />
                             </div>
                           )}
                           <a

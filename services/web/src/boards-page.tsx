@@ -54,6 +54,11 @@ type ProjectAuthor = {
   url: string | null;
 };
 
+type ProjectOwner = {
+  name: string | null;
+  avatar_url: string | null;
+};
+
 type PublicProject = {
   id: string;
   name: string;
@@ -63,6 +68,7 @@ type PublicProject = {
   upstream_url?: string | null;
   tags?: string[];
   author?: ProjectAuthor | null;
+  owner?: ProjectOwner | null;
   cover_image_url: string | null;
   boards: ProjectBoardRef[];
   created_at: string;
@@ -485,9 +491,12 @@ function BoardDetailView({
               const isFactory = Boolean(project.tags?.includes("factory"));
               const isExample = Boolean(project.tags?.includes("example"));
               const authorLogo = resolveAuthorLogo(project.author?.logo_url ?? null);
+              const hasOwner = Boolean(
+                !project.author && (project.owner?.name || project.owner?.avatar_url),
+              );
               return (
                 <article className="bh-proj-card" key={project.id}>
-                  {(isFactory || isExample || project.author) && (
+                  {(isFactory || isExample || project.author || hasOwner) && (
                     <div className="pj-card-meta">
                       <div className="pj-tag-badges">
                         {isFactory && (
@@ -497,8 +506,8 @@ function BoardDetailView({
                           <span className="pj-tag-badge is-example">Example</span>
                         )}
                       </div>
-                      {project.author &&
-                        (project.author.url ? (
+                      {project.author ? (
+                        project.author.url ? (
                           <a
                             className="pj-author-chip"
                             href={project.author.url}
@@ -530,7 +539,22 @@ function BoardDetailView({
                               <span>{project.author.name}</span>
                             )}
                           </span>
-                        ))}
+                        )
+                      ) : hasOwner && project.owner ? (
+                        <span className="pj-owner-chip" title={project.owner.name ?? undefined}>
+                          {project.owner.avatar_url && (
+                            <img
+                              className="pj-owner-avatar"
+                              src={project.owner.avatar_url}
+                              alt=""
+                              loading="lazy"
+                            />
+                          )}
+                          {project.owner.name && (
+                            <span className="pj-owner-name">{project.owner.name}</span>
+                          )}
+                        </span>
+                      ) : null}
                     </div>
                   )}
                   <div className="bh-proj-body">

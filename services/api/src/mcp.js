@@ -66,11 +66,16 @@ export async function serveMcp(c) {
           async (args) => {
             try {
               const result = await withDatabase(c.env, async (sql) => {
-                const owner =
+                const account =
                   name === "boards_search" || name === "projects_search"
-                    ? undefined
-                    : (await accountForSubject(sql, authInfo.extra.userId)).owner;
-                return operate({ env: c.env, sql }, owner, name, args);
+                    ? null
+                    : await accountForSubject(sql, authInfo.extra.userId, c.env);
+                return operate(
+                  { env: c.env, sql, isStaff: Boolean(account?.is_staff) },
+                  account?.owner,
+                  name,
+                  args,
+                );
               });
               return {
                 content: [{ type: "text", text: JSON.stringify(result) }],

@@ -4,7 +4,12 @@ import http from "node:http";
 import test from "node:test";
 import { exportSPKI, generateKeyPair, SignJWT } from "jose";
 import postgres from "postgres";
-import { identifyApiSubject, identifyApiUser } from "../services/api/src/auth.js";
+import {
+  extractClerkProfile,
+  identifyApiSubject,
+  identifyApiUser,
+  isStaffEmail,
+} from "../services/api/src/auth.js";
 import { boardPhotos } from "../services/api/src/board-photos.js";
 import { operate } from "../services/api/src/operations.js";
 import {
@@ -23,12 +28,16 @@ import {
   parsePublicProjectsPageParams,
   parseTags,
   parseUpstreamUrl,
+  parseVisibility,
   projectAppResponse,
   projectImageObjectKey,
   projectReleaseObjectKey,
   removeProjectBoard,
   setCurrentProjectBoardRelease,
+  setProjectVisibility,
+  signProjectAppUrl,
   updateProject,
+  verifyProjectAppSignature,
 } from "../services/api/src/projects.js";
 import { stagingKey } from "../services/api/src/r2.js";
 import { issuer } from "../shared/identity.js";
@@ -477,6 +486,91 @@ test("parsePublicProjectsPageParams validates pagination, filters, and sort opti
   assert.throws(() => parseTags(Array.from({ length: 11 }, (_, i) => `t${i}`)), (e) => e.status === 400);
   assert.throws(() => parseAuthorId("Bad_Author"), (e) => e.status === 400);
   assert.throws(() => parseUpstreamUrl("http://example.com"), (e) => e.status === 400);
+  assert.equal(parseVisibility(undefined, { defaultPrivate: true }), "private");
+  assert.equal(parseVisibility("public"), "public");
+  assert.throws(() => parseVisibility("unlisted"), (e) => e.status === 400);
+});
+
+test("isStaffEmail, extractClerkProfile, and signed private project app URLs enforce access boundaries", async () => {
+  assert.equal(isStaffEmail("ethan@okou.ai"), true);
+  assert.equal(isStaffEmail("Admin@OKOU.AI"), true);
+  assert.equal(isStaffEmail("user@notokou.ai"), false);
+  assert.equal(isStaffEmail("user@okou.ai.evil.com"), false);
+  assert.equal(isStaffEmail(null), false);
+
+  assert.deepEqual(
+    extractClerkProfile({
+      username: "alice_hw",
+      firstName: "Alice",
+      lastName: "Chen",
+      imageUrl: "https://img.clerk.com/avatar.png",
+      primaryEmailAddressId: "e1",
+      emailAddresses: [
+        { id: "e1", emailAddress: "alice@okou.ai", verification: { status: "verified" } },
+      ],
+    }),
+    {
+      display_name: "alice_hw",
+      avatar_url: "https://img.clerk.com/avatar.png",
+      email: "alice@okou.ai",
+    },
+  );
+  assert.deepEqual(
+    extractClerkProfile({
+      username: null,
+      firstName: "Bob",
+      lastName: "Wu",
+      imageUrl: "https://img.clerk.com/bob.png",
+      primaryEmailAddressId: "e1",
+      emailAddresses: [
+        { id: "e1", emailAddress: "fake@okou.ai", verification: { status: "unverified" } },
+      ],
+    }),
+    {
+      display_name: "Bob Wu",
+      avatar_url: "https://img.clerk.com/bob.png",
+      email: null,
+    },
+  );
+
+  const secret = "test-signing-secret-0123456789abcdef";
+  const projectId = randomUUID();
+  const signed = await signProjectAppUrl(secret, {
+    projectId,
+    boardId: "m5stack/cardputer-adv",
+    version: "1.0.0",
+  });
+  const parsed = new URL(signed);
+  assert.equal(
+    await verifyProjectAppSignature(secret, {
+      projectId,
+      boardId: "m5stack/cardputer-adv",
+      version: "1.0.0",
+      exp: parsed.searchParams.get("exp"),
+      sig: parsed.searchParams.get("sig"),
+    }),
+    true,
+  );
+  assert.equal(
+    await verifyProjectAppSignature(secret, {
+      projectId,
+      boardId: "m5stack/cardputer-adv",
+      version: "1.0.1",
+      exp: parsed.searchParams.get("exp"),
+      sig: parsed.searchParams.get("sig"),
+    }),
+    false,
+  );
+  assert.equal(
+    await verifyProjectAppSignature(secret, {
+      projectId,
+      boardId: "m5stack/cardputer-adv",
+      version: "1.0.0",
+      exp: String(Math.floor(Date.now() / 1000) - 10),
+      sig: parsed.searchParams.get("sig"),
+    }),
+    false,
+  );
 });
 
 test(
@@ -831,13 +925,96 @@ test(
             (e) => e.status === 400,
           );
 
-          // 4. Public reads & MCP search / get (including for Bob!)
+          // 4. Default private visibility, owner profile, staff restriction, and publishing
+          await tx`
+            UPDATE esphub.accounts
+            SET display_name = 'alice_maker',
+                avatar_url = 'https://img.clerk.com/alice.png'
+            WHERE id = ${alice.id}
+          `;
+          assert.equal(draft.visibility, "private");
+          assert.deepEqual(
+            await operate({ env, sql: tx }, undefined, "projects_search", {
+              board: boardA,
+              query: suffix.toUpperCase(),
+            }),
+            [],
+          );
+          await assert.rejects(
+            operate({ env, sql: tx }, bob.id, "projects_get", { project_id: draft.id }),
+            (e) => e.status === 404,
+          );
+          // Owner can read their own private project
+          const ownerPrivate = await operate({ env, sql: tx }, alice.id, "projects_get", {
+            project_id: draft.id,
+          });
+          assert.equal(ownerPrivate.visibility, "private");
+          assert.deepEqual(ownerPrivate.owner, {
+            name: "alice_maker",
+            avatar_url: "https://img.clerk.com/alice.png",
+          });
+          // Unsigned /app download is 404 while private; signed /app download works
+          const unsignedPrivateRes = await projectAppResponse(env, tx, draft.id, boardA);
+          assert.equal(unsignedPrivateRes.status, 404);
+          const signedPrivateUrl = await signProjectAppUrl("test-relay-secret", {
+            projectId: draft.id,
+            boardId: boardA,
+          });
+          const signedParams = new URL(signedPrivateUrl).searchParams;
+          const signedPrivateRes = await projectAppResponse(env, tx, draft.id, boardA, {
+            secret: "test-relay-secret",
+            exp: signedParams.get("exp"),
+            sig: signedParams.get("sig"),
+          });
+          assert.equal(signedPrivateRes.status, 200);
+          assert.equal(signedPrivateRes.headers.get("Cache-Control"), "private, no-store");
+          // Non-staff cannot set official author or reserved tags
+          await assert.rejects(
+            updateProject(env, tx, alice.id, draft.id, {
+              name: draft.name,
+              description: draft.description,
+              repo_url: draft.repo_url,
+              repo_path: draft.repo_path,
+              author_id: "m5stack",
+            }),
+            (e) => e.status === 403,
+          );
+          await assert.rejects(
+            updateProject(env, tx, alice.id, draft.id, {
+              name: draft.name,
+              description: draft.description,
+              repo_url: draft.repo_url,
+              repo_path: draft.repo_path,
+              tags: ["factory"],
+            }),
+            (e) => e.status === 403,
+          );
+          // Bob cannot change Alice's project visibility
+          await assert.rejects(
+            setProjectVisibility(tx, bob.id, draft.id, { visibility: "public" }),
+            (e) => e.status === 404,
+          );
+          // Publish via MCP tool so public discovery & Bob access succeed
+          const published = await operate(
+            { env, sql: tx },
+            alice.id,
+            "projects_set_visibility",
+            { project_id: draft.id, visibility: "public" },
+          );
+          assert.equal(published.visibility, "public");
+
+          // Public reads & MCP search / get (including for Bob!)
           const byBoard = await operate({ env, sql: tx }, undefined, "projects_search", {
             board: boardA,
             query: suffix.toUpperCase(),
           });
           assert.equal(byBoard.length, 1);
           assert.equal(byBoard[0].id, draft.id);
+          assert.equal(byBoard[0].visibility, "public");
+          assert.deepEqual(byBoard[0].owner, {
+            name: "alice_maker",
+            avatar_url: "https://img.clerk.com/alice.png",
+          });
           assert.deepEqual(
             byBoard[0].boards.map((b) => [b.board_id, b.version]),
             [
@@ -853,16 +1030,23 @@ test(
           assert.ok(authors.some((a) => a.id === "esphub" && a.name === "EspHub"));
           assert.ok(authors.some((a) => a.id === "m5stack" && a.url === "https://m5stack.com"));
 
-          // Set tags, author_id, and upstream_url; verify omitting them on PUT preserves existing values
-          const tagged = await updateProject(env, tx, alice.id, draft.id, {
-            name: draft.name,
-            description: draft.description,
-            repo_url: draft.repo_url,
-            repo_path: draft.repo_path,
-            tags: ["factory"],
-            author_id: "m5stack",
-            upstream_url: "https://github.com/m5stack/M5GFX/blob/main/examples/Demo.ino",
-          });
+          // Set tags, author_id, and upstream_url as @okou.ai staff; verify omitting them on PUT preserves existing values
+          const tagged = await updateProject(
+            env,
+            tx,
+            alice.id,
+            draft.id,
+            {
+              name: draft.name,
+              description: draft.description,
+              repo_url: draft.repo_url,
+              repo_path: draft.repo_path,
+              tags: ["factory"],
+              author_id: "m5stack",
+              upstream_url: "https://github.com/m5stack/M5GFX/blob/main/examples/Demo.ino",
+            },
+            { isStaff: true },
+          );
           assert.deepEqual(tagged.tags, ["factory"]);
           assert.equal(tagged.author?.id, "m5stack");
           assert.equal(
@@ -882,10 +1066,17 @@ test(
             "https://github.com/m5stack/M5GFX/blob/main/examples/Demo.ino",
           );
           await assert.rejects(
-            updateProject(env, tx, alice.id, draft.id, {
-              name: draft.name,
-              author_id: "nonexistent-author",
-            }),
+            updateProject(
+              env,
+              tx,
+              alice.id,
+              draft.id,
+              {
+                name: draft.name,
+                author_id: "nonexistent-author",
+              },
+              { isStaff: true },
+            ),
             (e) => e.status === 400,
           );
 
@@ -1037,6 +1228,7 @@ test(
           assert.equal(resolved.owner, alice.id);
 
           // 9. Verify ota_install auto-resolves project app_size and enforces board match + slot capacity
+          // Private projects owned by the caller can be OTA-installed via signed download URL.
           const otaProject = await createProject(tx, alice.id, { name: `OTA Proj ${suffix}` });
           const bigStage = stage(new Uint8Array(600000).fill(0x55), "application/octet-stream");
           await createProjectRelease(env, tx, alice.id, otaProject.id, {
@@ -1056,6 +1248,7 @@ test(
             sql: tx,
             env: {
               ...env,
+              IOT_RELAY_SECRET: "test-ota-relay-secret-0123456789",
               DEVICE: {
                 idFromName: (id) => id,
                 get: () => ({
@@ -1089,7 +1282,7 @@ test(
             }),
             (e) => e.status === 400,
           );
-          // Fitting binary (256 bytes) -> queued with pinned immutable release URL and exact image_size!
+          // Fitting binary (256 bytes) -> queued with signed URL for private project and exact image_size!
           const smallStage = stage(new Uint8Array(256).fill(0x77), "application/octet-stream");
           await createProjectRelease(env, tx, alice.id, otaProject.id, {
             board_id: boardA,
@@ -1103,9 +1296,11 @@ test(
             url: `https://api.esphub.ai/projects/${otaProject.id}/boards/${boardA}/app`,
           });
           assert.equal(enqueued.length, 1);
-          assert.equal(
+          assert.match(
             enqueued[0].args.url,
-            `https://api.esphub.ai/projects/${otaProject.id}/boards/${boardA}/releases/1.0.1/app`,
+            new RegExp(
+              `^https://api\\.esphub\\.ai/projects/${otaProject.id}/boards/${boardA}/releases/1\\.0\\.1/app\\?exp=\\d+&sig=[0-9a-f]{64}$`,
+            ),
           );
           assert.equal(enqueued[0].args.image_size, 256);
 

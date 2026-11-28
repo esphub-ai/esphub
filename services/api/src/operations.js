@@ -17,6 +17,8 @@ import {
   listPublicProjects,
   parseProjectAppUrl,
   projectAppFile,
+  setProjectVisibility,
+  signProjectAppUrl,
 } from "./projects.js";
 import { fail } from "./auth.js";
 import { createDeviceSetup } from "./setup.js";
@@ -242,14 +244,29 @@ const defs = [
   [
     "projects_create",
     additive,
-    "Create a new EspHub project owned by your account and allocate its UUID for publishing releases via /v1/projects.",
+    "Create a new EspHub project owned by your account (private by default) and allocate its UUID for publishing releases via /v1/projects.",
     {
       name: { type: "string", maxLength: 120 },
       description: { type: "string", minLength: 0, maxLength: 4000 },
       repo_url: { type: "string", maxLength: 512 },
       repo_path: { type: "string", maxLength: 512 },
+      visibility: {
+        type: "string",
+        enum: ["private", "public"],
+        description: "Project visibility. Defaults to private.",
+      },
     },
     ["name"],
+  ],
+  [
+    "projects_set_visibility",
+    additive,
+    "Set whether one of your EspHub projects is private (only visible to you) or public (listed in the EspHub directory once it has at least one board release).",
+    {
+      project_id: { type: "string" },
+      visibility: { type: "string", enum: ["private", "public"] },
+    },
+    ["project_id", "visibility"],
   ],
   [
     "projects_get",
@@ -435,7 +452,10 @@ export async function operate(c, owner, name, a) {
     return listOwnedProjects(db, owner, {
       includeArchived: a.include_archived === true,
     });
-  if (name === "projects_create") return createProject(db, owner, a);
+  if (name === "projects_create")
+    return createProject(db, owner, a, { isStaff: Boolean(c.isStaff) });
+  if (name === "projects_set_visibility")
+    return setProjectVisibility(db, owner, a.project_id, { visibility: a.visibility });
   if (name === "projects_get") return getProjectForMcp(db, owner, a.project_id);
   if (name === "projects_search")
     return listPublicProjects(db, { board: a.board, query: a.query ?? "" });
@@ -562,9 +582,18 @@ export async function operate(c, owner, name, a) {
       const ref = parseProjectAppUrl(url);
       if (ref.boardId !== d.board)
         fail(400, `Project release is for ${ref.boardId}, not ${d.board}`);
-      const file = await projectAppFile(db, ref.projectId, ref.boardId, ref.version);
+      const file = await projectAppFile(db, ref.projectId, ref.boardId, ref.version, {
+        owner,
+      });
       imageSize = file.app_size;
-      url = projectAppUrl(file.project_id, file.board_id, file.version);
+      url =
+        file.visibility === "public"
+          ? projectAppUrl(file.project_id, file.board_id, file.version)
+          : await signProjectAppUrl(c.env?.IOT_RELAY_SECRET, {
+              projectId: file.project_id,
+              boardId: file.board_id,
+              version: file.version,
+            });
     } else if (a.kind === "bootloader" && (!url || url.startsWith(bootloaderBase))) {
       const { bootloader: id } = await getBoard(db, d.board);
       const [, version, file] = url ? url.slice(bootloaderBase.length).split("/") : [];

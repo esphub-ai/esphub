@@ -5,7 +5,7 @@ import { newBleSecret } from "./ble.js";
 import { boardIdPattern, boardSpec } from "./boards.js";
 import { esptoolCommand, firmwareSummary, flashPlan, versionPattern } from "./firmware.js";
 import { buildDeviceNvs, parseWifi } from "./nvs.js";
-import { projectAppFile } from "./projects.js";
+import { projectAppFile, signProjectAppUrl } from "./projects.js";
 import { provisioning } from "./provisioning.js";
 import { uuidPattern } from "./ids.js";
 
@@ -26,14 +26,28 @@ function parseProjectTarget(input) {
   return { projectId: input.project_id.toLowerCase(), version: input.version };
 }
 
-async function setupPlan(db, env, boardId, projectTarget) {
+async function setupPlan(db, env, boardId, projectTarget, owner) {
   const [board] =
     await db`SELECT * FROM esphub.boards WHERE id = ${boardId} AND NOT retired`;
   if (!board) fail(400, "Unknown board");
   const app = projectTarget
-    ? await projectAppFile(db, projectTarget.projectId, board.id, projectTarget.version)
+    ? await projectAppFile(db, projectTarget.projectId, board.id, projectTarget.version, {
+        owner,
+      })
     : null;
-  return { board, plan: await flashPlan(db, env.FIRMWARE, board, app) };
+  const plan = await flashPlan(db, env.FIRMWARE, board, app);
+  if (app && app.visibility !== "public") {
+    const signedUrl = await signProjectAppUrl(env.IOT_RELAY_SECRET, {
+      projectId: app.project_id,
+      boardId: app.board_id,
+      version: app.version,
+    });
+    plan.appSignedUrl = signedUrl;
+    plan.files = plan.files.map((file) =>
+      file.name === "app.bin" ? { ...file, url: signedUrl } : file,
+    );
+  }
+  return { board, plan };
 }
 
 async function stageNvs(c, deviceId, offset, bytes) {
@@ -95,7 +109,9 @@ async function setupResponse(c, device, board, plan, { secret, bleSecret, wifi }
       project: {
         id: app.project_id,
         version: app.version,
-        download_url: projectAppUrl(app.project_id, app.board_id, app.version),
+        download_url:
+          plan.appSignedUrl ??
+          projectAppUrl(app.project_id, app.board_id, app.version),
       },
     }),
     files,
@@ -127,7 +143,7 @@ export async function createDeviceSetup(c, owner, input) {
   const projectTarget = parseProjectTarget(input);
 
   const db = c.sql;
-  const { board, plan } = await setupPlan(db, c.env, input.board, projectTarget);
+  const { board, plan } = await setupPlan(db, c.env, input.board, projectTarget, owner);
   const secret = token("eh_dev_");
   const bleSecret = newBleSecret();
   const [device] =
@@ -159,7 +175,7 @@ export async function reissueDeviceSetup(c, owner, deviceId, input = {}) {
   if (device.kind !== "physical")
     fail(409, "Physical device required");
 
-  const { board, plan } = await setupPlan(db, c.env, device.board, projectTarget);
+  const { board, plan } = await setupPlan(db, c.env, device.board, projectTarget, owner);
   const secret = token("eh_dev_");
   const bleSecret = newBleSecret();
   await db`UPDATE esphub.devices SET token_hash=${await digest(secret)},

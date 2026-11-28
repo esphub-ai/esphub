@@ -9,7 +9,7 @@ const csp = [
   "worker-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
   `connect-src 'self' ${issuer} https://*.protect.clerk.com:*`,
-  `img-src 'self' ${boardPhotoOrigin}`,
+  `img-src 'self' ${boardPhotoOrigin} https://img.clerk.com`,
   "frame-ancestors 'none'",
   "base-uri 'none'",
   "form-action 'self'",
