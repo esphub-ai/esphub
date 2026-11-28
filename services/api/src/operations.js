@@ -56,7 +56,7 @@ const defs = [
   [
     "devices_create",
     additive,
-    "Registers a physical device with its name and vendor/model board ID (for example, m5stack/cardputer-adv). Ask the user for the Wi-Fi SSID and password first and pass them as wifi, so the board joins the network on first boot. By default, returns a flash plan for the board's shared bootloader set and short-lived private NVS image; optionally pass project_id (and optional version) to also include a published project's app.bin in the initial USB flash.",
+    "Registers a physical device with its name and vendor/model board ID (for example, m5stack/cardputer-adv). Ask the user for the Wi-Fi SSID and password first and pass them as wifi, so the board joins the network on first boot. For first-time setup, omit project_id to flash only the shared bootloader set and private NVS image so the board boots cleanly into Bootloader mode to verify connectivity before wireless OTA; optionally pass project_id (and optional version) only when explicitly flashing a project's app.bin over USB together.",
     {
       ...strings("name"),
       board: { type: "string", description: "Exact board ID returned by boards_search." },
