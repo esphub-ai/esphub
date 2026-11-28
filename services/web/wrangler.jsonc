@@ -5,9 +5,9 @@
   "workers_dev": false,
   "preview_urls": false,
   "routes": [
-    { "pattern": "esphub.ai", "custom_domain": true },
-    { "pattern": "www.esphub.ai", "custom_domain": true },
-    { "pattern": "app.esphub.ai", "custom_domain": true }
+    { "pattern": "esphub.ai/*", "zone_name": "esphub.ai" },
+    { "pattern": "www.esphub.ai/*", "zone_name": "esphub.ai" },
+    { "pattern": "app.esphub.ai/*", "zone_name": "esphub.ai" }
   ],
   "assets": {
     "directory": "./public",
