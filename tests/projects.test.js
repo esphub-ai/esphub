@@ -14,11 +14,15 @@ import {
   createUserUploads,
   getOwnedProject,
   getPublicProject,
+  listAuthors,
   listOwnedProjects,
   listPublicProjects,
   listPublicProjectsPage,
+  parseAuthorId,
   parseProjectAppUrl,
   parsePublicProjectsPageParams,
+  parseTags,
+  parseUpstreamUrl,
   projectAppResponse,
   projectImageObjectKey,
   projectReleaseObjectKey,
@@ -407,6 +411,9 @@ test("parsePublicProjectsPageParams validates pagination, filters, and sort opti
     boardFilter: null,
     vendorFilter: null,
     socFilter: null,
+    tagFilter: null,
+    excludeTagFilter: null,
+    authorFilter: null,
     needle: "",
     sortKey: "recent",
     page: 1,
@@ -417,6 +424,9 @@ test("parsePublicProjectsPageParams validates pagination, filters, and sort opti
       board: "m5stack/cardputer-adv",
       vendor: "m5stack",
       soc: "esp32s3",
+      tag: "factory",
+      exclude_tag: "example",
+      author: "m5stack",
       query: "  Clock  ",
       sort: "name",
       page: "2",
@@ -426,11 +436,24 @@ test("parsePublicProjectsPageParams validates pagination, filters, and sort opti
       boardFilter: "m5stack/cardputer-adv",
       vendorFilter: "m5stack",
       socFilter: "esp32s3",
+      tagFilter: "factory",
+      excludeTagFilter: "example",
+      authorFilter: "m5stack",
       needle: "clock",
       sortKey: "name",
       page: 2,
       limit: 24,
     },
+  );
+  assert.deepEqual(parseTags(["factory", "example", "factory"]), ["factory", "example"]);
+  assert.equal(parseTags(undefined), undefined);
+  assert.deepEqual(parseTags(undefined, { defaultEmpty: true }), []);
+  assert.equal(parseAuthorId("m5stack"), "m5stack");
+  assert.equal(parseAuthorId(null), null);
+  assert.equal(parseAuthorId(undefined), undefined);
+  assert.equal(
+    parseUpstreamUrl("https://github.com/m5stack/M5GFX/blob/main/examples/BarGraph.ino"),
+    "https://github.com/m5stack/M5GFX/blob/main/examples/BarGraph.ino",
   );
   for (const bad of [
     { page: "0" },
@@ -442,11 +465,18 @@ test("parsePublicProjectsPageParams validates pagination, filters, and sort opti
     { sort: "oldest" },
     { vendor: "Bad_Vendor" },
     { soc: "stm32" },
+    { tag: "Bad_Tag" },
+    { exclude_tag: "Bad Tag" },
+    { author: "Bad_Author" },
     { board: "bad" },
     { query: "a\0b" },
   ]) {
     assert.throws(() => parsePublicProjectsPageParams(bad), (e) => e.status === 400);
   }
+  assert.throws(() => parseTags(["UPPER"]), (e) => e.status === 400);
+  assert.throws(() => parseTags(Array.from({ length: 11 }, (_, i) => `t${i}`)), (e) => e.status === 400);
+  assert.throws(() => parseAuthorId("Bad_Author"), (e) => e.status === 400);
+  assert.throws(() => parseUpstreamUrl("http://example.com"), (e) => e.status === 400);
 });
 
 test(
@@ -819,8 +849,51 @@ test(
           assert.deepEqual(await listPublicProjects(tx, { query: "%" }), []);
 
           // Server-side paginated listing, filters, and facets
+          const authors = await listAuthors(tx);
+          assert.ok(authors.some((a) => a.id === "esphub" && a.name === "EspHub"));
+          assert.ok(authors.some((a) => a.id === "m5stack" && a.url === "https://m5stack.com"));
+
+          // Set tags, author_id, and upstream_url; verify omitting them on PUT preserves existing values
+          const tagged = await updateProject(env, tx, alice.id, draft.id, {
+            name: draft.name,
+            description: draft.description,
+            repo_url: draft.repo_url,
+            repo_path: draft.repo_path,
+            tags: ["factory"],
+            author_id: "m5stack",
+            upstream_url: "https://github.com/m5stack/M5GFX/blob/main/examples/Demo.ino",
+          });
+          assert.deepEqual(tagged.tags, ["factory"]);
+          assert.equal(tagged.author?.id, "m5stack");
+          assert.equal(
+            tagged.upstream_url,
+            "https://github.com/m5stack/M5GFX/blob/main/examples/Demo.ino",
+          );
+          const preserved = await updateProject(env, tx, alice.id, draft.id, {
+            name: draft.name,
+            description: draft.description,
+            repo_url: draft.repo_url,
+            repo_path: draft.repo_path,
+          });
+          assert.deepEqual(preserved.tags, ["factory"]);
+          assert.equal(preserved.author?.id, "m5stack");
+          assert.equal(
+            preserved.upstream_url,
+            "https://github.com/m5stack/M5GFX/blob/main/examples/Demo.ino",
+          );
+          await assert.rejects(
+            updateProject(env, tx, alice.id, draft.id, {
+              name: draft.name,
+              author_id: "nonexistent-author",
+            }),
+            (e) => e.status === 400,
+          );
+
           const paged = await listPublicProjectsPage(tx, {
             query: suffix,
+            tag: "factory",
+            exclude_tag: "example",
+            author: "m5stack",
             page: 1,
             limit: 1,
             sort: "name",
@@ -831,7 +904,17 @@ test(
           assert.equal(paged.limit, 1);
           assert.equal(paged.items.length, 1);
           assert.equal(paged.items[0].id, draft.id);
+          assert.deepEqual(paged.items[0].tags, ["factory"]);
+          assert.equal(paged.items[0].author?.id, "m5stack");
+          assert.ok(paged.facets.tags.some((t) => t.id === "factory" && t.count >= 1));
           assert.ok(paged.facets.vendors.some((v) => v.id === boardA.split("/")[0] && v.count >= 1));
+          const excluded = await listPublicProjectsPage(tx, {
+            query: suffix,
+            exclude_tag: "factory",
+            page: 1,
+            limit: 10,
+          });
+          assert.equal(excluded.total, 0);
           const emptyPage = await listPublicProjectsPage(tx, {
             query: suffix,
             page: 2,

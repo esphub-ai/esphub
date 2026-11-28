@@ -32,6 +32,120 @@
   transform: translateY(-2px);
 }
 
+.pj-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 20px 0;
+  min-height: 24px;
+}
+
+.pj-card-meta + .pj-card-link {
+  padding-top: 12px;
+}
+
+.pj-tag-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pj-tag-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  font: 650 10px/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pj-tag-badge.is-factory {
+  background: var(--lime);
+  border: 1px solid var(--lime);
+  color: var(--ink);
+}
+
+.pj-tag-badge.is-example {
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
+}
+
+.pj-author-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  background: #121510;
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  font: 500 11px/1 var(--mono);
+  margin-left: auto;
+  transition: border-color 130ms ease, color 130ms ease;
+}
+
+a.pj-author-chip:hover {
+  border-color: var(--lime);
+  color: var(--lime);
+}
+
+.pj-author-logo {
+  height: 13px;
+  max-width: 78px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.pj-card-upstream {
+  font: 450 11px/1.35 var(--mono);
+  color: #8fa576;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pj-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pj-detail-meta .pj-author-chip {
+  margin-left: 0;
+  height: 28px;
+  padding: 0 10px;
+}
+
+.pj-detail-meta .pj-author-logo {
+  height: 15px;
+  max-width: 96px;
+}
+
+.pj-upstream-line {
+  font: 480 12.5px/1.45 var(--mono);
+  color: var(--text-muted);
+}
+
+.pj-upstream-line a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #a7c580;
+  overflow-wrap: anywhere;
+}
+
+.pj-upstream-line a:hover {
+  color: var(--lime);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
 .pj-card-link {
   display: flex;
   flex-direction: column;

@@ -31,6 +31,7 @@ import {
   createUserUploads,
   getOwnedProject,
   getPublicProject,
+  listAuthors,
   listOwnedProjects,
   listPublicProjects,
   listPublicProjectsPage,
@@ -161,6 +162,7 @@ api.get("/boards/:vendor/:slug", async (c) => {
   const id = `${c.req.param("vendor")}/${c.req.param("slug")}`;
   return c.json(await getBoardDetail(c.get("sql"), id));
 });
+api.get("/authors", async (c) => c.json(await listAuthors(c.get("sql"))));
 api.get("/projects", async (c) => {
   const page = c.req.query("page");
   const limit = c.req.query("limit");
@@ -170,6 +172,9 @@ api.get("/projects", async (c) => {
         board: c.req.query("board"),
         vendor: c.req.query("vendor"),
         soc: c.req.query("soc"),
+        tag: c.req.query("tag"),
+        exclude_tag: c.req.query("exclude_tag"),
+        author: c.req.query("author"),
         query: c.req.query("q") ?? "",
         sort: c.req.query("sort"),
         page,
@@ -180,6 +185,9 @@ api.get("/projects", async (c) => {
   return c.json(
     await listPublicProjects(c.get("sql"), {
       board: c.req.query("board"),
+      tag: c.req.query("tag"),
+      exclude_tag: c.req.query("exclude_tag"),
+      author: c.req.query("author"),
       query: c.req.query("q") ?? "",
     }),
   );
