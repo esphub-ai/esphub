@@ -74,14 +74,19 @@ jobs:
           trap 'rm -f "$secret_file"' EXIT
           node scripts/runtime-role.mjs "$secret_file"
           npx wrangler deploy -c services/api/wrangler.jsonc --secrets-file "$secret_file"
+      - name: Preflight website DNS and route permissions
+        run: node scripts/ensure-web-dns.mjs --preflight
       - name: Deploy website and management console
-        run: npx wrangler deploy -c services/web/wrangler.jsonc
+        run: |
+          npx wrangler deploy -c services/web/wrangler.jsonc
+          node scripts/ensure-web-dns.mjs --apply
       - name: Smoke test production
         run: |
           curl --fail --retry 5 --retry-all-errors https://api.esphub.ai/health | jq -e '.ok == true'
           for host in esphub.ai www.esphub.ai app.esphub.ai; do
             curl -fsSL --retry 5 --retry-all-errors "https://$host/" | grep -q 'EspHub'
           done
+          test "$(curl -sS --retry 5 --retry-all-errors -o /dev/null -w '%{http_code}' https://app.esphub.ai/devices)" = 200
           photo_url=$(curl -fsS --retry 5 --retry-all-errors https://esphub.ai/backend/boards/gallery | jq -er 'first(.[] | select(.spec.soc and .spec.flash_mb and .bootloader) | .image_url | select(startswith("https://cdn.esphub.ai/boards/")))')
           curl -fsS --retry 8 --retry-all-errors --retry-max-time 180 "$photo_url?width=80" -o "$RUNNER_TEMP/esphub-thumbnail.webp"
           file --brief "$RUNNER_TEMP/esphub-thumbnail.webp" | grep -q 'Web/P image'
