@@ -51,12 +51,22 @@ type ProjectBoardSummary = {
   sdk_version: string;
 };
 
+type ProjectAuthor = {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  url: string | null;
+};
+
 type PublicProjectSummary = {
   id: string;
   name: string;
   description: string;
   repo_url: string | null;
   repo_path: string | null;
+  upstream_url?: string | null;
+  tags?: string[];
+  author?: ProjectAuthor | null;
   boards: ProjectBoardSummary[];
 };
 
@@ -66,6 +76,9 @@ type PublicProjectDetail = {
   description: string;
   repo_url: string | null;
   repo_path: string | null;
+  upstream_url?: string | null;
+  tags?: string[];
+  author?: ProjectAuthor | null;
   boards: {
     board_id: string;
     version: string;
@@ -89,6 +102,7 @@ type PaginatedProjectsResponse = {
   facets: {
     vendors: FacetOption[];
     socs: FacetOption[];
+    tags?: FacetOption[];
   };
 };
 
@@ -100,6 +114,7 @@ type ListParams = {
   vendor: string;
   soc: string;
   board: string;
+  tag: string;
   sort: SortKey;
 };
 
@@ -130,6 +145,80 @@ function shortRepoLabel(project: {
   return project.repo_path ? `${repo} · ${project.repo_path}` : repo;
 }
 
+function shortUpstreamLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === "github.com") {
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      if (parts.length >= 2) {
+        const repo = `${parts[0]}/${parts[1]}`;
+        if ((parts[2] === "blob" || parts[2] === "tree") && parts.length > 4) {
+          return `${repo} · ${parts.slice(4).join("/")}`;
+        }
+        return repo;
+      }
+    }
+    return `${parsed.hostname}${parsed.pathname}`.replace(/\/$/, "");
+  } catch {
+    return url;
+  }
+}
+
+function resolveAuthorLogo(logoUrl: string | null): string | null {
+  if (!logoUrl) return null;
+  return logoUrl.replace(/^https:\/\/esphub\.ai(?=\/authors\/)/, "");
+}
+
+function AuthorBadge({ author }: { author: ProjectAuthor }) {
+  const logoSrc = resolveAuthorLogo(author.logo_url);
+  const content = (
+    <>
+      {logoSrc ? (
+        <img
+          className="pj-author-logo"
+          src={logoSrc}
+          alt={author.name}
+          loading="lazy"
+        />
+      ) : (
+        <span className="pj-author-name">{author.name}</span>
+      )}
+    </>
+  );
+  if (author.url) {
+    return (
+      <a
+        className="pj-author-chip"
+        href={author.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={`Author: ${author.name}`}
+        aria-label={`Author: ${author.name}`}
+      >
+        {content}
+      </a>
+    );
+  }
+  return (
+    <span className="pj-author-chip" title={`Author: ${author.name}`}>
+      {content}
+    </span>
+  );
+}
+
+function ProjectTagBadges({ tags }: { tags?: string[] }) {
+  if (!tags?.length) return null;
+  const isFactory = tags.includes("factory");
+  const isExample = tags.includes("example");
+  if (!isFactory && !isExample) return null;
+  return (
+    <div className="pj-tag-badges">
+      {isFactory && <span className="pj-tag-badge is-factory">Factory</span>}
+      {isExample && <span className="pj-tag-badge is-example">Example</span>}
+    </div>
+  );
+}
+
 function parseListSearch(search: string): ListParams {
   const sp = new URLSearchParams(search);
   const rawPage = Number(sp.get("page") || "1");
@@ -143,6 +232,7 @@ function parseListSearch(search: string): ListParams {
     vendor: (sp.get("vendor") ?? "").trim().toLowerCase(),
     soc: (sp.get("soc") ?? "").trim().toLowerCase(),
     board: (sp.get("board") ?? "").trim().toLowerCase(),
+    tag: (sp.get("tag") ?? "").trim().toLowerCase(),
     sort,
   };
 }
@@ -154,6 +244,7 @@ function buildListUrl(params: ListParams): string {
   if (params.vendor) sp.set("vendor", params.vendor);
   if (params.soc) sp.set("soc", params.soc);
   if (params.board) sp.set("board", params.board);
+  if (params.tag) sp.set("tag", params.tag);
   if (params.sort !== "recent") sp.set("sort", params.sort);
   const qs = sp.toString();
   return qs ? `/projects?${qs}` : "/projects";
@@ -167,6 +258,11 @@ function buildApiUrl(params: ListParams): string {
   if (params.vendor) sp.set("vendor", params.vendor);
   if (params.soc) sp.set("soc", params.soc);
   if (params.board) sp.set("board", params.board);
+  if (params.tag) {
+    sp.set("tag", params.tag);
+  } else {
+    sp.set("exclude_tag", "example");
+  }
   if (params.sort !== "recent") sp.set("sort", params.sort);
   return `/backend/projects?${sp.toString()}`;
 }
@@ -446,9 +542,31 @@ function ProjectDetailView({
 
       <section className="pj-detail-header" aria-labelledby="project-detail-title">
         <div className="pj-detail-main">
+          {(project.author || project.tags?.length) && (
+            <div className="pj-detail-meta">
+              <ProjectTagBadges tags={project.tags} />
+              {project.author && <AuthorBadge author={project.author} />}
+            </div>
+          )}
+
           <h1 id="project-detail-title" className="bh-detail-title">
             {project.name}
           </h1>
+
+          {project.upstream_url && (
+            <p className="pj-upstream-line">
+              Adapted from{" "}
+              <a
+                href={project.upstream_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {shortUpstreamLabel(project.upstream_url)}{" "}
+                <ArrowUpRightIcon size={12} aria-hidden="true" />
+              </a>
+            </p>
+          )}
+
           <p className="pj-detail-desc">
             {project.description || "Published ESP32 application for EspHub OTA."}
           </p>
@@ -720,6 +838,7 @@ export default function ProjectsPage({
         vendor: "",
         soc: "",
         board: "",
+        tag: "",
         sort: "recent",
       };
       setParams(clean);
@@ -744,6 +863,7 @@ export default function ProjectsPage({
       vendor: "",
       soc: "",
       board: "",
+      tag: "",
     });
   }
 
@@ -754,7 +874,7 @@ export default function ProjectsPage({
   }
 
   const hasFilters = Boolean(
-    params.q.trim() || params.vendor || params.soc || params.board,
+    params.q.trim() || params.vendor || params.soc || params.board || params.tag,
   );
   const items = pageData?.items ?? [];
   const total = pageData?.total ?? 0;
@@ -764,6 +884,12 @@ export default function ProjectsPage({
   const endIdx = Math.min(currentPage * PAGE_SIZE, total);
   const vendorFacets = pageData?.facets.vendors ?? [];
   const socFacets = pageData?.facets.socs ?? [];
+  const tagFacetsMap = useMemo(
+    () => new Map((pageData?.facets.tags ?? []).map((t) => [t.id, t.count])),
+    [pageData?.facets.tags],
+  );
+  const factoryCount = tagFacetsMap.get("factory") ?? 0;
+  const exampleCount = tagFacetsMap.get("example") ?? 0;
 
   return (
     <div className="esphub-boards-app">
@@ -880,77 +1006,120 @@ export default function ProjectsPage({
                 </div>
               </div>
 
-              {(vendorFacets.length > 0 || socFacets.length > 0) && (
-                <div className="bh-facets">
-                  {vendorFacets.length > 0 && (
-                    <div
-                      className="bh-facet-group"
-                      role="group"
-                      aria-label="Filter by vendor"
+              <div className="bh-facets">
+                <div
+                  className="bh-facet-group"
+                  role="group"
+                  aria-label="Filter by tag"
+                >
+                  <span className="bh-facet-label">Tag</span>
+                  <button
+                    type="button"
+                    className={`bh-chip${!params.tag ? " is-active" : ""}`}
+                    onClick={() => updateListParams({ tag: "", page: 1 })}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    className={`bh-chip${params.tag === "factory" ? " is-active" : ""}${factoryCount === 0 && params.tag !== "factory" ? " is-zero" : ""}`}
+                    onClick={() =>
+                      updateListParams({
+                        tag: params.tag === "factory" ? "" : "factory",
+                        page: 1,
+                      })
+                    }
+                  >
+                    Factory
+                    {factoryCount > 0 && (
+                      <span className="bh-chip-count">{factoryCount}</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className={`bh-chip${params.tag === "example" ? " is-active" : ""}${exampleCount === 0 && params.tag !== "example" ? " is-zero" : ""}`}
+                    onClick={() =>
+                      updateListParams({
+                        tag: params.tag === "example" ? "" : "example",
+                        page: 1,
+                      })
+                    }
+                  >
+                    Examples
+                    {exampleCount > 0 && (
+                      <span className="bh-chip-count">{exampleCount}</span>
+                    )}
+                  </button>
+                </div>
+
+                {vendorFacets.length > 0 && (
+                  <div
+                    className="bh-facet-group"
+                    role="group"
+                    aria-label="Filter by vendor"
+                  >
+                    <span className="bh-facet-label">Vendor</span>
+                    <button
+                      type="button"
+                      className={`bh-chip${!params.vendor ? " is-active" : ""}`}
+                      onClick={() =>
+                        updateListParams({ vendor: "", page: 1 })
+                      }
                     >
-                      <span className="bh-facet-label">Vendor</span>
+                      All
+                    </button>
+                    {vendorFacets.map((opt) => (
                       <button
+                        key={opt.id}
                         type="button"
-                        className={`bh-chip${!params.vendor ? " is-active" : ""}`}
+                        className={`bh-chip${params.vendor === opt.id ? " is-active" : ""}`}
                         onClick={() =>
-                          updateListParams({ vendor: "", page: 1 })
+                          updateListParams({
+                            vendor: params.vendor === opt.id ? "" : opt.id,
+                            page: 1,
+                          })
                         }
                       >
-                        All
+                        {manufacturer(`${opt.id}/x`)}
+                        <span className="bh-chip-count">{opt.count}</span>
                       </button>
-                      {vendorFacets.map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          className={`bh-chip${params.vendor === opt.id ? " is-active" : ""}`}
-                          onClick={() =>
-                            updateListParams({
-                              vendor: params.vendor === opt.id ? "" : opt.id,
-                              page: 1,
-                            })
-                          }
-                        >
-                          {manufacturer(`${opt.id}/x`)}
-                          <span className="bh-chip-count">{opt.count}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                    ))}
+                  </div>
+                )}
 
-                  {socFacets.length > 0 && (
-                    <div
-                      className="bh-facet-group"
-                      role="group"
-                      aria-label="Filter by SoC"
+                {socFacets.length > 0 && (
+                  <div
+                    className="bh-facet-group"
+                    role="group"
+                    aria-label="Filter by SoC"
+                  >
+                    <span className="bh-facet-label">SoC</span>
+                    <button
+                      type="button"
+                      className={`bh-chip${!params.soc ? " is-active" : ""}`}
+                      onClick={() => updateListParams({ soc: "", page: 1 })}
                     >
-                      <span className="bh-facet-label">SoC</span>
+                      All
+                    </button>
+                    {socFacets.map((opt) => (
                       <button
+                        key={opt.id}
                         type="button"
-                        className={`bh-chip${!params.soc ? " is-active" : ""}`}
-                        onClick={() => updateListParams({ soc: "", page: 1 })}
+                        className={`bh-chip${params.soc === opt.id ? " is-active" : ""}`}
+                        onClick={() =>
+                          updateListParams({
+                            soc: params.soc === opt.id ? "" : opt.id,
+                            page: 1,
+                          })
+                        }
                       >
-                        All
+                        {formatSoc(opt.id)}
+                        <span className="bh-chip-count">{opt.count}</span>
                       </button>
-                      {socFacets.map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          className={`bh-chip${params.soc === opt.id ? " is-active" : ""}`}
-                          onClick={() =>
-                            updateListParams({
-                              soc: params.soc === opt.id ? "" : opt.id,
-                              page: 1,
-                            })
-                          }
-                        >
-                          {formatSoc(opt.id)}
-                          <span className="bh-chip-count">{opt.count}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
@@ -985,6 +1154,20 @@ export default function ProjectsPage({
 
                   {hasFilters && (
                     <div className="bh-active-tags">
+                      {params.tag && (
+                        <button
+                          type="button"
+                          className="bh-active-tag"
+                          onClick={() => updateListParams({ tag: "", page: 1 })}
+                        >
+                          {params.tag === "factory"
+                            ? "Factory"
+                            : params.tag === "example"
+                              ? "Examples"
+                              : params.tag}{" "}
+                          <XIcon size={11} />
+                        </button>
+                      )}
                       {params.vendor && (
                         <button
                           type="button"
@@ -1071,6 +1254,14 @@ export default function ProjectsPage({
                       const firstBoardId = project.boards[0]?.board_id ?? "";
                       return (
                         <article className="pj-card" key={project.id}>
+                          {(project.author || project.tags?.length) && (
+                            <div className="pj-card-meta">
+                              <ProjectTagBadges tags={project.tags} />
+                              {project.author && (
+                                <AuthorBadge author={project.author} />
+                              )}
+                            </div>
+                          )}
                           <a
                             className="pj-card-link"
                             href={`/projects/${project.id}`}
@@ -1084,6 +1275,11 @@ export default function ProjectsPage({
                                 aria-hidden="true"
                               />
                             </div>
+                            {project.upstream_url && (
+                              <span className="pj-card-upstream">
+                                Adapted from {shortUpstreamLabel(project.upstream_url)}
+                              </span>
+                            )}
                             <p className="pj-card-desc">
                               {project.description ||
                                 "Published ESP32 application for EspHub OTA."}

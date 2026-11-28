@@ -47,12 +47,22 @@ type ProjectBoardRef = {
   updated_at: string;
 };
 
+type ProjectAuthor = {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  url: string | null;
+};
+
 type PublicProject = {
   id: string;
   name: string;
   description: string;
   repo_url: string | null;
   repo_path: string | null;
+  upstream_url?: string | null;
+  tags?: string[];
+  author?: ProjectAuthor | null;
   cover_image_url: string | null;
   boards: ProjectBoardRef[];
   created_at: string;
@@ -83,6 +93,30 @@ function shortRepoLabel(project: PublicProject): string {
   if (!project.repo_url) return "Published on EspHub";
   const repo = project.repo_url.replace(/^https:\/\/github\.com\//, "");
   return project.repo_path ? `${repo} · ${project.repo_path}` : repo;
+}
+
+function shortUpstreamLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === "github.com") {
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      if (parts.length >= 2) {
+        const repo = `${parts[0]}/${parts[1]}`;
+        if ((parts[2] === "blob" || parts[2] === "tree") && parts.length > 4) {
+          return `${repo} · ${parts.slice(4).join("/")}`;
+        }
+        return repo;
+      }
+    }
+    return `${parsed.hostname}${parsed.pathname}`.replace(/\/$/, "");
+  } catch {
+    return url;
+  }
+}
+
+function resolveAuthorLogo(logoUrl: string | null): string | null {
+  if (!logoUrl) return null;
+  return logoUrl.replace(/^https:\/\/esphub\.ai(?=\/authors\/)/, "");
 }
 
 export function parseBoardsPath(pathname: string): string | null {
@@ -226,23 +260,38 @@ function BoardDetailView({
 }) {
   const [copiedId, setCopiedId] = useState(false);
   const [projQuery, setProjQuery] = useState("");
+  const [showExamples, setShowExamples] = useState(false);
 
   useEffect(() => {
     setProjQuery("");
+    setShowExamples(false);
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [board.id]);
 
+  const { visibleProjects, exampleCount } = useMemo(() => {
+    const examples = boardProjects.filter(({ project }) =>
+      project.tags?.includes("example"),
+    );
+    const curated = boardProjects.filter(
+      ({ project }) => !project.tags?.includes("example"),
+    );
+    return {
+      visibleProjects: showExamples ? boardProjects : curated,
+      exampleCount: examples.length,
+    };
+  }, [boardProjects, showExamples]);
+
   const filteredProjects = useMemo(() => {
     const q = projQuery.trim().toLowerCase();
-    if (!q) return boardProjects;
-    return boardProjects.filter(
+    if (!q) return visibleProjects;
+    return visibleProjects.filter(
       ({ project, ref }) =>
         project.name.toLowerCase().includes(q) ||
         project.description.toLowerCase().includes(q) ||
         (project.repo_path ?? "").toLowerCase().includes(q) ||
         ref.version.toLowerCase().includes(q),
     );
-  }, [boardProjects, projQuery]);
+  }, [visibleProjects, projQuery]);
 
   async function copyBoardId() {
     try {
@@ -360,18 +409,31 @@ function BoardDetailView({
         <div className="bh-section-head">
           <h2 id="projects-heading" className="bh-section-title">
             Runnable Projects
-            <span className="bh-count-badge">{boardProjects.length}</span>
+            <span className="bh-count-badge">{visibleProjects.length}</span>
           </h2>
-          {boardProjects.length > 3 && (
-            <input
-              type="search"
-              className="bh-proj-filter"
-              placeholder={`Filter ${boardProjects.length} projects…`}
-              aria-label="Filter projects"
-              value={projQuery}
-              onChange={(e) => setProjQuery(e.target.value)}
-            />
-          )}
+          <div className="bh-section-tools">
+            {exampleCount > 0 && (
+              <button
+                type="button"
+                className={`bh-chip${showExamples ? " is-active" : ""}`}
+                onClick={() => setShowExamples((v) => !v)}
+              >
+                {showExamples
+                  ? "Hide examples"
+                  : `Show ${exampleCount} ${exampleCount === 1 ? "example" : "examples"}`}
+              </button>
+            )}
+            {visibleProjects.length > 3 && (
+              <input
+                type="search"
+                className="bh-proj-filter"
+                placeholder={`Filter ${visibleProjects.length} projects…`}
+                aria-label="Filter projects"
+                value={projQuery}
+                onChange={(e) => setProjQuery(e.target.value)}
+              />
+            )}
+          </div>
         </div>
 
         {boardProjects.length === 0 ? (
@@ -392,6 +454,25 @@ function BoardDetailView({
               Start building with Agent <ArrowRightIcon size={15} />
             </button>
           </div>
+        ) : visibleProjects.length === 0 && exampleCount > 0 ? (
+          <div className="bh-proj-empty">
+            <div>
+              <h3>No featured apps for {board.name} yet</h3>
+              <p>
+                {exampleCount}{" "}
+                {exampleCount === 1 ? "example is" : "examples are"} available for
+                hardware reference and testing.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="bh-btn-secondary"
+              onClick={() => setShowExamples(true)}
+            >
+              Show {exampleCount}{" "}
+              {exampleCount === 1 ? "example" : "examples"}
+            </button>
+          </div>
         ) : filteredProjects.length === 0 ? (
           <div className="bh-empty">
             <h3>No matching projects</h3>
@@ -401,8 +482,57 @@ function BoardDetailView({
           <div className="bh-proj-grid">
             {filteredProjects.map(({ project, ref }) => {
               const source = projectSourceUrl(project);
+              const isFactory = Boolean(project.tags?.includes("factory"));
+              const isExample = Boolean(project.tags?.includes("example"));
+              const authorLogo = resolveAuthorLogo(project.author?.logo_url ?? null);
               return (
                 <article className="bh-proj-card" key={project.id}>
+                  {(isFactory || isExample || project.author) && (
+                    <div className="pj-card-meta">
+                      <div className="pj-tag-badges">
+                        {isFactory && (
+                          <span className="pj-tag-badge is-factory">Factory</span>
+                        )}
+                        {isExample && (
+                          <span className="pj-tag-badge is-example">Example</span>
+                        )}
+                      </div>
+                      {project.author &&
+                        (project.author.url ? (
+                          <a
+                            className="pj-author-chip"
+                            href={project.author.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={`Author: ${project.author.name}`}
+                          >
+                            {authorLogo ? (
+                              <img
+                                className="pj-author-logo"
+                                src={authorLogo}
+                                alt={project.author.name}
+                                loading="lazy"
+                              />
+                            ) : (
+                              <span>{project.author.name}</span>
+                            )}
+                          </a>
+                        ) : (
+                          <span className="pj-author-chip">
+                            {authorLogo ? (
+                              <img
+                                className="pj-author-logo"
+                                src={authorLogo}
+                                alt={project.author.name}
+                                loading="lazy"
+                              />
+                            ) : (
+                              <span>{project.author.name}</span>
+                            )}
+                          </span>
+                        ))}
+                    </div>
+                  )}
                   <div className="bh-proj-body">
                     <div className="bh-proj-top">
                       <h3 className="bh-proj-name">
@@ -414,6 +544,17 @@ function BoardDetailView({
                         </a>
                       </h3>
                     </div>
+
+                    {project.upstream_url && (
+                      <a
+                        className="pj-card-upstream"
+                        href={project.upstream_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Adapted from {shortUpstreamLabel(project.upstream_url)}
+                      </a>
+                    )}
 
                     <p className="bh-proj-desc">
                       {project.description || "Published ESP32 application for EspHub OTA."}

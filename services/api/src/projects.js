@@ -25,6 +25,10 @@ const dotSegmentPattern = /(^|\/)\.\.?(\/|$)/;
 const uuidInsensitive = new RegExp(uuidPattern.source, "i");
 const vendorPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const socPattern = /^esp32[a-z0-9]*$/;
+const tagPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const authorIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const maxProjectTags = 10;
+const maxTagLength = 32;
 const allowedProjectSorts = new Set(["recent", "name", "boards"]);
 const defaultProjectsLimit = 18;
 const maxProjectsLimit = 100;
@@ -46,13 +50,24 @@ const allowedUploadTypes = {
   "image/jpeg": maxImageBytes,
 };
 
-const createProjectKeys = new Set(["name", "description", "repo_url", "repo_path"]);
+const createProjectKeys = new Set([
+  "name",
+  "description",
+  "repo_url",
+  "repo_path",
+  "upstream_url",
+  "tags",
+  "author_id",
+]);
 const updateProjectKeys = new Set([
   "name",
   "description",
   "repo_url",
   "repo_path",
+  "upstream_url",
   "images",
+  "tags",
+  "author_id",
 ]);
 const imageInputKeys = new Set([
   "upload_id",
@@ -152,8 +167,91 @@ function parseOptionalLabel(value, field, maxLen = 64) {
   return trimmed;
 }
 
+export function parseUpstreamUrl(value, { defaultNull = false } = {}) {
+  if (value === undefined) return defaultNull ? null : undefined;
+  if (value === null) return null;
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("https://") ||
+    value.length > 1024 ||
+    value.includes("\0") ||
+    /[\s\\]/.test(value)
+  )
+    fail(400, "Invalid upstream_url");
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    fail(400, "Invalid upstream_url");
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username ||
+    parsed.password ||
+    !parsed.hostname
+  )
+    fail(400, "Invalid upstream_url");
+  return value;
+}
+
+export function parseTags(value, { defaultEmpty = false } = {}) {
+  if (value === undefined) return defaultEmpty ? [] : undefined;
+  if (!Array.isArray(value) || value.length > maxProjectTags)
+    fail(400, `tags must be an array of at most ${maxProjectTags} entries`);
+  const seen = new Set();
+  const out = [];
+  for (const raw of value) {
+    if (
+      typeof raw !== "string" ||
+      raw.length === 0 ||
+      raw.length > maxTagLength ||
+      !tagPattern.test(raw)
+    )
+      fail(400, "Invalid tag");
+    if (!seen.has(raw)) {
+      seen.add(raw);
+      out.push(raw);
+    }
+  }
+  return out;
+}
+
+export function parseAuthorId(value, { defaultNull = false } = {}) {
+  if (value === undefined) return defaultNull ? null : undefined;
+  if (value === null) return null;
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 64 ||
+    !authorIdPattern.test(value)
+  )
+    fail(400, "Invalid author_id");
+  return value;
+}
+
 function parseJsonValue(value) {
   return typeof value === "string" ? JSON.parse(value) : value;
+}
+
+function formatAuthor(row) {
+  if (!row || !row.id) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    logo_url: row.logo_url ?? null,
+    url: row.url ?? null,
+  };
+}
+
+function parseRowTags(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return [];
 }
 
 function imageUrlFor(projectId, sha256, contentType) {
@@ -164,12 +262,16 @@ function imageUrlFor(projectId, sha256, contentType) {
 function formatProjectSummary(row, { includeArchived = false } = {}) {
   const cover = parseJsonValue(row.cover_image);
   const boards = parseJsonValue(row.boards) ?? [];
+  const author = formatAuthor(parseJsonValue(row.author));
   return {
     id: row.id,
     name: row.name,
     description: row.description,
     repo_url: row.repo_url ?? null,
     repo_path: row.repo_path ?? null,
+    upstream_url: row.upstream_url ?? null,
+    tags: parseRowTags(row.tags),
+    author,
     ...(includeArchived ? { archived: Boolean(row.archived) } : {}),
     cover_image_url: cover
       ? imageUrlFor(row.id, cover.sha256, cover.content_type)
@@ -185,7 +287,7 @@ function formatProjectSummary(row, { includeArchived = false } = {}) {
   };
 }
 
-function formatProjectDetail(project, images, boards, { includeArchived = false } = {}) {
+function formatProjectDetail(project, images, boards, author, { includeArchived = false } = {}) {
   const formattedImages = images.map((img) => ({
     position: Number(img.position),
     is_cover: Boolean(img.is_cover),
@@ -201,6 +303,9 @@ function formatProjectDetail(project, images, boards, { includeArchived = false 
     description: project.description,
     repo_url: project.repo_url ?? null,
     repo_path: project.repo_path ?? null,
+    upstream_url: project.upstream_url ?? null,
+    tags: parseRowTags(project.tags),
+    author: formatAuthor(author),
     ...(includeArchived ? { archived: Boolean(project.archived) } : {}),
     cover_image_url: cover ? cover.url : null,
     images: formattedImages,
@@ -294,6 +399,22 @@ export async function createUserUploads(env, input) {
   return { uploads };
 }
 
+export async function listAuthors(sql) {
+  const rows = await sql`SELECT id, name, logo_url, url
+    FROM esphub.authors
+    ORDER BY id ASC`;
+  return rows.map((row) => formatAuthor(row));
+}
+
+async function resolveAuthor(sql, authorId) {
+  if (!authorId) return null;
+  const [author] = await sql`SELECT id, name, logo_url, url
+    FROM esphub.authors
+    WHERE id = ${authorId}`;
+  if (!author) fail(400, "Unknown author_id");
+  return author;
+}
+
 export async function createProject(sql, owner, input) {
   if (!isPlainObject(input)) fail(400, "Expected a project object");
   assertAllowedKeys(input, createProjectKeys);
@@ -301,17 +422,24 @@ export async function createProject(sql, owner, input) {
   const description = parseDescription(input.description);
   const repo_url = parseRepoUrl(input.repo_url);
   const repo_path = parseRepoPath(input.repo_path, repo_url);
+  const upstream_url = parseUpstreamUrl(input.upstream_url, { defaultNull: true });
+  const tags = parseTags(input.tags, { defaultEmpty: true });
+  const author_id = parseAuthorId(input.author_id, { defaultNull: true });
+  const author = await resolveAuthor(sql, author_id);
 
   const [project] = await sql`INSERT INTO esphub.projects (
-      owner, name, description, repo_url, repo_path
+      owner, name, description, repo_url, repo_path, upstream_url, tags, author_id
     ) VALUES (
-      ${owner}, ${name}, ${description}, ${repo_url}, ${repo_path}
-    ) RETURNING *`;
-  return formatProjectDetail(project, [], [], { includeArchived: true });
+      ${owner}, ${name}, ${description}, ${repo_url}, ${repo_path}, ${upstream_url},
+      ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(tags)}::text::jsonb)),
+      ${author_id}
+    ) RETURNING id, owner, name, description, repo_url, repo_path, upstream_url,
+      to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at`;
+  return formatProjectDetail(project, [], [], author, { includeArchived: true });
 }
 
-async function fetchProjectDetails(sql, projectId) {
-  const [images, boards] = await Promise.all([
+async function fetchProjectDetails(sql, projectId, authorId = null) {
+  const [images, boards, authorRows] = await Promise.all([
     sql`SELECT position, is_cover, content_type, size, sha256
       FROM esphub.project_images
       WHERE project_id = ${projectId}
@@ -326,12 +454,19 @@ async function fetchProjectDetails(sql, projectId) {
        AND r.version = pb.latest_version
       WHERE pb.project_id = ${projectId}
       ORDER BY pb.board_id ASC`,
+    authorId
+      ? sql`SELECT id, name, logo_url, url FROM esphub.authors WHERE id = ${authorId}`
+      : Promise.resolve([]),
   ]);
-  return { images, boards };
+  return { images, boards, author: authorRows[0] ?? null };
 }
 
 export async function listOwnedProjects(sql, owner, { includeArchived = false } = {}) {
-  const rows = await sql`SELECT p.id, p.name, p.description, p.repo_url, p.repo_path,
+  const rows = await sql`SELECT p.id, p.name, p.description, p.repo_url, p.repo_path, p.upstream_url,
+      to_jsonb(p.tags) AS tags,
+      CASE WHEN a.id IS NOT NULL THEN jsonb_build_object(
+        'id', a.id, 'name', a.name, 'logo_url', a.logo_url, 'url', a.url
+      ) END AS author,
       p.archived, p.created_at, p.updated_at,
       (SELECT jsonb_build_object('sha256', i.sha256, 'content_type', i.content_type)
        FROM esphub.project_images i
@@ -356,6 +491,7 @@ export async function listOwnedProjects(sql, owner, { includeArchived = false } 
         '[]'::jsonb
       ) AS boards
     FROM esphub.projects p
+    LEFT JOIN esphub.authors a ON a.id = p.author_id
     WHERE p.owner = ${owner}
       AND (${Boolean(includeArchived)}::boolean OR NOT p.archived)
     ORDER BY p.updated_at DESC, p.id ASC`;
@@ -365,16 +501,22 @@ export async function listOwnedProjects(sql, owner, { includeArchived = false } 
 export async function getOwnedProject(sql, owner, rawId) {
   const id = parseProjectId(rawId);
   const [project] =
-    await sql`SELECT * FROM esphub.projects WHERE id = ${id} AND owner = ${owner}`;
+    await sql`SELECT id, owner, name, description, repo_url, repo_path, upstream_url,
+        to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at
+      FROM esphub.projects
+      WHERE id = ${id} AND owner = ${owner}`;
   if (!project) fail(404, "Project not found");
-  const { images, boards } = await fetchProjectDetails(sql, id);
-  return formatProjectDetail(project, images, boards, { includeArchived: true });
+  const { images, boards, author } = await fetchProjectDetails(sql, id, project.author_id);
+  return formatProjectDetail(project, images, boards, author, { includeArchived: true });
 }
 
 export function parsePublicProjectsPageParams({
   board,
   vendor,
   soc,
+  tag,
+  exclude_tag,
+  author,
   query = "",
   sort = "recent",
   page,
@@ -397,6 +539,28 @@ export function parsePublicProjectsPageParams({
     if (typeof soc !== "string" || !socPattern.test(soc))
       fail(400, "Invalid soc");
     socFilter = soc;
+  }
+  let tagFilter = null;
+  if (tag !== undefined && tag !== "") {
+    if (typeof tag !== "string" || tag.length > maxTagLength || !tagPattern.test(tag))
+      fail(400, "Invalid tag");
+    tagFilter = tag;
+  }
+  let excludeTagFilter = null;
+  if (exclude_tag !== undefined && exclude_tag !== "") {
+    if (
+      typeof exclude_tag !== "string" ||
+      exclude_tag.length > maxTagLength ||
+      !tagPattern.test(exclude_tag)
+    )
+      fail(400, "Invalid exclude_tag");
+    excludeTagFilter = exclude_tag;
+  }
+  let authorFilter = null;
+  if (author !== undefined && author !== "") {
+    if (typeof author !== "string" || author.length > 64 || !authorIdPattern.test(author))
+      fail(400, "Invalid author");
+    authorFilter = author;
   }
   if (typeof query !== "string" || query.includes("\0")) fail(400, "Invalid query");
   const needle = query.trim().toLowerCase();
@@ -428,6 +592,9 @@ export function parsePublicProjectsPageParams({
     boardFilter,
     vendorFilter,
     socFilter,
+    tagFilter,
+    excludeTagFilter,
+    authorFilter,
     needle,
     sortKey,
     page: pageNum,
@@ -440,6 +607,9 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
     boardFilter,
     vendorFilter,
     socFilter,
+    tagFilter,
+    excludeTagFilter,
+    authorFilter,
     needle,
     sortKey,
     page,
@@ -447,7 +617,7 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
   } = parsePublicProjectsPageParams(rawParams);
   const offset = (page - 1) * limit;
 
-  const [[countRow], rows, vendorFacets, socFacets] = await Promise.all([
+  const [[countRow], rows, vendorFacets, socFacets, tagFacets] = await Promise.all([
     sql`SELECT COUNT(*)::int AS total
       FROM esphub.projects p
       WHERE NOT p.archived
@@ -466,6 +636,9 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
           JOIN esphub.boards b ON b.id = pb.board_id
           WHERE pb.project_id = p.id AND b.soc = ${socFilter}
         ))
+        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(p.tags))
+        AND (${excludeTagFilter}::text IS NULL OR NOT (${excludeTagFilter}::text = ANY(p.tags)))
+        AND (${authorFilter}::text IS NULL OR p.author_id = ${authorFilter})
         AND (${needle} = ''
           OR strpos(lower(p.name), ${needle}) > 0
           OR strpos(lower(p.description), ${needle}) > 0
@@ -481,7 +654,11 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
                 OR strpos(lower(b.soc), ${needle}) > 0
               )
           ))`,
-    sql`SELECT p.id, p.name, p.description, p.repo_url, p.repo_path,
+    sql`SELECT p.id, p.name, p.description, p.repo_url, p.repo_path, p.upstream_url,
+        to_jsonb(p.tags) AS tags,
+        CASE WHEN a.id IS NOT NULL THEN jsonb_build_object(
+          'id', a.id, 'name', a.name, 'logo_url', a.logo_url, 'url', a.url
+        ) END AS author,
         p.created_at, p.updated_at,
         (SELECT jsonb_build_object('sha256', i.sha256, 'content_type', i.content_type)
          FROM esphub.project_images i
@@ -506,6 +683,7 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
           '[]'::jsonb
         ) AS boards
       FROM esphub.projects p
+      LEFT JOIN esphub.authors a ON a.id = p.author_id
       WHERE NOT p.archived
         AND EXISTS (SELECT 1 FROM esphub.project_boards pb WHERE pb.project_id = p.id)
         AND (${boardFilter}::text IS NULL OR EXISTS (
@@ -522,6 +700,9 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
           JOIN esphub.boards b ON b.id = pb.board_id
           WHERE pb.project_id = p.id AND b.soc = ${socFilter}
         ))
+        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(p.tags))
+        AND (${excludeTagFilter}::text IS NULL OR NOT (${excludeTagFilter}::text = ANY(p.tags)))
+        AND (${authorFilter}::text IS NULL OR p.author_id = ${authorFilter})
         AND (${needle} = ''
           OR strpos(lower(p.name), ${needle}) > 0
           OR strpos(lower(p.description), ${needle}) > 0
@@ -557,6 +738,9 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
           JOIN esphub.boards b2 ON b2.id = pb2.board_id
           WHERE pb2.project_id = p.id AND b2.soc = ${socFilter}
         ))
+        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(p.tags))
+        AND (${excludeTagFilter}::text IS NULL OR NOT (${excludeTagFilter}::text = ANY(p.tags)))
+        AND (${authorFilter}::text IS NULL OR p.author_id = ${authorFilter})
         AND (${needle} = ''
           OR strpos(lower(p.name), ${needle}) > 0
           OR strpos(lower(p.description), ${needle}) > 0
@@ -588,6 +772,9 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
           JOIN esphub.boards b2 ON b2.id = pb2.board_id
           WHERE pb2.project_id = p.id AND b2.vendor = ${vendorFilter}
         ))
+        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(p.tags))
+        AND (${excludeTagFilter}::text IS NULL OR NOT (${excludeTagFilter}::text = ANY(p.tags)))
+        AND (${authorFilter}::text IS NULL OR p.author_id = ${authorFilter})
         AND (${needle} = ''
           OR strpos(lower(p.name), ${needle}) > 0
           OR strpos(lower(p.description), ${needle}) > 0
@@ -605,6 +792,43 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
           ))
       GROUP BY b.soc
       ORDER BY count DESC, b.soc ASC`,
+    sql`SELECT t.tag AS id, COUNT(DISTINCT p.id)::int AS count
+      FROM esphub.projects p
+      CROSS JOIN LATERAL unnest(p.tags) AS t(tag)
+      WHERE NOT p.archived
+        AND EXISTS (SELECT 1 FROM esphub.project_boards pb WHERE pb.project_id = p.id)
+        AND (${boardFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb2
+          WHERE pb2.project_id = p.id AND pb2.board_id = ${boardFilter}
+        ))
+        AND (${vendorFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb2
+          JOIN esphub.boards b2 ON b2.id = pb2.board_id
+          WHERE pb2.project_id = p.id AND b2.vendor = ${vendorFilter}
+        ))
+        AND (${socFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb2
+          JOIN esphub.boards b2 ON b2.id = pb2.board_id
+          WHERE pb2.project_id = p.id AND b2.soc = ${socFilter}
+        ))
+        AND (${authorFilter}::text IS NULL OR p.author_id = ${authorFilter})
+        AND (${needle} = ''
+          OR strpos(lower(p.name), ${needle}) > 0
+          OR strpos(lower(p.description), ${needle}) > 0
+          OR strpos(lower(COALESCE(p.repo_path, '')), ${needle}) > 0
+          OR EXISTS (
+            SELECT 1 FROM esphub.project_boards pb2
+            JOIN esphub.boards b2 ON b2.id = pb2.board_id
+            WHERE pb2.project_id = p.id
+              AND (
+                strpos(lower(pb2.board_id), ${needle}) > 0
+                OR strpos(lower(b2.name), ${needle}) > 0
+                OR strpos(lower(b2.model), ${needle}) > 0
+                OR strpos(lower(b2.soc), ${needle}) > 0
+              )
+          ))
+      GROUP BY t.tag
+      ORDER BY count DESC, t.tag ASC`,
   ]);
 
   const total = Number(countRow?.total ?? 0);
@@ -619,21 +843,23 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
     facets: {
       vendors: vendorFacets.map((r) => ({ id: r.id, count: Number(r.count) })),
       socs: socFacets.map((r) => ({ id: r.id, count: Number(r.count) })),
+      tags: tagFacets.map((r) => ({ id: r.id, count: Number(r.count) })),
     },
   };
 }
 
-export async function listPublicProjects(sql, { board, query = "" } = {}) {
-  let boardFilter = null;
-  if (board !== undefined && board !== "") {
-    if (typeof board !== "string" || !boardIdPattern.test(board))
-      fail(400, "Invalid board");
-    boardFilter = board;
-  }
-  if (typeof query !== "string" || query.includes("\0")) fail(400, "Invalid query");
-  const needle = query.trim().toLowerCase();
+export async function listPublicProjects(
+  sql,
+  { board, tag, exclude_tag, author, query = "" } = {},
+) {
+  const { boardFilter, tagFilter, excludeTagFilter, authorFilter, needle } =
+    parsePublicProjectsPageParams({ board, tag, exclude_tag, author, query });
 
-  const rows = await sql`SELECT p.id, p.name, p.description, p.repo_url, p.repo_path,
+  const rows = await sql`SELECT p.id, p.name, p.description, p.repo_url, p.repo_path, p.upstream_url,
+      to_jsonb(p.tags) AS tags,
+      CASE WHEN a.id IS NOT NULL THEN jsonb_build_object(
+        'id', a.id, 'name', a.name, 'logo_url', a.logo_url, 'url', a.url
+      ) END AS author,
       p.created_at, p.updated_at,
       (SELECT jsonb_build_object('sha256', i.sha256, 'content_type', i.content_type)
        FROM esphub.project_images i
@@ -658,12 +884,16 @@ export async function listPublicProjects(sql, { board, query = "" } = {}) {
         '[]'::jsonb
       ) AS boards
     FROM esphub.projects p
+    LEFT JOIN esphub.authors a ON a.id = p.author_id
     WHERE NOT p.archived
       AND EXISTS (SELECT 1 FROM esphub.project_boards pb WHERE pb.project_id = p.id)
       AND (${boardFilter}::text IS NULL OR EXISTS (
         SELECT 1 FROM esphub.project_boards pb
         WHERE pb.project_id = p.id AND pb.board_id = ${boardFilter}
       ))
+      AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(p.tags))
+      AND (${excludeTagFilter}::text IS NULL OR NOT (${excludeTagFilter}::text = ANY(p.tags)))
+      AND (${authorFilter}::text IS NULL OR p.author_id = ${authorFilter})
       AND (${needle} = ''
         OR strpos(lower(p.name), ${needle}) > 0
         OR strpos(lower(p.description), ${needle}) > 0)
@@ -673,24 +903,30 @@ export async function listPublicProjects(sql, { board, query = "" } = {}) {
 
 export async function getPublicProject(sql, rawId) {
   const id = parseProjectId(rawId);
-  const [project] = await sql`SELECT * FROM esphub.projects p
+  const [project] = await sql`SELECT p.id, p.owner, p.name, p.description, p.repo_url,
+      p.repo_path, p.upstream_url, to_jsonb(p.tags) AS tags, p.author_id, p.archived,
+      p.created_at, p.updated_at
+    FROM esphub.projects p
     WHERE p.id = ${id}
       AND NOT p.archived
       AND EXISTS (SELECT 1 FROM esphub.project_boards pb WHERE pb.project_id = p.id)`;
   if (!project) fail(404, "Project not found");
-  const { images, boards } = await fetchProjectDetails(sql, id);
-  return formatProjectDetail(project, images, boards);
+  const { images, boards, author } = await fetchProjectDetails(sql, id, project.author_id);
+  return formatProjectDetail(project, images, boards, author);
 }
 
 export async function getProjectForMcp(sql, owner, rawId) {
   const id = parseProjectId(rawId);
-  const [project] = await sql`SELECT * FROM esphub.projects WHERE id = ${id}`;
+  const [project] = await sql`SELECT id, owner, name, description, repo_url, repo_path,
+      upstream_url, to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at
+    FROM esphub.projects
+    WHERE id = ${id}`;
   if (!project) fail(404, "Project not found");
   const isOwner = owner !== undefined && project.owner === owner;
-  const { images, boards } = await fetchProjectDetails(sql, id);
-  if (isOwner) return formatProjectDetail(project, images, boards, { includeArchived: true });
+  const { images, boards, author } = await fetchProjectDetails(sql, id, project.author_id);
+  if (isOwner) return formatProjectDetail(project, images, boards, author, { includeArchived: true });
   if (project.archived || boards.length === 0) fail(404, "Project not found");
-  return formatProjectDetail(project, images, boards);
+  return formatProjectDetail(project, images, boards, author);
 }
 
 export async function updateProject(env, sql, owner, rawId, input) {
@@ -702,22 +938,43 @@ export async function updateProject(env, sql, owner, rawId, input) {
   const description = parseDescription(input.description);
   const repo_url = parseRepoUrl(input.repo_url);
   const repo_path = parseRepoPath(input.repo_path, repo_url);
+  const parsedUpstreamUrl = parseUpstreamUrl(input.upstream_url);
+  const parsedTags = parseTags(input.tags);
+  const parsedAuthorId = parseAuthorId(input.author_id);
   const hasImages = input.images !== undefined;
 
   const [existingProject] =
-    await sql`SELECT * FROM esphub.projects WHERE id = ${id} AND owner = ${owner}`;
+    await sql`SELECT id, owner, name, description, repo_url, repo_path, upstream_url,
+        to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at
+      FROM esphub.projects
+      WHERE id = ${id} AND owner = ${owner}`;
   if (!existingProject) fail(404, "Project not found");
   if (existingProject.archived) fail(409, "Project is archived");
+
+  const nextUpstreamUrl =
+    parsedUpstreamUrl !== undefined ? parsedUpstreamUrl : existingProject.upstream_url;
+  const nextTags =
+    parsedTags !== undefined ? parsedTags : parseRowTags(existingProject.tags);
+  const nextAuthorId =
+    parsedAuthorId !== undefined ? parsedAuthorId : existingProject.author_id;
+  if (parsedAuthorId !== undefined && nextAuthorId !== null) {
+    await resolveAuthor(sql, nextAuthorId);
+  }
 
   if (!hasImages) {
     const [updated] = await sql`UPDATE esphub.projects
       SET name = ${name}, description = ${description},
-          repo_url = ${repo_url}, repo_path = ${repo_path}, updated_at = now()
+          repo_url = ${repo_url}, repo_path = ${repo_path},
+          upstream_url = ${nextUpstreamUrl},
+          tags = ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(nextTags)}::text::jsonb)),
+          author_id = ${nextAuthorId},
+          updated_at = now()
       WHERE id = ${id} AND owner = ${owner} AND NOT archived
-      RETURNING *`;
+      RETURNING id, owner, name, description, repo_url, repo_path, upstream_url,
+        to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at`;
     if (!updated) fail(404, "Project not found");
-    const { images, boards } = await fetchProjectDetails(sql, id);
-    return formatProjectDetail(updated, images, boards, { includeArchived: true });
+    const { images, boards, author } = await fetchProjectDetails(sql, id, updated.author_id);
+    return formatProjectDetail(updated, images, boards, author, { includeArchived: true });
   }
 
   if (!Array.isArray(input.images) || input.images.length > maxProjectImages)
@@ -877,9 +1134,14 @@ export async function updateProject(env, sql, owner, rawId, input) {
     const queries = [
       tx`UPDATE esphub.projects
         SET name = ${name}, description = ${description},
-            repo_url = ${repo_url}, repo_path = ${repo_path}, updated_at = now()
+            repo_url = ${repo_url}, repo_path = ${repo_path},
+            upstream_url = ${nextUpstreamUrl},
+            tags = ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(nextTags)}::text::jsonb)),
+            author_id = ${nextAuthorId},
+            updated_at = now()
         WHERE id = ${id} AND owner = ${owner} AND NOT archived
-        RETURNING *`,
+        RETURNING id, owner, name, description, repo_url, repo_path, upstream_url,
+          to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at`,
       tx`DELETE FROM esphub.project_images
         WHERE project_id = ${id}
           AND EXISTS (
@@ -920,8 +1182,8 @@ export async function updateProject(env, sql, owner, rawId, input) {
   const toDelete = [...stagedToCleanup, ...removedKeys];
   if (toDelete.length > 0) await env.FIRMWARE.delete(toDelete).catch(() => {});
 
-  const { images, boards } = await fetchProjectDetails(sql, id);
-  return formatProjectDetail(updatedRows[0], images, boards, { includeArchived: true });
+  const { images, boards, author } = await fetchProjectDetails(sql, id, updatedRows[0].author_id);
+  return formatProjectDetail(updatedRows[0], images, boards, author, { includeArchived: true });
 }
 
 function parseReleasePayload(projectId, input) {
