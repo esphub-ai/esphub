@@ -122,8 +122,15 @@ try {
   );
   await page.keyboard.press("Escape");
 
-  // Boards directory filtering back from detail page.
-  await page.getByRole("link", { name: /All boards/ }).click();
+  // Boards detail specs & clickable breadcrumb navigation.
+  assert.equal(await page.locator(".bh-spec-cell").count(), 3);
+  assert.equal(await page.locator(".bh-detail-nav").count(), 0);
+  const breadcrumb = page.locator(".bh-breadcrumb");
+  await breadcrumb.getByRole("link", { name: "M5Stack", exact: true }).click();
+  await page.waitForURL(origin + "/boards?vendor=m5stack");
+  await page.getByRole("link", { name: /StopWatch/ }).first().click();
+  await page.waitForURL(origin + "/boards/m5stack/stopwatch");
+  await breadcrumb.getByRole("link", { name: "Boards", exact: true }).click();
   await page.waitForURL(origin + "/boards");
   await page.getByRole("heading", { name: "Supported ESP32 Boards." }).waitFor();
   await page.getByRole("textbox", { name: "Search boards" }).fill("stopwatch");
