@@ -137,6 +137,11 @@ try {
   await page.getByRole("link", { name: /StopWatch/ }).first().click();
   await page.waitForURL(origin + "/boards/m5stack/stopwatch");
 
+  // Projects directory navigation from masthead.
+  await page.getByRole("link", { name: "Projects", exact: true }).click();
+  await page.waitForURL(origin + "/projects");
+  await page.getByRole("heading", { name: "Runnable ESP32 Projects." }).waitFor();
+
   // Unauthenticated workspace redirect.
   await page.getByRole("link", { name: "Open workspace" }).click();
   await page.waitForURL("https://accounts.esphub.ai/sign-in?**");

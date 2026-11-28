@@ -337,6 +337,9 @@ export default function Landing({
             <a className="masthead-nav-link" href="/boards">
               Boards
             </a>
+            <a className="masthead-nav-link" href="/projects">
+              Projects
+            </a>
           </nav>
         </div>
         <a className="workspace-link" href="/devices">

@@ -4,6 +4,7 @@ import { issuer, mcpEndpoint, portal } from "../../../shared/identity.js";
 import "./index.css";
 import Landing from "./landing";
 import BoardsPage, { parseBoardsPath } from "./boards-page";
+import ProjectsPage, { parseProjectsPath } from "./projects-page";
 import { BoardPhoto, type Board } from "./components/board-photo";
 import {
   CheckIcon,
@@ -297,6 +298,8 @@ if (path === "/") {
     .catch(() => root.render(<Landing failed />));
 } else if (path === "/boards" || parseBoardsPath(path) !== null) {
   root.render(<BoardsPage initialBoardId={parseBoardsPath(path)} />);
+} else if (path === "/projects" || parseProjectsPath(path) !== null) {
+  root.render(<ProjectsPage initialProjectId={parseProjectsPath(path)} />);
 } else if (path === "/devices") {
   root.render(
     <main className="p-8">

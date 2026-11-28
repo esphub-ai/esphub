@@ -16,7 +16,9 @@ import {
   getPublicProject,
   listOwnedProjects,
   listPublicProjects,
+  listPublicProjectsPage,
   parseProjectAppUrl,
+  parsePublicProjectsPageParams,
   projectAppResponse,
   projectImageObjectKey,
   projectReleaseObjectKey,
@@ -400,6 +402,53 @@ test("parseProjectAppUrl parses latest and pinned project app URLs and rejects m
   }
 });
 
+test("parsePublicProjectsPageParams validates pagination, filters, and sort options", () => {
+  assert.deepEqual(parsePublicProjectsPageParams(), {
+    boardFilter: null,
+    vendorFilter: null,
+    socFilter: null,
+    needle: "",
+    sortKey: "recent",
+    page: 1,
+    limit: 18,
+  });
+  assert.deepEqual(
+    parsePublicProjectsPageParams({
+      board: "m5stack/cardputer-adv",
+      vendor: "m5stack",
+      soc: "esp32s3",
+      query: "  Clock  ",
+      sort: "name",
+      page: "2",
+      limit: "24",
+    }),
+    {
+      boardFilter: "m5stack/cardputer-adv",
+      vendorFilter: "m5stack",
+      socFilter: "esp32s3",
+      needle: "clock",
+      sortKey: "name",
+      page: 2,
+      limit: 24,
+    },
+  );
+  for (const bad of [
+    { page: "0" },
+    { page: "-1" },
+    { page: "abc" },
+    { limit: "0" },
+    { limit: "101" },
+    { limit: "1.5" },
+    { sort: "oldest" },
+    { vendor: "Bad_Vendor" },
+    { soc: "stm32" },
+    { board: "bad" },
+    { query: "a\0b" },
+  ]) {
+    assert.throws(() => parsePublicProjectsPageParams(bad), (e) => e.status === 400);
+  }
+});
+
 test(
   "projects lifecycle: draft creation, metadata & multi-image updates, per-board releases, MCP tools, public reads, rollback, unlink, archive, and runtime RBAC",
   { skip: !process.env.TEST_DATABASE_URL },
@@ -768,6 +817,28 @@ test(
           );
           // SQL LIKE wildcard characters are treated literally
           assert.deepEqual(await listPublicProjects(tx, { query: "%" }), []);
+
+          // Server-side paginated listing, filters, and facets
+          const paged = await listPublicProjectsPage(tx, {
+            query: suffix,
+            page: 1,
+            limit: 1,
+            sort: "name",
+          });
+          assert.equal(paged.total, 1);
+          assert.equal(paged.total_pages, 1);
+          assert.equal(paged.page, 1);
+          assert.equal(paged.limit, 1);
+          assert.equal(paged.items.length, 1);
+          assert.equal(paged.items[0].id, draft.id);
+          assert.ok(paged.facets.vendors.some((v) => v.id === boardA.split("/")[0] && v.count >= 1));
+          const emptyPage = await listPublicProjectsPage(tx, {
+            query: suffix,
+            page: 2,
+            limit: 1,
+          });
+          assert.equal(emptyPage.total, 1);
+          assert.equal(emptyPage.items.length, 0);
 
           const bobView = await operate({ env, sql: tx }, bob.id, "projects_get", {
             project_id: draft.id,

@@ -85,17 +85,6 @@ function shortRepoLabel(project: PublicProject): string {
   return project.repo_path ? `${repo} · ${project.repo_path}` : repo;
 }
 
-function formatShortDate(iso: string): string {
-  try {
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-    }).format(new Date(iso));
-  } catch {
-    return "";
-  }
-}
-
 export function parseBoardsPath(pathname: string): string | null {
   const clean = pathname.replace(/\/+$/, "") || "/";
   const match = /^\/boards\/([a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(clean);
@@ -414,25 +403,16 @@ function BoardDetailView({
               const source = projectSourceUrl(project);
               return (
                 <article className="bh-proj-card" key={project.id}>
-                  {project.cover_image_url && (
-                    <img
-                      className="bh-proj-cover"
-                      src={project.cover_image_url}
-                      alt={project.name}
-                      loading="lazy"
-                    />
-                  )}
                   <div className="bh-proj-body">
                     <div className="bh-proj-top">
-                      <h3 className="bh-proj-name">{project.name}</h3>
-                      <div className="bh-proj-versions">
-                        <span className="bh-ver-pill" title="Release version">
-                          {ref.version.slice(0, 8)}
-                        </span>
-                        <span className="bh-ver-pill is-sdk" title="EspHub SDK version">
-                          SDK {ref.sdk_version}
-                        </span>
-                      </div>
+                      <h3 className="bh-proj-name">
+                        <a
+                          className="bh-proj-title-link"
+                          href={`/projects/${project.id}`}
+                        >
+                          {project.name}
+                        </a>
+                      </h3>
                     </div>
 
                     <p className="bh-proj-desc">
@@ -452,7 +432,6 @@ function BoardDetailView({
                       ) : (
                         <span>Published via EspHub Projects</span>
                       )}
-                      <span>Updated {formatShortDate(ref.updated_at)}</span>
                     </div>
                   </div>
 
@@ -467,6 +446,12 @@ function BoardDetailView({
                       <TerminalWindowIcon size={14} />
                       Install via Agent
                     </button>
+                    <a
+                      className="bh-proj-mini-btn"
+                      href={`/projects/${project.id}`}
+                    >
+                      Details <ArrowRightIcon size={13} />
+                    </a>
                     {source && (
                       <a
                         className="bh-proj-mini-btn"
@@ -779,6 +764,9 @@ export default function BoardsPage({
                 }}
               >
                 Boards
+              </a>
+              <a className="bh-nav-link" href="/projects">
+                Projects
               </a>
             </nav>
           </div>
