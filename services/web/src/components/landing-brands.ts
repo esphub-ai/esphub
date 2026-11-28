@@ -6,6 +6,7 @@ import grok from "../assets/agents/grok.svg";
 import hermes from "../assets/agents/hermes.png";
 import muse from "../assets/agents/muse-color.svg";
 import openclaw from "../assets/agents/openclaw-color.svg";
+import adafruit from "../assets/manufacturers/adafruit.svg";
 import espressif from "../assets/manufacturers/espressif.svg";
 import lilygo from "../assets/manufacturers/lilygo.webp";
 import m5stack from "../assets/manufacturers/m5stack.svg";
@@ -23,10 +24,11 @@ export const agents = [
   { name: "OpenClaw", logo: openclaw },
 ];
 export const manufacturers = [
-  { id: "seeed-studio", name: "Seeed Studio", logo: seeed },
-  { id: "m5stack", name: "M5Stack", logo: m5stack },
+  { id: "adafruit", name: "Adafruit", logo: adafruit },
   { id: "espressif", name: "Espressif", logo: espressif },
   { id: "lilygo", name: "LILYGO", logo: lilygo },
+  { id: "m5stack", name: "M5Stack", logo: m5stack },
+  { id: "seeed-studio", name: "Seeed Studio", logo: seeed },
   { id: "waveshare", name: "Waveshare", logo: waveshare },
 ];
 export function manufacturer(id: string) {
