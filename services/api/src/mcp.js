@@ -1,8 +1,12 @@
+import { createClerkClient } from "@clerk/backend";
 import {
+  McpAuthError,
+  McpTokenVerificationError,
   authorizationServerMetadataHandler,
   mcpAuth,
   protectedResourceMetadataHandler,
   requireAdditionalScopes,
+  toClerkAuthInfo,
 } from "@clerk/mcp-tools/hono";
 import {
   createMcpHandler,
@@ -16,12 +20,103 @@ import { withDatabase } from "./database.js";
 import { operate, tools } from "./operations.js";
 import { reconnectGuidance } from "./provisioning.js";
 
+const verificationUnavailable = new Set([
+  "unexpected-error",
+  "secret-key-invalid",
+  "jwk-remote-failed-to-load",
+]);
+
+function clerkStatus(message) {
+  const status = /\(code=[^,()]*, status=(\d{3})\)$/.exec(message ?? "")?.[1];
+  return status === undefined ? undefined : Number(status);
+}
+
+function isVerificationUnavailable(reason, message, status) {
+  if (reason === "token-verification-failed")
+    return message.startsWith("Error loading Clerk JWKS");
+  if (!verificationUnavailable.has(reason)) return false;
+  return (
+    status === undefined ||
+    status < 400 ||
+    status >= 500 ||
+    status === 401 ||
+    status === 429
+  );
+}
+
+async function verifyMcpToken(token, c) {
+  if (!c.env.CLERK_SECRET_KEY || !c.env.CLERK_PUBLISHABLE_KEY) {
+    throw new McpAuthError(new Error("Clerk authentication is not configured"));
+  }
+  const clerk = createClerkClient({
+    secretKey: c.env.CLERK_SECRET_KEY,
+    publishableKey: c.env.CLERK_PUBLISHABLE_KEY,
+    ...(c.env.CLERK_API_URL ? { apiUrl: c.env.CLERK_API_URL } : {}),
+    ...(c.env.CLERK_API_VERSION ? { apiVersion: c.env.CLERK_API_VERSION } : {}),
+    ...(c.env.CLERK_JWT_KEY ? { jwtKey: c.env.CLERK_JWT_KEY } : {}),
+  });
+  const state = await clerk.authenticateRequest(
+    new Request(mcpEndpoint, {
+      headers: { authorization: `Bearer ${token}` },
+    }),
+    {
+      acceptsToken: ["oauth_token", "api_key"],
+      audience: mcpEndpoint,
+    },
+  );
+  if (!state.isAuthenticated) {
+    const { reason, message } = state;
+    const status = clerkStatus(message);
+    const error = new McpTokenVerificationError(
+      reason,
+      message || `Clerk did not accept the token (${reason})`,
+      { status },
+    );
+    if (isVerificationUnavailable(reason, message ?? "", status))
+      throw new McpAuthError(error);
+    throw error;
+  }
+  const auth = state.toAuth();
+  if (auth.tokenType === "oauth_token") {
+    const authInfo = toClerkAuthInfo(auth, token);
+    if (!authInfo) {
+      throw new McpTokenVerificationError(
+        "token-claims-missing",
+        "Clerk verified the token, but its auth object is incomplete",
+      );
+    }
+    return authInfo;
+  }
+  if (auth.tokenType === "api_key") {
+    if (!auth.userId) {
+      throw new McpTokenVerificationError(
+        "token-claims-missing",
+        "Personal user API key required",
+      );
+    }
+    return {
+      token,
+      clientId: auth.id,
+      scopes: ["devices:read", "devices:write"],
+      expiresAt: Math.floor(Date.now() / 1000) + 60,
+      extra: { userId: auth.userId },
+    };
+  }
+  throw new McpTokenVerificationError(
+    "token-type-mismatch",
+    "Unsupported token type",
+  );
+}
+
 const options = {
   resourceUrl: mcpEndpoint,
   requiredScopes: ["devices:read"],
   challengeScopes: ["devices:write", "offline_access"],
 };
-export const authenticateMcp = mcpAuth(options);
+export const authenticateMcp = mcpAuth({
+  ...options,
+  verifyToken: verifyMcpToken,
+});
 const writeAccess = requireAdditionalScopes("devices:write");
 // Read scope covers read-only tools that stay on EspHub. An active Wi-Fi scan
 // observes nearby networks, so it also needs write scope.
