@@ -583,7 +583,7 @@ function ProjectDetailView({
 
       <section className="pj-detail-header" aria-labelledby="project-detail-title">
         <div className="pj-detail-main">
-          {(project.author || project.owner?.name || project.tags?.length) && (
+          {Boolean(project.author || project.owner?.name || project.tags?.length) && (
             <div className="pj-detail-meta">
               <ProjectTagBadges tags={project.tags} />
               <ProjectAttribution author={project.author} owner={project.owner} />
@@ -1295,7 +1295,7 @@ export default function ProjectsPage({
                       const firstBoardId = project.boards[0]?.board_id ?? "";
                       return (
                         <article className="pj-card" key={project.id}>
-                          {(project.author || project.owner?.name || project.tags?.length) && (
+                          {Boolean(project.author || project.owner?.name || project.tags?.length) && (
                             <div className="pj-card-meta">
                               <ProjectTagBadges tags={project.tags} />
                               <ProjectAttribution
