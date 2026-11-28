@@ -21,7 +21,7 @@ export type LandingView =
 const setup = `Connect to EspHub at ${mcpEndpoint} using OAuth with CIMD and PKCE. Follow https://esphub.ai/SKILL.md. After I sign in, list my ESP32 devices.`;
 function setupPrompt(board?: Board) {
   if (!board) return setup;
-  return `My board is the ${board.model} (${board.id}). Help me connect it to my coding agent.\n\n${setup} If my board is already registered, check whether it is online. Otherwise, guide me through first-time USB setup for ${board.id}. Ask me before erasing data or flashing firmware, then verify that the board is online.`;
+  return `My board is the ${board.model} (${board.id}). Help me connect it to my coding agent.\n\n${setup} If my board is already registered, check whether it is online. Otherwise, guide me through first-time USB setup for ${board.id} (flash the bootloader and Wi-Fi config first, recover Wi-Fi over USB or BLE if offline, then suggest starter projects to install over wireless OTA once online). Ask me before erasing data or flashing firmware.`;
 }
 
 export function LandingDialog({

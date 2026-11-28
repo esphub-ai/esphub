@@ -34,11 +34,13 @@ const prompts = {
 3. Use projects_search (filtered by board ID) and projects_get to find a published app's download_url, or upload a custom binary with ota_prepare_upload. Enter Bootloader mode with bootloader_enter, call ota_install (url is required for kind="app"; omit url for kind="bootloader" to install the latest Launcher), and verify the receipt and firmware version after reboot.
    In Launcher mode, use ota_resize_app to grow or shrink the app slot. Ask me before changing its size because this erases all LittleFS files.
 4. Use devices_reset to clear device provisioning or devices_delete to remove a device. Confirm the target and effect with me first.`,
-  bind: `Connect to EspHub MCP at ${mcpEndpoint}. Use CIMD OAuth with devices:read and devices:write as needed.
+  bind: `Connect to EspHub MCP at ${mcpEndpoint}. Use CIMD OAuth with devices:read and devices:write as needed. Follow https://esphub.ai/SKILL.md.
 
 1. Ask me to connect my ESP32 over USB. Identify the manufacturer and model. Search the board ID with boards_search, pick the exact vendor/model ID, and ask me to confirm it if it is unclear.
-2. Ask me for the Wi-Fi SSID and password, register the device with devices_create including wifi (and optionally project_id from projects_search to flash an app together), and follow the returned esptool instructions for the bootloader set and private NVS image. Ask before erasing existing data. Keep the NVS download credential and image private.
-3. Use devices_get to check the registered device. Report it as online only when online is true. If setup stalls, tell me which step needs attention.`,
+2. Ask me for my Wi-Fi SSID and password, then register the device with devices_create including wifi (flash only the bootloader set and private NVS image with --erase-all first so the board boots cleanly into Bootloader mode). Ask before erasing existing data, and keep the NVS download credential and image private.
+3. Check devices_get after reboot:
+   - If online (info.role=bootloader): tell me wireless OTA is ready and I can unplug the USB cable from my computer (power only is enough), call projects_search for this board to suggest fun starter projects, and ask which project or app I want to OTA install.
+   - If offline: if USB is still connected, scan visible Wi-Fi networks over serial at 115200 baud with \`EH-WIFI {"op":"wifi.scan"}\`, let me pick a network and enter the password, and join via \`EH-WIFI {"op":"wifi.join",...}\`; if USB is unplugged, use BLE provisioning (wifi_ble_credential + wifi.scan/wifi.join). Once online, continue to OTA.`,
 };
 
 function PromptDialog({

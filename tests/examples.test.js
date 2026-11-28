@@ -107,7 +107,11 @@ test("default registration returns a 4-file flash plan for the shared bootloader
   assert.match(result.prompt, /pip install esptool/);
   assert.ok(result.prompt.includes(flash.command));
   assert.match(result.prompt, /already contains the Wi-Fi network/);
+  assert.match(result.prompt, /unplug the USB data cable/);
   assert.match(result.prompt, /projects_search/);
+  assert.match(result.prompt, /EH-WIFI \{"op":"wifi\.scan"\}/);
+  assert.match(result.prompt, /wifi_ble_credential/);
+  assert.match(result.prompt, /a2eefb31-6c36-481f-ae10-7724fa912101/);
   assert.doesNotMatch(result.prompt, /secret/);
   assert.deepEqual(result.spec, {
     soc: "esp32s3",
