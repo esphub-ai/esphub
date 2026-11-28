@@ -7,11 +7,14 @@ import BoardsPage, { parseBoardsPath } from "./boards-page";
 import ProjectsPage, { parseProjectsPath } from "./projects-page";
 import { BoardPhoto, type Board } from "./components/board-photo";
 import {
+  ArrowUpRightIcon,
   CheckIcon,
   CopyIcon,
   CircleIcon,
   GearSixIcon,
+  GlobeIcon,
   LinkIcon,
+  LockSimpleIcon,
 } from "@phosphor-icons/react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
@@ -197,14 +200,43 @@ function Brand() {
   );
 }
 
+type OwnedProject = {
+  id: string;
+  name: string;
+  description: string;
+  repo_url: string | null;
+  repo_path: string | null;
+  upstream_url: string | null;
+  visibility: "private" | "public";
+  tags: string[];
+  author: { id: string; name: string; logo_url: string | null; url: string | null } | null;
+  boards: { board_id: string; version: string }[];
+};
+
+type AuthorOption = {
+  id: string;
+  name: string;
+};
+
+type AccountMe = {
+  display_name: string | null;
+  avatar_url: string | null;
+  is_staff: boolean;
+};
+
 function Workspace({ clerk }: { clerk: Clerk }) {
+  const [tab, setTab] = useState<"devices" | "projects">("devices");
   const [devices, setDevices] = useState<Device[] | null>(null);
+  const [projects, setProjects] = useState<OwnedProject[] | null>(null);
+  const [me, setMe] = useState<AccountMe | null>(null);
+  const [authors, setAuthors] = useState<AuthorOption[]>([]);
+  const [busyProjectId, setBusyProjectId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
     let request: AbortController | undefined;
-    async function readDevices() {
+    async function readWorkspace() {
       request?.abort();
       const controller = new AbortController();
       request = controller;
@@ -212,38 +244,171 @@ function Workspace({ clerk }: { clerk: Clerk }) {
         const token = await clerk.session?.getToken();
         if (controller.signal.aborted) return;
         if (!token) return signIn();
-        const response = await fetch("/backend/operations/devices_list", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + token,
-          },
-          body: "{}",
-          signal: controller.signal,
-        });
+        const authHeaders = {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        };
+        const [devRes, projRes, meRes] = await Promise.all([
+          fetch("/backend/operations/devices_list", {
+            method: "POST",
+            headers: authHeaders,
+            body: "{}",
+            signal: controller.signal,
+          }),
+          fetch("/backend/v1/projects", {
+            headers: { Authorization: "Bearer " + token },
+            signal: controller.signal,
+          }),
+          fetch("/backend/v1/me", {
+            headers: { Authorization: "Bearer " + token },
+            signal: controller.signal,
+          }),
+        ]);
         if (controller.signal.aborted) return;
-        if (response.status === 401) return signIn();
-        if (!response.ok) throw Error("Could not load devices.");
-        const list: Device[] = await response.json();
+        if (devRes.status === 401) return signIn();
+        if (!devRes.ok) throw Error("Could not load devices.");
+        const list: Device[] = await devRes.json();
         if (controller.signal.aborted) return;
         setDevices(list.filter((device) => device.kind === "physical"));
+        if (projRes.ok) setProjects(await projRes.json());
+        if (meRes.ok) {
+          const profile: AccountMe = await meRes.json();
+          setMe(profile);
+          if (profile.is_staff) {
+            fetch("/backend/authors", { signal: controller.signal })
+              .then((r) => (r.ok ? r.json() : []))
+              .then((rows) => {
+                if (!controller.signal.aborted) setAuthors(rows);
+              })
+              .catch(() => {});
+          }
+        }
         setError("");
       } catch {
         if (!controller.signal.aborted) setError("Could not load devices.");
       }
     }
-    void readDevices();
-    window.addEventListener("focus", readDevices);
+    void readWorkspace();
+    window.addEventListener("focus", readWorkspace);
     return () => {
       request?.abort();
-      window.removeEventListener("focus", readDevices);
+      window.removeEventListener("focus", readWorkspace);
     };
   }, [clerk, refresh]);
+
+  async function toggleVisibility(project: OwnedProject) {
+    const nextVisibility = project.visibility === "public" ? "private" : "public";
+    setBusyProjectId(project.id);
+    setError("");
+    try {
+      const token = await clerk.session?.getToken();
+      if (!token) return signIn();
+      const res = await fetch(`/backend/v1/projects/${project.id}/visibility`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        body: JSON.stringify({ visibility: nextVisibility }),
+      });
+      if (!res.ok) throw Error("Could not update project visibility.");
+      const updated = await res.json();
+      setProjects((prev) =>
+        prev
+          ? prev.map((p) =>
+              p.id === project.id ? { ...p, visibility: updated.visibility } : p,
+            )
+          : prev,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update project visibility.");
+    } finally {
+      setBusyProjectId(null);
+    }
+  }
+
+  async function updateStaffProjectMeta(
+    project: OwnedProject,
+    patch: { author_id?: string | null; tags?: string[] },
+  ) {
+    setBusyProjectId(project.id);
+    setError("");
+    try {
+      const token = await clerk.session?.getToken();
+      if (!token) return signIn();
+      const res = await fetch(`/backend/v1/projects/${project.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        body: JSON.stringify({
+          name: project.name,
+          description: project.description,
+          repo_url: project.repo_url,
+          repo_path: project.repo_path,
+          upstream_url: project.upstream_url,
+          visibility: project.visibility,
+          tags: patch.tags ?? project.tags,
+          author_id:
+            patch.author_id !== undefined
+              ? patch.author_id
+              : (project.author?.id ?? null),
+        }),
+      });
+      if (!res.ok) throw Error("Could not update project metadata.");
+      const updated = await res.json();
+      setProjects((prev) =>
+        prev
+          ? prev.map((p) =>
+              p.id === project.id
+                ? { ...p, tags: updated.tags, author: updated.author }
+                : p,
+            )
+          : prev,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update project metadata.");
+    } finally {
+      setBusyProjectId(null);
+    }
+  }
+
+  const publicOrigin =
+    location.hostname === "app.esphub.ai" ? "https://esphub.ai" : "";
 
   return (
     <main className="w-full px-4 py-8 sm:px-6 sm:py-14 lg:px-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <Brand />
+        <div className="flex flex-wrap items-center gap-4">
+          <Brand />
+          <div
+            className="flex items-center gap-0.5 border border-border bg-background p-0.5"
+            role="tablist"
+            aria-label="Workspace sections"
+          >
+            <Button
+              role="tab"
+              aria-selected={tab === "devices"}
+              variant={tab === "devices" ? "default" : "ghost"}
+              size="sm"
+              className={tab === "devices" ? undefined : "text-muted-foreground"}
+              onClick={() => setTab("devices")}
+            >
+              Devices
+            </Button>
+            <Button
+              role="tab"
+              aria-selected={tab === "projects"}
+              variant={tab === "projects" ? "default" : "ghost"}
+              size="sm"
+              className={tab === "projects" ? undefined : "text-muted-foreground"}
+              onClick={() => setTab("projects")}
+            >
+              Projects{projects ? ` (${projects.length})` : ""}
+            </Button>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <PromptDialog title="Manage devices" prompt={prompts.manage} />
           <PromptDialog title="Bind my ESP32" prompt={prompts.bind} primary />
@@ -260,12 +425,137 @@ function Workspace({ clerk }: { clerk: Clerk }) {
           </Button>
         </div>
       )}
-      {devices?.length ? (
-        <DeviceCards devices={devices} />
+      {tab === "devices" ? (
+        devices?.length ? (
+          <DeviceCards devices={devices} />
+        ) : (
+          !error && (
+            <p role="status">
+              {devices ? "No devices yet." : "Loading devices…"}
+            </p>
+          )
+        )
+      ) : projects?.length ? (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {projects.map((project) => {
+            const busy = busyProjectId === project.id;
+            const isPublic = project.visibility === "public";
+            const published = project.boards.length > 0;
+            const toggleTag = (tag: string) => {
+              const next = project.tags.includes(tag)
+                ? project.tags.filter((t) => t !== tag)
+                : [...project.tags, tag];
+              void updateStaffProjectMeta(project, { tags: next });
+            };
+            return (
+              <Card key={project.id} size="sm">
+                <CardContent className="flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <CardTitle className="truncate">{project.name}</CardTitle>
+                      {project.description && (
+                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                          {project.description}
+                        </p>
+                      )}
+                    </div>
+                    <Badge variant={isPublic ? "secondary" : "outline"} className="shrink-0">
+                      {isPublic ? (
+                        <GlobeIcon aria-hidden="true" data-icon="inline-start" />
+                      ) : (
+                        <LockSimpleIcon aria-hidden="true" data-icon="inline-start" />
+                      )}
+                      {isPublic ? "Public" : "Private"}
+                    </Badge>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    {published ? (
+                      project.boards.slice(0, 3).map((b) => (
+                        <Badge key={b.board_id} variant="outline">
+                          {b.board_id}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span>Draft (no board releases yet)</span>
+                    )}
+                    {project.boards.length > 3 && (
+                      <span>+{project.boards.length - 3} more</span>
+                    )}
+                  </div>
+
+                  {me?.is_staff && (
+                    <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2.5 text-xs">
+                      <select
+                        aria-label={`Author for ${project.name}`}
+                        className="h-7 min-w-0 flex-1 border border-input bg-background px-2 text-xs text-foreground"
+                        disabled={busy}
+                        value={project.author?.id ?? ""}
+                        onChange={(e) =>
+                          void updateStaffProjectMeta(project, {
+                            author_id: e.target.value || null,
+                          })
+                        }
+                      >
+                        <option value="">No official author</option>
+                        {authors.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            Author: {a.name}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        variant={project.tags.includes("factory") ? "default" : "outline"}
+                        disabled={busy}
+                        onClick={() => toggleTag("factory")}
+                      >
+                        Factory
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={project.tags.includes("example") ? "default" : "outline"}
+                        disabled={busy}
+                        onClick={() => toggleTag("example")}
+                      >
+                        Example
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2.5">
+                    <Button
+                      size="sm"
+                      variant={isPublic ? "outline" : "default"}
+                      disabled={busy}
+                      onClick={() => void toggleVisibility(project)}
+                    >
+                      {busy
+                        ? "Saving…"
+                        : isPublic
+                          ? "Make private"
+                          : "Make public"}
+                    </Button>
+                    {isPublic && published && (
+                      <a
+                        className={buttonVariants({ variant: "ghost", size: "sm" })}
+                        href={`${publicOrigin}/projects/${project.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Public page <ArrowUpRightIcon aria-hidden="true" />
+                      </a>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       ) : (
         !error && (
           <p role="status">
-            {devices ? "No devices yet." : "Loading devices…"}
+            {projects ? "No projects yet." : "Loading projects…"}
           </p>
         )
       )}

@@ -53,6 +53,28 @@ const clerkStub = http.createServer(async (req, res) => {
     );
     return;
   }
+  const userMatch = req.method === "GET" && req.url?.match(/\/users\/(user_[a-zA-Z0-9]+)$/);
+  if (userMatch) {
+    const userId = userMatch[1];
+    res.end(
+      JSON.stringify({
+        id: userId,
+        username: "e2e_maker",
+        first_name: "E2E",
+        last_name: "Maker",
+        image_url: "https://img.clerk.com/eyJ0eXBlIjoiZGVmYXVsdCJ9",
+        primary_email_address_id: "em_1",
+        email_addresses: [
+          {
+            id: "em_1",
+            email_address: "maker@example.com",
+            verification: { status: "verified" },
+          },
+        ],
+      }),
+    );
+    return;
+  }
   res.statusCode = 404;
   res.end(JSON.stringify({ error: "Not found" }));
 });

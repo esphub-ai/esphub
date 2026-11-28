@@ -224,6 +224,24 @@ try {
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await card.getByText("Online", { exact: true }).waitFor();
 
+  // Workspace Projects tab: private by default -> toggle public in Web UI.
+  const personal = await operate("projects_create", {
+    name: "Browser E2E Personal App",
+    description: "Personal project visibility smoke test.",
+  });
+  assert.equal(personal.visibility, "private");
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.getByRole("tab", { name: /^Projects \(1\)/ }).click();
+  const projectCard = page
+    .locator('[data-slot="card"]')
+    .filter({ hasText: "Browser E2E Personal App" });
+  await projectCard.getByText("Private", { exact: true }).waitFor();
+  assert.equal(await projectCard.locator("select").count(), 0);
+  await projectCard.getByRole("button", { name: "Make public" }).click();
+  await projectCard.getByText("Public", { exact: true }).waitFor();
+  await projectCard.getByRole("button", { name: "Make private" }).waitFor();
+  await page.getByRole("tab", { name: /^Devices/ }).click();
+
   // Console MCP prompt dialogs and sign-out.
   for (const name of ["Manage devices", "Bind my ESP32"]) {
     await page.getByRole("button", { name, exact: true }).click();

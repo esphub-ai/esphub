@@ -38,6 +38,7 @@ import {
   projectAppResponse,
   removeProjectBoard,
   setCurrentProjectBoardRelease,
+  setProjectVisibility,
   updateProject,
 } from "./projects.js";
 import { installMcpMetadata, serveMcp, authenticateMcp } from "./mcp.js";
@@ -67,13 +68,21 @@ api.get("/bootloaders/:id/:version/:file", (c) => {
 api.get("/projects/:id/boards/:vendor/:slug/app", (c) => {
   const { id, vendor, slug } = c.req.param();
   return withDatabase(c.env, (sql) =>
-    projectAppResponse(sql, c.env.FIRMWARE, id, `${vendor}/${slug}`),
+    projectAppResponse(sql, c.env.FIRMWARE, id, `${vendor}/${slug}`, undefined, {
+      secret: c.env.IOT_RELAY_SECRET,
+      exp: c.req.query("exp"),
+      sig: c.req.query("sig"),
+    }),
   );
 });
 api.get("/projects/:id/boards/:vendor/:slug/releases/:version/app", (c) => {
   const { id, vendor, slug, version } = c.req.param();
   return withDatabase(c.env, (sql) =>
-    projectAppResponse(sql, c.env.FIRMWARE, id, `${vendor}/${slug}`, version),
+    projectAppResponse(sql, c.env.FIRMWARE, id, `${vendor}/${slug}`, version, {
+      secret: c.env.IOT_RELAY_SECRET,
+      exp: c.req.query("exp"),
+      sig: c.req.query("sig"),
+    }),
   );
 });
 api.get("/boards/gallery", (c) =>
@@ -195,6 +204,14 @@ api.get("/projects", async (c) => {
 api.get("/projects/:id", async (c) =>
   c.json(await getPublicProject(c.get("sql"), c.req.param("id"))),
 );
+api.get("/v1/me", async (c) => {
+  const user = await identifyApiUser(c);
+  return c.json({
+    display_name: user.display_name,
+    avatar_url: user.avatar_url,
+    is_staff: user.is_staff,
+  });
+});
 api.get("/v1/projects", async (c) => {
   const user = await identifyApiUser(c);
   return c.json(
@@ -206,7 +223,9 @@ api.get("/v1/projects", async (c) => {
 api.post("/v1/projects", async (c) => {
   const user = await identifyApiUser(c);
   return c.json(
-    await createProject(c.get("sql"), user.owner, await readJsonBody(c)),
+    await createProject(c.get("sql"), user.owner, await readJsonBody(c), {
+      isStaff: user.is_staff,
+    }),
     201,
   );
 });
@@ -221,6 +240,18 @@ api.put("/v1/projects/:id", async (c) => {
   return c.json(
     await updateProject(
       c.env,
+      c.get("sql"),
+      user.owner,
+      c.req.param("id"),
+      await readJsonBody(c),
+      { isStaff: user.is_staff },
+    ),
+  );
+});
+api.put("/v1/projects/:id/visibility", async (c) => {
+  const user = await identifyApiUser(c);
+  return c.json(
+    await setProjectVisibility(
       c.get("sql"),
       user.owner,
       c.req.param("id"),

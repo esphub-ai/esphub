@@ -30,8 +30,11 @@ const authorIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const maxProjectTags = 10;
 const maxTagLength = 32;
 const allowedProjectSorts = new Set(["recent", "name", "boards"]);
+const allowedVisibilities = new Set(["private", "public"]);
+export const reservedOfficialTags = new Set(["factory", "example"]);
 const defaultProjectsLimit = 18;
 const maxProjectsLimit = 100;
+const privateDownloadTtlSeconds = 30 * 60;
 
 export const imageExtensions = {
   "image/webp": "webp",
@@ -58,6 +61,7 @@ const createProjectKeys = new Set([
   "upstream_url",
   "tags",
   "author_id",
+  "visibility",
 ]);
 const updateProjectKeys = new Set([
   "name",
@@ -68,7 +72,9 @@ const updateProjectKeys = new Set([
   "images",
   "tags",
   "author_id",
+  "visibility",
 ]);
+const visibilityKeys = new Set(["visibility"]);
 const imageInputKeys = new Set([
   "upload_id",
   "sha256",
@@ -229,6 +235,34 @@ export function parseAuthorId(value, { defaultNull = false } = {}) {
   return value;
 }
 
+export function parseVisibility(value, { defaultPrivate = false } = {}) {
+  if (value === undefined) return defaultPrivate ? "private" : undefined;
+  if (typeof value !== "string" || !allowedVisibilities.has(value))
+    fail(400, "Invalid visibility");
+  return value;
+}
+
+function assertOfficialMetadataAccess({
+  isStaff,
+  nextAuthorId,
+  existingAuthorId = null,
+  nextTags,
+  existingTags = [],
+}) {
+  if (isStaff) return;
+  if (nextAuthorId !== existingAuthorId) {
+    fail(403, "Only @okou.ai accounts can set project author");
+  }
+  const prevOfficial = new Set(existingTags.filter((t) => reservedOfficialTags.has(t)));
+  const nextOfficial = new Set(nextTags.filter((t) => reservedOfficialTags.has(t)));
+  if (
+    prevOfficial.size !== nextOfficial.size ||
+    [...nextOfficial].some((t) => !prevOfficial.has(t))
+  ) {
+    fail(403, "Only @okou.ai accounts can manage official tags (factory, example)");
+  }
+}
+
 function parseJsonValue(value) {
   return typeof value === "string" ? JSON.parse(value) : value;
 }
@@ -241,6 +275,18 @@ function formatAuthor(row) {
     logo_url: row.logo_url ?? null,
     url: row.url ?? null,
   };
+}
+
+function formatOwner(row) {
+  if (!row) return null;
+  const name = typeof row.display_name === "string" && row.display_name.trim()
+    ? row.display_name.trim()
+    : typeof row.name === "string" && row.name.trim()
+      ? row.name.trim()
+      : null;
+  const avatar_url = row.avatar_url ?? null;
+  if (!name && !avatar_url) return null;
+  return { name, avatar_url };
 }
 
 function parseRowTags(raw) {
@@ -263,6 +309,7 @@ function formatProjectSummary(row, { includeArchived = false } = {}) {
   const cover = parseJsonValue(row.cover_image);
   const boards = parseJsonValue(row.boards) ?? [];
   const author = formatAuthor(parseJsonValue(row.author));
+  const owner = formatOwner(parseJsonValue(row.owner_profile));
   return {
     id: row.id,
     name: row.name,
@@ -270,8 +317,10 @@ function formatProjectSummary(row, { includeArchived = false } = {}) {
     repo_url: row.repo_url ?? null,
     repo_path: row.repo_path ?? null,
     upstream_url: row.upstream_url ?? null,
+    visibility: row.visibility ?? "public",
     tags: parseRowTags(row.tags),
     author,
+    owner,
     ...(includeArchived ? { archived: Boolean(row.archived) } : {}),
     cover_image_url: cover
       ? imageUrlFor(row.id, cover.sha256, cover.content_type)
@@ -287,7 +336,14 @@ function formatProjectSummary(row, { includeArchived = false } = {}) {
   };
 }
 
-function formatProjectDetail(project, images, boards, author, { includeArchived = false } = {}) {
+function formatProjectDetail(
+  project,
+  images,
+  boards,
+  author,
+  ownerProfile,
+  { includeArchived = false } = {},
+) {
   const formattedImages = images.map((img) => ({
     position: Number(img.position),
     is_cover: Boolean(img.is_cover),
@@ -304,8 +360,10 @@ function formatProjectDetail(project, images, boards, author, { includeArchived 
     repo_url: project.repo_url ?? null,
     repo_path: project.repo_path ?? null,
     upstream_url: project.upstream_url ?? null,
+    visibility: project.visibility ?? "private",
     tags: parseRowTags(project.tags),
     author: formatAuthor(author),
+    owner: formatOwner(ownerProfile),
     ...(includeArchived ? { archived: Boolean(project.archived) } : {}),
     cover_image_url: cover ? cover.url : null,
     images: formattedImages,
@@ -415,7 +473,7 @@ async function resolveAuthor(sql, authorId) {
   return author;
 }
 
-export async function createProject(sql, owner, input) {
+export async function createProject(sql, owner, input, { isStaff = false } = {}) {
   if (!isPlainObject(input)) fail(400, "Expected a project object");
   assertAllowedKeys(input, createProjectKeys);
   const name = parseName(input.name);
@@ -425,21 +483,33 @@ export async function createProject(sql, owner, input) {
   const upstream_url = parseUpstreamUrl(input.upstream_url, { defaultNull: true });
   const tags = parseTags(input.tags, { defaultEmpty: true });
   const author_id = parseAuthorId(input.author_id, { defaultNull: true });
-  const author = await resolveAuthor(sql, author_id);
+  const visibility = parseVisibility(input.visibility, { defaultPrivate: true });
+  assertOfficialMetadataAccess({
+    isStaff,
+    nextAuthorId: author_id,
+    existingAuthorId: null,
+    nextTags: tags,
+    existingTags: [],
+  });
+  const [author, [ownerProfile]] = await Promise.all([
+    resolveAuthor(sql, author_id),
+    sql`SELECT display_name, avatar_url FROM esphub.accounts WHERE id = ${owner}`,
+  ]);
 
   const [project] = await sql`INSERT INTO esphub.projects (
-      owner, name, description, repo_url, repo_path, upstream_url, tags, author_id
+      owner, name, description, repo_url, repo_path, upstream_url, visibility, tags, author_id
     ) VALUES (
       ${owner}, ${name}, ${description}, ${repo_url}, ${repo_path}, ${upstream_url},
+      ${visibility},
       ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(tags)}::text::jsonb)),
       ${author_id}
     ) RETURNING id, owner, name, description, repo_url, repo_path, upstream_url,
-      to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at`;
-  return formatProjectDetail(project, [], [], author, { includeArchived: true });
+      visibility, to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at`;
+  return formatProjectDetail(project, [], [], author, ownerProfile, { includeArchived: true });
 }
 
-async function fetchProjectDetails(sql, projectId, authorId = null) {
-  const [images, boards, authorRows] = await Promise.all([
+async function fetchProjectDetails(sql, projectId, authorId = null, ownerId = null) {
+  const [images, boards, authorRows, ownerRows] = await Promise.all([
     sql`SELECT position, is_cover, content_type, size, sha256
       FROM esphub.project_images
       WHERE project_id = ${projectId}
@@ -457,16 +527,20 @@ async function fetchProjectDetails(sql, projectId, authorId = null) {
     authorId
       ? sql`SELECT id, name, logo_url, url FROM esphub.authors WHERE id = ${authorId}`
       : Promise.resolve([]),
+    ownerId
+      ? sql`SELECT display_name, avatar_url FROM esphub.accounts WHERE id = ${ownerId}`
+      : Promise.resolve([]),
   ]);
-  return { images, boards, author: authorRows[0] ?? null };
+  return { images, boards, author: authorRows[0] ?? null, ownerProfile: ownerRows[0] ?? null };
 }
 
 export async function listOwnedProjects(sql, owner, { includeArchived = false } = {}) {
   const rows = await sql`SELECT p.id, p.name, p.description, p.repo_url, p.repo_path, p.upstream_url,
-      to_jsonb(p.tags) AS tags,
+      p.visibility, to_jsonb(p.tags) AS tags,
       CASE WHEN a.id IS NOT NULL THEN jsonb_build_object(
         'id', a.id, 'name', a.name, 'logo_url', a.logo_url, 'url', a.url
       ) END AS author,
+      jsonb_build_object('display_name', o.display_name, 'avatar_url', o.avatar_url) AS owner_profile,
       p.archived, p.created_at, p.updated_at,
       (SELECT jsonb_build_object('sha256', i.sha256, 'content_type', i.content_type)
        FROM esphub.project_images i
@@ -492,6 +566,7 @@ export async function listOwnedProjects(sql, owner, { includeArchived = false } 
       ) AS boards
     FROM esphub.projects p
     LEFT JOIN esphub.authors a ON a.id = p.author_id
+    LEFT JOIN esphub.accounts o ON o.id = p.owner
     WHERE p.owner = ${owner}
       AND (${Boolean(includeArchived)}::boolean OR NOT p.archived)
     ORDER BY p.updated_at DESC, p.id ASC`;
@@ -502,12 +577,19 @@ export async function getOwnedProject(sql, owner, rawId) {
   const id = parseProjectId(rawId);
   const [project] =
     await sql`SELECT id, owner, name, description, repo_url, repo_path, upstream_url,
-        to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at
+        visibility, to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at
       FROM esphub.projects
       WHERE id = ${id} AND owner = ${owner}`;
   if (!project) fail(404, "Project not found");
-  const { images, boards, author } = await fetchProjectDetails(sql, id, project.author_id);
-  return formatProjectDetail(project, images, boards, author, { includeArchived: true });
+  const { images, boards, author, ownerProfile } = await fetchProjectDetails(
+    sql,
+    id,
+    project.author_id,
+    project.owner,
+  );
+  return formatProjectDetail(project, images, boards, author, ownerProfile, {
+    includeArchived: true,
+  });
 }
 
 export function parsePublicProjectsPageParams({
@@ -621,6 +703,7 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
     sql`SELECT COUNT(*)::int AS total
       FROM esphub.projects p
       WHERE NOT p.archived
+        AND p.visibility = 'public'
         AND EXISTS (SELECT 1 FROM esphub.project_boards pb WHERE pb.project_id = p.id)
         AND (${boardFilter}::text IS NULL OR EXISTS (
           SELECT 1 FROM esphub.project_boards pb
@@ -655,10 +738,11 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
               )
           ))`,
     sql`SELECT p.id, p.name, p.description, p.repo_url, p.repo_path, p.upstream_url,
-        to_jsonb(p.tags) AS tags,
+        p.visibility, to_jsonb(p.tags) AS tags,
         CASE WHEN a.id IS NOT NULL THEN jsonb_build_object(
           'id', a.id, 'name', a.name, 'logo_url', a.logo_url, 'url', a.url
         ) END AS author,
+        jsonb_build_object('display_name', o.display_name, 'avatar_url', o.avatar_url) AS owner_profile,
         p.created_at, p.updated_at,
         (SELECT jsonb_build_object('sha256', i.sha256, 'content_type', i.content_type)
          FROM esphub.project_images i
@@ -684,7 +768,9 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
         ) AS boards
       FROM esphub.projects p
       LEFT JOIN esphub.authors a ON a.id = p.author_id
+      LEFT JOIN esphub.accounts o ON o.id = p.owner
       WHERE NOT p.archived
+        AND p.visibility = 'public'
         AND EXISTS (SELECT 1 FROM esphub.project_boards pb WHERE pb.project_id = p.id)
         AND (${boardFilter}::text IS NULL OR EXISTS (
           SELECT 1 FROM esphub.project_boards pb
@@ -729,6 +815,7 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
       JOIN esphub.project_boards pb ON pb.project_id = p.id
       JOIN esphub.boards b ON b.id = pb.board_id
       WHERE NOT p.archived
+        AND p.visibility = 'public'
         AND (${boardFilter}::text IS NULL OR EXISTS (
           SELECT 1 FROM esphub.project_boards pb2
           WHERE pb2.project_id = p.id AND pb2.board_id = ${boardFilter}
@@ -763,6 +850,7 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
       JOIN esphub.project_boards pb ON pb.project_id = p.id
       JOIN esphub.boards b ON b.id = pb.board_id
       WHERE NOT p.archived
+        AND p.visibility = 'public'
         AND (${boardFilter}::text IS NULL OR EXISTS (
           SELECT 1 FROM esphub.project_boards pb2
           WHERE pb2.project_id = p.id AND pb2.board_id = ${boardFilter}
@@ -796,6 +884,7 @@ export async function listPublicProjectsPage(sql, rawParams = {}) {
       FROM esphub.projects p
       CROSS JOIN LATERAL unnest(p.tags) AS t(tag)
       WHERE NOT p.archived
+        AND p.visibility = 'public'
         AND EXISTS (SELECT 1 FROM esphub.project_boards pb WHERE pb.project_id = p.id)
         AND (${boardFilter}::text IS NULL OR EXISTS (
           SELECT 1 FROM esphub.project_boards pb2
@@ -856,10 +945,11 @@ export async function listPublicProjects(
     parsePublicProjectsPageParams({ board, tag, exclude_tag, author, query });
 
   const rows = await sql`SELECT p.id, p.name, p.description, p.repo_url, p.repo_path, p.upstream_url,
-      to_jsonb(p.tags) AS tags,
+      p.visibility, to_jsonb(p.tags) AS tags,
       CASE WHEN a.id IS NOT NULL THEN jsonb_build_object(
         'id', a.id, 'name', a.name, 'logo_url', a.logo_url, 'url', a.url
       ) END AS author,
+      jsonb_build_object('display_name', o.display_name, 'avatar_url', o.avatar_url) AS owner_profile,
       p.created_at, p.updated_at,
       (SELECT jsonb_build_object('sha256', i.sha256, 'content_type', i.content_type)
        FROM esphub.project_images i
@@ -885,7 +975,9 @@ export async function listPublicProjects(
       ) AS boards
     FROM esphub.projects p
     LEFT JOIN esphub.authors a ON a.id = p.author_id
+    LEFT JOIN esphub.accounts o ON o.id = p.owner
     WHERE NOT p.archived
+      AND p.visibility = 'public'
       AND EXISTS (SELECT 1 FROM esphub.project_boards pb WHERE pb.project_id = p.id)
       AND (${boardFilter}::text IS NULL OR EXISTS (
         SELECT 1 FROM esphub.project_boards pb
@@ -904,32 +996,79 @@ export async function listPublicProjects(
 export async function getPublicProject(sql, rawId) {
   const id = parseProjectId(rawId);
   const [project] = await sql`SELECT p.id, p.owner, p.name, p.description, p.repo_url,
-      p.repo_path, p.upstream_url, to_jsonb(p.tags) AS tags, p.author_id, p.archived,
-      p.created_at, p.updated_at
+      p.repo_path, p.upstream_url, p.visibility, to_jsonb(p.tags) AS tags,
+      p.author_id, p.archived, p.created_at, p.updated_at
     FROM esphub.projects p
     WHERE p.id = ${id}
       AND NOT p.archived
+      AND p.visibility = 'public'
       AND EXISTS (SELECT 1 FROM esphub.project_boards pb WHERE pb.project_id = p.id)`;
   if (!project) fail(404, "Project not found");
-  const { images, boards, author } = await fetchProjectDetails(sql, id, project.author_id);
-  return formatProjectDetail(project, images, boards, author);
+  const { images, boards, author, ownerProfile } = await fetchProjectDetails(
+    sql,
+    id,
+    project.author_id,
+    project.owner,
+  );
+  return formatProjectDetail(project, images, boards, author, ownerProfile);
 }
 
 export async function getProjectForMcp(sql, owner, rawId) {
   const id = parseProjectId(rawId);
   const [project] = await sql`SELECT id, owner, name, description, repo_url, repo_path,
-      upstream_url, to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at
+      upstream_url, visibility, to_jsonb(tags) AS tags, author_id, archived,
+      created_at, updated_at
     FROM esphub.projects
     WHERE id = ${id}`;
   if (!project) fail(404, "Project not found");
   const isOwner = owner !== undefined && project.owner === owner;
-  const { images, boards, author } = await fetchProjectDetails(sql, id, project.author_id);
-  if (isOwner) return formatProjectDetail(project, images, boards, author, { includeArchived: true });
-  if (project.archived || boards.length === 0) fail(404, "Project not found");
-  return formatProjectDetail(project, images, boards, author);
+  const { images, boards, author, ownerProfile } = await fetchProjectDetails(
+    sql,
+    id,
+    project.author_id,
+    project.owner,
+  );
+  if (isOwner) {
+    return formatProjectDetail(project, images, boards, author, ownerProfile, {
+      includeArchived: true,
+    });
+  }
+  if (project.archived || project.visibility !== "public" || boards.length === 0) {
+    fail(404, "Project not found");
+  }
+  return formatProjectDetail(project, images, boards, author, ownerProfile);
 }
 
-export async function updateProject(env, sql, owner, rawId, input) {
+export async function setProjectVisibility(sql, owner, rawId, input) {
+  const id = parseProjectId(rawId);
+  if (!isPlainObject(input)) fail(400, "Expected a visibility object");
+  assertAllowedKeys(input, visibilityKeys);
+  const visibility = parseVisibility(input.visibility);
+  if (!visibility) fail(400, "Missing visibility");
+
+  const [existing] = await sql`SELECT id, archived FROM esphub.projects
+    WHERE id = ${id} AND owner = ${owner}`;
+  if (!existing) fail(404, "Project not found");
+  if (existing.archived) fail(409, "Project is archived");
+
+  const [updated] = await sql`UPDATE esphub.projects
+    SET visibility = ${visibility}, updated_at = now()
+    WHERE id = ${id} AND owner = ${owner} AND NOT archived
+    RETURNING id, owner, name, description, repo_url, repo_path, upstream_url,
+      visibility, to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at`;
+  if (!updated) fail(404, "Project not found");
+  const { images, boards, author, ownerProfile } = await fetchProjectDetails(
+    sql,
+    id,
+    updated.author_id,
+    updated.owner,
+  );
+  return formatProjectDetail(updated, images, boards, author, ownerProfile, {
+    includeArchived: true,
+  });
+}
+
+export async function updateProject(env, sql, owner, rawId, input, { isStaff = false } = {}) {
   const id = parseProjectId(rawId);
   if (!isPlainObject(input)) fail(400, "Expected a project update object");
   assertAllowedKeys(input, updateProjectKeys);
@@ -941,22 +1080,33 @@ export async function updateProject(env, sql, owner, rawId, input) {
   const parsedUpstreamUrl = parseUpstreamUrl(input.upstream_url);
   const parsedTags = parseTags(input.tags);
   const parsedAuthorId = parseAuthorId(input.author_id);
+  const parsedVisibility = parseVisibility(input.visibility);
   const hasImages = input.images !== undefined;
 
   const [existingProject] =
     await sql`SELECT id, owner, name, description, repo_url, repo_path, upstream_url,
-        to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at
+        visibility, to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at
       FROM esphub.projects
       WHERE id = ${id} AND owner = ${owner}`;
   if (!existingProject) fail(404, "Project not found");
   if (existingProject.archived) fail(409, "Project is archived");
 
+  const existingTags = parseRowTags(existingProject.tags);
   const nextUpstreamUrl =
     parsedUpstreamUrl !== undefined ? parsedUpstreamUrl : existingProject.upstream_url;
-  const nextTags =
-    parsedTags !== undefined ? parsedTags : parseRowTags(existingProject.tags);
+  const nextTags = parsedTags !== undefined ? parsedTags : existingTags;
   const nextAuthorId =
     parsedAuthorId !== undefined ? parsedAuthorId : existingProject.author_id;
+  const nextVisibility =
+    parsedVisibility !== undefined ? parsedVisibility : existingProject.visibility;
+
+  assertOfficialMetadataAccess({
+    isStaff,
+    nextAuthorId,
+    existingAuthorId: existingProject.author_id ?? null,
+    nextTags,
+    existingTags,
+  });
   if (parsedAuthorId !== undefined && nextAuthorId !== null) {
     await resolveAuthor(sql, nextAuthorId);
   }
@@ -966,15 +1116,23 @@ export async function updateProject(env, sql, owner, rawId, input) {
       SET name = ${name}, description = ${description},
           repo_url = ${repo_url}, repo_path = ${repo_path},
           upstream_url = ${nextUpstreamUrl},
+          visibility = ${nextVisibility},
           tags = ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(nextTags)}::text::jsonb)),
           author_id = ${nextAuthorId},
           updated_at = now()
       WHERE id = ${id} AND owner = ${owner} AND NOT archived
       RETURNING id, owner, name, description, repo_url, repo_path, upstream_url,
-        to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at`;
+        visibility, to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at`;
     if (!updated) fail(404, "Project not found");
-    const { images, boards, author } = await fetchProjectDetails(sql, id, updated.author_id);
-    return formatProjectDetail(updated, images, boards, author, { includeArchived: true });
+    const { images, boards, author, ownerProfile } = await fetchProjectDetails(
+      sql,
+      id,
+      updated.author_id,
+      updated.owner,
+    );
+    return formatProjectDetail(updated, images, boards, author, ownerProfile, {
+      includeArchived: true,
+    });
   }
 
   if (!Array.isArray(input.images) || input.images.length > maxProjectImages)
@@ -1136,12 +1294,13 @@ export async function updateProject(env, sql, owner, rawId, input) {
         SET name = ${name}, description = ${description},
             repo_url = ${repo_url}, repo_path = ${repo_path},
             upstream_url = ${nextUpstreamUrl},
+            visibility = ${nextVisibility},
             tags = ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(nextTags)}::text::jsonb)),
             author_id = ${nextAuthorId},
             updated_at = now()
         WHERE id = ${id} AND owner = ${owner} AND NOT archived
         RETURNING id, owner, name, description, repo_url, repo_path, upstream_url,
-          to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at`,
+          visibility, to_jsonb(tags) AS tags, author_id, archived, created_at, updated_at`,
       tx`DELETE FROM esphub.project_images
         WHERE project_id = ${id}
           AND EXISTS (
@@ -1182,8 +1341,15 @@ export async function updateProject(env, sql, owner, rawId, input) {
   const toDelete = [...stagedToCleanup, ...removedKeys];
   if (toDelete.length > 0) await env.FIRMWARE.delete(toDelete).catch(() => {});
 
-  const { images, boards, author } = await fetchProjectDetails(sql, id, updatedRows[0].author_id);
-  return formatProjectDetail(updatedRows[0], images, boards, author, { includeArchived: true });
+  const { images, boards, author, ownerProfile } = await fetchProjectDetails(
+    sql,
+    id,
+    updatedRows[0].author_id,
+    updatedRows[0].owner,
+  );
+  return formatProjectDetail(updatedRows[0], images, boards, author, ownerProfile, {
+    includeArchived: true,
+  });
 }
 
 function parseReleasePayload(projectId, input) {
@@ -1444,7 +1610,60 @@ export async function archiveProject(sql, owner, rawId) {
   return { id: row.id, archived: Boolean(row.archived), updated_at: row.updated_at };
 }
 
-export async function projectAppFile(sql, rawId, boardId, version) {
+async function hmacHex(secret, message) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return Buffer.from(sig).toString("hex");
+}
+
+function constantTimeEqualHex(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+export async function signProjectAppUrl(
+  secret,
+  { projectId, boardId, version, ttlSeconds = privateDownloadTtlSeconds },
+) {
+  if (!secret) fail(503, "Private download signing unavailable");
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const ver = version ?? "latest";
+  const sig = await hmacHex(secret, `project-app:${projectId}:${boardId}:${ver}:${exp}`);
+  const base = projectAppUrl(projectId, boardId, version);
+  return `${base}?exp=${exp}&sig=${sig}`;
+}
+
+export async function verifyProjectAppSignature(
+  secret,
+  { projectId, boardId, version, exp, sig },
+) {
+  if (!secret || !exp || !sig || !/^\d+$/.test(String(exp)) || !/^[0-9a-f]{64}$/.test(sig)) {
+    return false;
+  }
+  const expNum = Number(exp);
+  if (!Number.isSafeInteger(expNum) || expNum < Math.floor(Date.now() / 1000)) {
+    return false;
+  }
+  const ver = version ?? "latest";
+  const expected = await hmacHex(secret, `project-app:${projectId}:${boardId}:${ver}:${expNum}`);
+  return constantTimeEqualHex(sig, expected);
+}
+
+export async function projectAppFile(
+  sql,
+  rawId,
+  boardId,
+  version,
+  { owner = null, allowPrivate = false } = {},
+) {
   if (
     typeof rawId !== "string" ||
     !uuidInsensitive.test(rawId) ||
@@ -1457,24 +1676,46 @@ export async function projectAppFile(sql, rawId, boardId, version) {
   const projectId = rawId.toLowerCase();
   const [row] =
     version === undefined
-      ? await sql`SELECT r.project_id, r.board_id, r.version, r.app_key, r.app_size, r.app_sha256
+      ? await sql`SELECT r.project_id, r.board_id, r.version, r.app_key, r.app_size, r.app_sha256,
+            p.visibility, p.owner
           FROM esphub.projects p
           JOIN esphub.project_boards pb ON pb.project_id = p.id
           JOIN esphub.project_releases r
             ON r.project_id = pb.project_id
            AND r.board_id = pb.board_id
            AND r.version = pb.latest_version
-          WHERE p.id = ${projectId} AND NOT p.archived AND pb.board_id = ${boardId}`
-      : await sql`SELECT r.project_id, r.board_id, r.version, r.app_key, r.app_size, r.app_sha256
+          WHERE p.id = ${projectId}
+            AND NOT p.archived
+            AND pb.board_id = ${boardId}
+            AND (p.visibility = 'public' OR ${Boolean(allowPrivate)}::boolean OR (${owner}::uuid IS NOT NULL AND p.owner = ${owner}::uuid))`
+      : await sql`SELECT r.project_id, r.board_id, r.version, r.app_key, r.app_size, r.app_sha256,
+            p.visibility, p.owner
           FROM esphub.projects p
           JOIN esphub.project_releases r ON r.project_id = p.id
-          WHERE p.id = ${projectId} AND NOT p.archived AND r.board_id = ${boardId} AND r.version = ${version}`;
+          WHERE p.id = ${projectId}
+            AND NOT p.archived
+            AND r.board_id = ${boardId}
+            AND r.version = ${version}
+            AND (p.visibility = 'public' OR ${Boolean(allowPrivate)}::boolean OR (${owner}::uuid IS NOT NULL AND p.owner = ${owner}::uuid))`;
   if (!row) fail(404, "Unknown project release");
   return { ...row, app_size: Number(row.app_size) };
 }
 
-export async function projectAppResponse(sql, bucket, rawId, boardId, version) {
-  const file = await projectAppFile(sql, rawId, boardId, version);
+export async function projectAppResponse(
+  sql,
+  bucket,
+  rawId,
+  boardId,
+  version,
+  { secret, exp, sig } = {},
+) {
+  const projectId = typeof rawId === "string" ? rawId.toLowerCase() : "";
+  const signedOk =
+    Boolean(exp && sig) &&
+    (await verifyProjectAppSignature(secret, { projectId, boardId, version, exp, sig }));
+  const file = await projectAppFile(sql, rawId, boardId, version, {
+    allowPrivate: signedOk,
+  });
   const object = await bucket.get(file.app_key);
   if (!object) fail(503, "Published project app unavailable");
   const headers = new Headers();
@@ -1484,9 +1725,11 @@ export async function projectAppResponse(sql, bucket, rawId, boardId, version) {
   headers.set("ETag", object.httpEtag);
   headers.set(
     "Cache-Control",
-    version === undefined
-      ? "public, max-age=0, must-revalidate"
-      : "public, max-age=31536000, immutable",
+    file.visibility !== "public"
+      ? "private, no-store"
+      : version === undefined
+        ? "public, max-age=0, must-revalidate"
+        : "public, max-age=31536000, immutable",
   );
   return new Response(object.body, { headers });
 }

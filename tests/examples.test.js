@@ -138,6 +138,7 @@ test("registration with optional project_id includes the project app.bin in the 
     project_id: projectId,
     board_id: board,
     version: "1.2.3",
+    visibility: "public",
     app_key: `projects/${projectId}/releases/${board}/1.2.3/app.bin`,
     app_size: body.length,
     app_sha256: sha,
