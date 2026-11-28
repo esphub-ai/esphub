@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useState } from "react";
 import {
   ArrowDownIcon,
   ArrowUpRightIcon,
@@ -57,10 +57,8 @@ function ConnectionDiagram() {
   );
 }
 
-function scrollToWall(stage: HTMLElement, smooth: boolean) {
-  const distance = stage.parentElement!.offsetHeight - stage.offsetHeight;
-  window.scrollTo({
-    top: distance,
+function scrollToWall(smooth: boolean) {
+  document.getElementById("boards")?.scrollIntoView({
     behavior:
       smooth && !matchMedia("(prefers-reduced-motion: reduce)").matches
         ? "smooth"
@@ -71,57 +69,12 @@ function scrollToWall(stage: HTMLElement, smooth: boolean) {
 function Hero({
   total,
   open,
-  stage,
 }: {
   total?: number;
   open: (view: LandingView) => void;
-  stage: RefObject<HTMLDivElement | null>;
 }) {
-  const hero = useRef<HTMLElement>(null);
-  useLayoutEffect(() => {
-    const element = hero.current!;
-    const wall = element.closest<HTMLElement>(".wall-stage")!;
-    const motion = matchMedia("(prefers-reduced-motion: reduce)");
-    let distance = 1;
-    let frame = 0;
-    let lastProgress = -1;
-    function paint() {
-      frame = 0;
-      const t = Math.min(1, Math.max(0, window.scrollY / distance));
-      const progress = motion.matches ? Number(t >= 0.5) : t * t * (3 - 2 * t);
-      if (progress === lastProgress) return;
-      lastProgress = progress;
-      element.style.setProperty("--progress", String(progress));
-      element.toggleAttribute("data-compact", progress > 0.55);
-      element.toggleAttribute("data-docked", t === 1);
-    }
-    function onScroll() {
-      if (!frame) frame = requestAnimationFrame(paint);
-    }
-    function measure() {
-      distance = Math.max(
-        1,
-        wall.parentElement!.offsetHeight - wall.offsetHeight,
-      );
-      paint();
-    }
-    const resize = new ResizeObserver(measure);
-    resize.observe(wall.parentElement!);
-    resize.observe(wall);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    motion.addEventListener("change", paint);
-    measure();
-    if (location.hash === "#boards") scrollToWall(wall, false);
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      motion.removeEventListener("change", paint);
-      resize.disconnect();
-      cancelAnimationFrame(frame);
-    };
-  }, [stage]);
-
   return (
-    <article className="wall-hero" ref={hero} aria-labelledby="hero-heading">
+    <section className="wall-hero" aria-labelledby="hero-heading">
       <div className="hero-copy">
         <h1 id="hero-heading">
           Vibe OTA
@@ -164,14 +117,14 @@ function Hero({
           href="#boards"
           onClick={(event) => {
             event.preventDefault();
-            scrollToWall(stage.current!, true);
+            scrollToWall(true);
           }}
         >
           <ArrowDownIcon aria-hidden="true" />
           Explore {total} boards
         </a>
       )}
-    </article>
+    </section>
   );
 }
 
@@ -183,7 +136,6 @@ export default function Landing({
   failed?: boolean;
 }) {
   const [view, setView] = useState<LandingView | null>(null);
-  const stage = useRef<HTMLDivElement>(null);
   return (
     <div className="landing">
       <a
@@ -191,7 +143,7 @@ export default function Landing({
         href="#boards"
         onClick={(event) => {
           event.preventDefault();
-          scrollToWall(stage.current!, false);
+          scrollToWall(false);
           document.getElementById("boards")?.focus({ preventScroll: true });
         }}
       >
@@ -206,35 +158,21 @@ export default function Landing({
         </a>
       </header>
       <main className="wall-story">
-        <div className="wall-stage" ref={stage}>
-          <BoardWall
-            boards={boards}
-            paused={view !== null}
-            onSelect={(board) => setView({ screen: "product", board })}
-            onTileFocus={(tile) => {
-              const hero = stage
-                .current!.querySelector(".wall-hero")!
-                .getBoundingClientRect();
-              const card = tile.getBoundingClientRect();
-              if (
-                card.left < hero.right &&
-                card.top < hero.bottom &&
-                card.bottom > hero.top
-              )
-                scrollToWall(stage.current!, false);
-            }}
-            hero={<Hero stage={stage} open={setView} total={boards?.length} />}
-          />
-          {!boards?.length && (
-            <p role="status" className="wall-status">
-              {failed
-                ? "Board directory unavailable."
-                : boards
-                  ? "No board photos available."
-                  : "Loading boards…"}
-            </p>
-          )}
-        </div>
+        <Hero open={setView} total={boards?.length} />
+        <BoardWall
+          boards={boards}
+          paused={view !== null}
+          onSelect={(board) => setView({ screen: "product", board })}
+        />
+        {!boards?.length && (
+          <p role="status" className="wall-status">
+            {failed
+              ? "Board directory unavailable."
+              : boards
+                ? "No board photos available."
+                : "Loading boards…"}
+          </p>
+        )}
       </main>
       <footer className="wall-footer">
         <nav aria-label="Legal">

@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { BoardPhoto, type Board } from "./board-photo";
 import { manufacturer } from "./landing-brands";
 
@@ -77,16 +71,9 @@ type LaneProps = {
   index: number;
   paused: boolean;
   onSelect: (board: Board) => void;
-  onTileFocus: (tile: HTMLElement) => void;
 };
 
-function BoardLane({
-  boards,
-  index,
-  paused,
-  onSelect,
-  onTileFocus,
-}: LaneProps) {
+function BoardLane({ boards, index, paused, onSelect }: LaneProps) {
   const ref = useRef<HTMLDivElement>(null);
   const suppressClick = useRef(false);
   const pausedRef = useRef(paused);
@@ -314,10 +301,6 @@ function BoardLane({
             onClick={(e) => {
               if (!e.detail || !suppressClick.current) onSelect(board);
             }}
-            onFocus={(e) => {
-              if (e.target.matches(":focus-visible"))
-                onTileFocus(e.currentTarget);
-            }}
             style={
               {
                 "--swatch":
@@ -345,11 +328,9 @@ function BoardLane({
 
 export function BoardWall({
   boards = [],
-  hero,
   ...props
 }: Omit<LaneProps, "index" | "boards"> & {
   boards?: Board[];
-  hero: ReactNode;
 }) {
   const rows = useMemo(() => distributeBoards(boards), [boards]);
   return (
@@ -359,12 +340,13 @@ export function BoardWall({
       aria-label="Board gallery"
       tabIndex={-1}
     >
-      {rows.map((row, index) => (
-        <div className="wall-row" key={index}>
-          {index === 0 && <div className="hero-dock">{hero}</div>}
-          {!!row.length && <BoardLane {...props} boards={row} index={index} />}
-        </div>
-      ))}
+      {rows.map((row, index) =>
+        row.length ? (
+          <div className="wall-row" key={index}>
+            <BoardLane {...props} boards={row} index={index} />
+          </div>
+        ) : null,
+      )}
     </section>
   );
 }
