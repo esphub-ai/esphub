@@ -17,14 +17,14 @@ test(
         const loader = "catalog-test-" + key.slice(0, 8);
         await tx`INSERT INTO esphub.boards
           (id, vendor, name, model, soc, flash_mb, flash_bus, psram, console,
-           bootloader, product_url, has_photo, preview)
+           bootloader, product_url, has_photo)
           VALUES (${id}, 'catalog-test', 'Unlisted name', 'Test Model', 'esp32s3', 16, 'octal', 'octal',
-            'usb-serial-jtag', ${loader}, 'https://example.com/board', true, true)`;
+            'usb-serial-jtag', ${loader}, 'https://example.com/board', true)`;
 
         const search = (query) =>
           operate({ sql: tx }, null, "boards_search", { query });
-        const [preview] = await search(key.slice(0, 18).toUpperCase());
-        assert.deepEqual(preview, {
+        const [listed] = await search(key.slice(0, 18).toUpperCase());
+        assert.deepEqual(listed, {
           id,
           vendor: "catalog-test",
           name: "Unlisted name",
@@ -38,12 +38,12 @@ test(
             console: "usb-serial-jtag",
           },
           product_url: "https://example.com/board",
-          preview: true,
           image_url: `https://cdn.esphub.ai/boards/${id}/image`,
           firmware: {},
         });
-        assert.equal("examples" in preview, false);
-        assert.equal("default_example" in preview, false);
+        assert.equal("preview" in listed, false);
+        assert.equal("examples" in listed, false);
+        assert.equal("default_example" in listed, false);
         assert.deepEqual(await search("Unlisted name"), []);
         assert.deepEqual(await search("%"), []);
         assert.deepEqual(await search("_"), []);
@@ -53,7 +53,7 @@ test(
         const entry = galleryBefore.find((b) => b.id === id);
         assert.ok(entry);
         assert.equal(entry.bootloader, loader);
-        assert.deepEqual(entry.spec, preview.spec);
+        assert.deepEqual(entry.spec, listed.spec);
         assert.equal(entry.product_url, "https://example.com/board");
         assert.equal(entry.image_url, `https://cdn.esphub.ai/boards/${id}/image`);
 
@@ -109,7 +109,6 @@ test(
           },
           product_url: "https://example.com/board",
           has_photo: true,
-          preview: true,
           retired: false,
           image_url: `https://cdn.esphub.ai/boards/${id}/image`,
           firmware: {

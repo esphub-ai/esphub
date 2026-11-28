@@ -21,7 +21,7 @@ export async function searchBoards(sql, query = "") {
   if (query.includes("\0")) fail(400, "Invalid query");
   const rows =
     await sql`SELECT b.id, b.vendor, b.name, b.model, b.soc, b.flash_mb, b.flash_bus, b.psram, b.console,
-      b.bootloader AS bootloader_id, b.product_url, b.has_photo, b.preview,
+      b.bootloader AS bootloader_id, b.product_url, b.has_photo,
       (SELECT jsonb_build_object('id', r.id, 'version', r.version) FROM esphub.bootloader_releases r
        WHERE r.id = b.bootloader) AS bootloader_release
     FROM esphub.boards b
@@ -35,7 +35,6 @@ export async function searchBoards(sql, query = "") {
     bootloader: row.bootloader_id,
     spec: boardSpec(row),
     product_url: row.product_url,
-    preview: row.preview,
     image_url: row.has_photo ? boardImageUrl(row.id) : null,
     firmware: firmwareSummary(row.bootloader_release),
   }));
@@ -45,7 +44,7 @@ export async function getBoardDetail(sql, id) {
   if (!boardIdPattern.test(id)) fail(404, "Unknown board");
   const [row] =
     await sql`SELECT b.id, b.vendor, b.name, b.model, b.soc, b.flash_mb, b.flash_bus, b.psram, b.console,
-      b.bootloader AS bootloader_id, b.product_url, b.has_photo, b.preview, b.retired,
+      b.bootloader AS bootloader_id, b.product_url, b.has_photo, b.retired,
       (SELECT jsonb_build_object('id', r.id, 'version', r.version) FROM esphub.bootloader_releases r
        WHERE r.id = b.bootloader) AS bootloader_release
     FROM esphub.boards b
@@ -60,7 +59,6 @@ export async function getBoardDetail(sql, id) {
     spec: boardSpec(row),
     product_url: row.product_url,
     has_photo: row.has_photo,
-    preview: row.preview,
     retired: row.retired,
     image_url: row.has_photo ? boardImageUrl(row.id) : null,
     firmware: firmwareSummary(row.bootloader_release),

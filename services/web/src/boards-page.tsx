@@ -31,7 +31,6 @@ type DirectoryBoard = {
   bootloader: string;
   spec: BoardSpec;
   product_url: string | null;
-  preview: boolean;
   image_url: string | null;
   firmware?: {
     bootloader?: {
@@ -1087,9 +1086,6 @@ export default function BoardsPage({
                               {manufacturer(board.id)}
                             </span>
                             <div className="bh-card-badges">
-                              {board.preview && (
-                                <span className="bh-preview-pill">Preview</span>
-                              )}
                               {projCount > 0 && (
                                 <span className="bh-proj-pill">
                                   <i aria-hidden="true" />
