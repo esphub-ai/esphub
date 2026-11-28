@@ -321,9 +321,6 @@ function BoardDetailView({
             alt={board.model}
             className="bh-specimen-photo"
           />
-          <span className="bh-specimen-caption">
-            {manufacturer(board.id)} // {formatSoc(board.spec.soc)}
-          </span>
         </div>
 
         <div className="bh-datasheet">
@@ -397,16 +394,10 @@ function BoardDetailView({
       {/* Runnable Projects */}
       <section className="bh-projects-section" aria-labelledby="projects-heading">
         <div className="bh-section-head">
-          <div className="bh-section-title-group">
-            <h2 id="projects-heading" className="bh-section-title">
-              Runnable Projects
-              <span className="bh-count-badge">{boardProjects.length}</span>
-            </h2>
-            <p className="bh-section-sub">
-              Published firmware builds verified for <code>{board.id}</code> — ask your
-              coding agent to install any project wirelessly via EspHub OTA.
-            </p>
-          </div>
+          <h2 id="projects-heading" className="bh-section-title">
+            Runnable Projects
+            <span className="bh-count-badge">{boardProjects.length}</span>
+          </h2>
           {boardProjects.length > 3 && (
             <input
               type="search"
@@ -543,7 +534,6 @@ export default function BoardsPage({
   const [vendors, setVendors] = useState<string[]>([]);
   const [socs, setSocs] = useState<string[]>([]);
   const [flashes, setFlashes] = useState<number[]>([]);
-  const [onlyWithProjects, setOnlyWithProjects] = useState(false);
   const [sortBy, setSortBy] = useState<SortKey>("featured");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [modal, setModal] = useState<PromptModalState | null>(null);
@@ -657,24 +647,17 @@ export default function BoardsPage({
     setVendors([]);
     setSocs([]);
     setFlashes([]);
-    setOnlyWithProjects(false);
   }
 
   const matchBoard = (
     b: DirectoryBoard,
-    ignore?: "vendor" | "soc" | "flash" | "projects",
+    ignore?: "vendor" | "soc" | "flash",
   ) => {
     if (ignore !== "vendor" && vendors.length && !vendors.includes(b.vendor))
       return false;
     if (ignore !== "soc" && socs.length && !socs.includes(b.spec.soc))
       return false;
     if (ignore !== "flash" && flashes.length && !flashes.includes(b.spec.flash_mb))
-      return false;
-    if (
-      ignore !== "projects" &&
-      onlyWithProjects &&
-      !(projectsByBoard.get(b.id)?.length)
-    )
       return false;
     const q = query.trim().toLowerCase();
     if (!q) return true;
@@ -703,7 +686,7 @@ export default function BoardsPage({
         count: boardList.filter((b) => b.vendor === v && matchBoard(b, "vendor"))
           .length,
       }));
-  }, [boardList, query, socs, flashes, onlyWithProjects, projectsByBoard]);
+  }, [boardList, query, socs, flashes, projectsByBoard]);
 
   const socOptions = useMemo(() => {
     const totals = new Map<string, number>();
@@ -717,7 +700,7 @@ export default function BoardsPage({
         count: boardList.filter((b) => b.spec.soc === s && matchBoard(b, "soc"))
           .length,
       }));
-  }, [boardList, query, vendors, flashes, onlyWithProjects, projectsByBoard]);
+  }, [boardList, query, vendors, flashes, projectsByBoard]);
 
   const flashOptions = useMemo(() => {
     const unique = [...new Set(boardList.map((b) => b.spec.flash_mb))].sort(
@@ -729,7 +712,7 @@ export default function BoardsPage({
       count: boardList.filter((b) => b.spec.flash_mb === f && matchBoard(b, "flash"))
         .length,
     }));
-  }, [boardList, query, vendors, socs, onlyWithProjects, projectsByBoard]);
+  }, [boardList, query, vendors, socs, projectsByBoard]);
 
   const filteredBoards = useMemo(() => {
     const list = boardList.filter((b) => matchBoard(b));
@@ -756,24 +739,13 @@ export default function BoardsPage({
       if (pb > 0 && pa === 0) return 1;
       return pb - pa;
     });
-  }, [boardList, query, vendors, socs, flashes, onlyWithProjects, sortBy, projectsByBoard]);
+  }, [boardList, query, vendors, socs, flashes, sortBy, projectsByBoard]);
 
   const hasFilters =
     Boolean(query.trim()) ||
     vendors.length > 0 ||
     socs.length > 0 ||
-    flashes.length > 0 ||
-    onlyWithProjects;
-
-  const withProjectsCount = useMemo(
-    () =>
-      boardList.filter(
-        (b) =>
-          (projectsByBoard.get(b.id)?.length ?? 0) > 0 &&
-          matchBoard(b, "projects"),
-      ).length,
-    [boardList, query, vendors, socs, flashes, projectsByBoard],
-  );
+    flashes.length > 0;
 
   function onBoardCardClick(e: MouseEvent<HTMLAnchorElement>, id: string) {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
@@ -862,41 +834,9 @@ export default function BoardsPage({
         <>
           <section className="bh-dir-hero">
             <div className="bh-dir-hero-inner">
-              <div>
-                <div className="bh-kicker">
-                  <i className="bh-kicker-dot" aria-hidden="true" />
-                  Hardware Directory // Vibe OTA Catalog
-                </div>
-                <h1 className="bh-dir-title">
-                  Supported <em>ESP32</em> Boards.
-                </h1>
-                <p className="bh-dir-sub">
-                  Filter by manufacturer, SoC, flash capacity, or keyword. Open any
-                  board to inspect its hardware spec and install runnable projects
-                  wirelessly with your coding agent.
-                </p>
-              </div>
-
-              <div className="bh-hero-stats" aria-label="Catalog summary">
-                <div className="bh-stat">
-                  <span className="bh-stat-val">
-                    {boards ? boards.length : "—"}
-                  </span>
-                  <span className="bh-stat-label">Boards</span>
-                </div>
-                <div className="bh-stat">
-                  <span className="bh-stat-val">
-                    {boards ? vendorOptions.length : "—"}
-                  </span>
-                  <span className="bh-stat-label">Vendors</span>
-                </div>
-                <div className="bh-stat">
-                  <span className="bh-stat-val is-lime">
-                    {boards ? projects.length : "—"}
-                  </span>
-                  <span className="bh-stat-label">OTA Projects</span>
-                </div>
-              </div>
+              <h1 className="bh-dir-title">
+                Supported <em>ESP32</em> Boards.
+              </h1>
             </div>
           </section>
 
@@ -935,15 +875,6 @@ export default function BoardsPage({
                 </div>
 
                 <div className="bh-toolbar-actions">
-                  <button
-                    type="button"
-                    className={`bh-toggle-btn${onlyWithProjects ? " is-active" : ""}`}
-                    onClick={() => setOnlyWithProjects((v) => !v)}
-                  >
-                    <i className="bh-dot" aria-hidden="true" />
-                    With projects ({withProjectsCount})
-                  </button>
-
                   <select
                     className="bh-select"
                     aria-label="Sort boards"
@@ -1111,15 +1042,6 @@ export default function BoardsPage({
                           {f} MB <XIcon size={11} />
                         </button>
                       ))}
-                      {onlyWithProjects && (
-                        <button
-                          type="button"
-                          className="bh-active-tag"
-                          onClick={() => setOnlyWithProjects(false)}
-                        >
-                          With projects <XIcon size={11} />
-                        </button>
-                      )}
                       <button
                         type="button"
                         className="bh-clear-all"

@@ -143,33 +143,15 @@
 .bh-dir-hero-inner {
   max-width: var(--max-w);
   margin: 0 auto;
-  padding: clamp(24px, 3.6vw, 44px) var(--edge) clamp(22px, 3vw, 36px);
+  padding: clamp(20px, 2.6vw, 30px) var(--edge);
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-
-.bh-kicker {
-  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font: 500 11px/1 var(--mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #8ea374;
-  margin-bottom: 10px;
-}
-
-.bh-kicker-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--lime);
+  justify-content: space-between;
+  gap: 20px;
 }
 
 .bh-dir-title {
-  font: 600 clamp(30px, 3.8vw, 52px) / 1.04 var(--mono);
+  font: 600 clamp(26px, 3vw, 42px) / 1.06 var(--mono);
   letter-spacing: -0.07em;
   color: var(--paper);
 }
@@ -177,49 +159,6 @@
 .bh-dir-title em {
   font-style: normal;
   color: var(--lime);
-}
-
-.bh-dir-sub {
-  margin-top: 10px;
-  max-width: 560px;
-  color: #b4bcab;
-  font: 400 14px/1.55 var(--sans);
-}
-
-.bh-hero-stats {
-  display: flex;
-  align-items: stretch;
-  border: 1px solid var(--line);
-  background: rgba(16, 18, 15, 0.88);
-}
-
-.bh-stat {
-  padding: 12px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 112px;
-}
-
-.bh-stat + .bh-stat {
-  border-left: 1px solid var(--line);
-}
-
-.bh-stat-val {
-  font: 600 22px/1 var(--mono);
-  letter-spacing: -0.05em;
-  color: var(--paper);
-}
-
-.bh-stat-val.is-lime {
-  color: var(--lime);
-}
-
-.bh-stat-label {
-  font: 400 10.5px/1.2 var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-dim);
 }
 
 /* Sticky Filter Workbench */
@@ -320,42 +259,6 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.bh-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 40px;
-  padding: 0 12px;
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  color: var(--text-muted);
-  font: 500 12px/1 var(--mono);
-  white-space: nowrap;
-  transition: all 140ms ease;
-}
-
-.bh-toggle-btn:hover {
-  color: var(--paper);
-  border-color: #5b6650;
-}
-
-.bh-toggle-btn.is-active {
-  background: #1e2717;
-  border-color: var(--lime);
-  color: var(--lime);
-}
-
-.bh-dot {
-  width: 6px;
-  height: 6px;
-  background: currentColor;
-  opacity: 0.6;
-}
-
-.bh-toggle-btn.is-active .bh-dot {
-  opacity: 1;
 }
 
 .bh-select {
