@@ -194,16 +194,24 @@ export function LandingDialog({
                   >
                     Connect to my coding agent <ArrowRightIcon />
                   </button>
-                  {board.product_url && (
+                  <div className="ownership-links">
                     <a
                       className="secondary-link"
-                      href={board.product_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href={`/boards/${board.id}`}
                     >
-                      Product page <ArrowUpRightIcon />
+                      Specs &amp; projects <ArrowRightIcon />
                     </a>
-                  )}
+                    {board.product_url && (
+                      <a
+                        className="secondary-link"
+                        href={board.product_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Product page <ArrowUpRightIcon />
+                      </a>
+                    )}
+                  </div>
                 </div>
               </>
             )}

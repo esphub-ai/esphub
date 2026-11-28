@@ -117,6 +117,29 @@ try {
   );
   await page.keyboard.press("Escape");
 
+  // Boards directory filtering and board detail page.
+  await page.getByRole("link", { name: "Boards", exact: true }).click();
+  await page.waitForURL(origin + "/boards");
+  await page.getByRole("heading", { name: "Supported ESP32 Boards." }).waitFor();
+  await page.getByRole("textbox", { name: "Search boards" }).fill("stopwatch");
+  await page.getByRole("link", { name: /StopWatch/ }).first().click();
+  await page.waitForURL(origin + "/boards/m5stack/stopwatch");
+  await page.getByRole("heading", { name: "StopWatch", exact: true }).waitFor();
+  await page.getByRole("heading", { name: /Runnable Projects/ }).waitFor();
+  assert.equal(
+    await page.locator('a[href*="/bootloaders/"], a[href$="/app"]').count(),
+    0,
+  );
+  await page.getByRole("button", { name: /Connect to coding agent/ }).click();
+  const detailPrompt = page.getByRole("dialog");
+  await detailPrompt.getByRole("button", { name: /Copy prompt/ }).click();
+  assert.ok(
+    (await page.evaluate(() => navigator.clipboard.readText())).includes(
+      "m5stack/stopwatch",
+    ),
+  );
+  await page.keyboard.press("Escape");
+
   // Unauthenticated workspace redirect.
   await page.getByRole("link", { name: "Open workspace" }).click();
   await page.waitForURL("https://accounts.esphub.ai/sign-in?**");
