@@ -36,7 +36,10 @@ export default {
       return Response.redirect(new URL("/devices", u), 302);
     const appRoute =
       ["GET", "HEAD"].includes(req.method) &&
-      ["/", "/devices", "/devices/"].includes(u.pathname);
+      (["/", "/devices", "/devices/"].includes(u.pathname) ||
+        /^\/boards(?:\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*)?\/?$/.test(
+          u.pathname,
+        ));
     const res = await env.ASSETS.fetch(
       appRoute ? new Request(new URL("/ui/", u), req) : req,
     );

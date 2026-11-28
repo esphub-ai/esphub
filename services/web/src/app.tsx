@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { issuer, mcpEndpoint, portal } from "../../../shared/identity.js";
 import "./index.css";
 import Landing from "./landing";
+import BoardsPage, { parseBoardsPath } from "./boards-page";
 import { BoardPhoto, type Board } from "./components/board-photo";
 import {
   CheckIcon,
@@ -294,6 +295,8 @@ if (path === "/") {
       root.render(<Landing boards={boards} />);
     })
     .catch(() => root.render(<Landing failed />));
+} else if (path === "/boards" || parseBoardsPath(path) !== null) {
+  root.render(<BoardsPage initialBoardId={parseBoardsPath(path)} />);
 } else if (path === "/devices") {
   root.render(
     <main className="p-8">

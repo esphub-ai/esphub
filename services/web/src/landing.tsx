@@ -326,9 +326,16 @@ export default function Landing({
         Skip to the board wall
       </a>
       <header className="masthead">
-        <a href="/" aria-label="EspHub home">
-          <img src={logo} alt="EspHub" width="109" height="31" />
-        </a>
+        <div className="masthead-brand">
+          <a href="/" aria-label="EspHub home">
+            <img src={logo} alt="EspHub" width="109" height="31" />
+          </a>
+          <nav className="masthead-nav" aria-label="Primary">
+            <a className="masthead-nav-link" href="/boards">
+              Boards
+            </a>
+          </nav>
+        </div>
         <a className="workspace-link" href="/devices">
           Open workspace <ArrowUpRightIcon aria-hidden="true" />
         </a>
