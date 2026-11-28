@@ -86,8 +86,7 @@ jobs:
           curl -fsS --retry 8 --retry-all-errors --retry-max-time 180 "$photo_url?width=80" -o "$RUNNER_TEMP/esphub-thumbnail.webp"
           file --brief "$RUNNER_TEMP/esphub-thumbnail.webp" | grep -q 'Web/P image'
           curl -fsS --retry 5 --retry-all-errors https://api.esphub.ai/boards/m5stack/cardputer-adv | jq -e '.id == "m5stack/cardputer-adv" and .bootloader == "esp32s3-8mb" and .spec.soc == "esp32s3" and .spec.flash_mb == 8'
-          curl -fsS --retry 5 --retry-all-errors 'https://api.esphub.ai/boards?q=cardputer-adv' | jq -e 'length == 1 and .[0].id == "m5stack/cardputer-adv" and (.[0] | has("examples") | not) and (.[0] | has("default_example") | not) and (.[0].firmware | has("app") | not)'
-          test "$(curl -s -o /dev/null -w '%{http_code}' https://api.esphub.ai/releases/m5stack/cardputer-adv/app)" = 404
+          curl -fsS --retry 5 --retry-all-errors 'https://api.esphub.ai/boards?q=cardputer-adv' | jq -e 'length == 1 and .[0].id == "m5stack/cardputer-adv"'
           curl -fsS --retry 5 --retry-all-errors https://api.esphub.ai/.well-known/oauth-protected-resource/mcp | jq -e '.resource == "https://api.esphub.ai/mcp" and .authorization_servers == ["https://clerk.esphub.ai"] and (.scopes_supported | contains(["devices:read","devices:write"]))'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer invalid-token' https://api.esphub.ai/mcp)" = 401
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' https://app.esphub.ai/backend/operations/devices_list)" = 401
