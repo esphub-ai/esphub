@@ -2,11 +2,24 @@ import {
   apiOrigin,
   bootloaderUrl,
   projectAppUrl,
+  projectPartitionUrl,
 } from "../../../shared/identity.js";
 import { softwareInventory } from "./software.js";
 import { issueBle } from "./ble.js";
 import { connectedSince, publishDownlink } from "./iot.js";
-import { appAlignment, maxAppSize, maxFlashBytes, minLittleFSBytes, validLayout } from "./layout.js";
+import {
+  appAlignment,
+  layoutsEqual,
+  maxAppSize,
+  maxFlashBytes,
+  maxTailPartitions,
+  minLittleFSBytes,
+  parsePartitionSubtype,
+  parsePartitionType,
+  partitionLabelPattern,
+  sectorSize,
+  validLayout,
+} from "./layout.js";
 import { artifactBase, maxUploadBytes } from "./uploads.js";
 import { boardIdPattern, boardImageUrl, boardSpec, getBoard, searchBoards } from "./boards.js";
 import { boardFirmware, bootloaderSet, latestBootloader, versionPattern } from "./firmware.js";
@@ -16,9 +29,12 @@ import {
   listOwnedProjects,
   listPublicProjects,
   parseProjectAppUrl,
+  parseProjectPartitionUrl,
   projectAppFile,
+  projectPartitionFile,
   setProjectVisibility,
   signProjectAppUrl,
+  signProjectPartitionUrl,
 } from "./projects.js";
 import { fail } from "./auth.js";
 import { createDeviceSetup } from "./setup.js";
@@ -27,7 +43,8 @@ import { uuidPattern } from "./ids.js";
 const strings = (...names) =>
   Object.fromEntries(names.map((n) => [n, { type: "string" }]));
 const id = strings("device_id");
-const otaKind = { type: "string", enum: ["bootloader", "app"] };
+const otaKind = { type: "string", enum: ["bootloader", "app", "partition"] };
+const sha256Pattern = /^[0-9a-f]{64}$/;
 const bootloaderBase = apiOrigin + "/bootloaders/";
 const projectAppBase = apiOrigin + "/projects/";
 async function boardDetails(db, boardId) {
@@ -175,20 +192,32 @@ const defs = [
   [
     "ota_install",
     { ...destructive, openWorldHint: true },
-    "Install a bootloader or app in EspHub Bootloader mode. For kind='app', url is required (pass a download_url from projects_get, an ota_prepare_upload artifact URL, or a third-party HTTPS URL). For kind='bootloader', pass an HTTPS URL or omit it to install the board’s latest published Launcher. Verify the command receipt and the next boot.",
+    "Install a bootloader, app, or raw data partition image in EspHub Bootloader mode. For kind='app', url is required. For kind='partition', url and label are required (flashes raw bytes without rebooting). For kind='bootloader', pass an HTTPS URL or omit it to install the board’s latest published Launcher. Verify the command receipt and the next boot.",
     {
       ...id,
       kind: otaKind,
+      label: {
+        type: "string",
+        minLength: 1,
+        maxLength: 15,
+        description: "Target tail data partition label (required when kind='partition', e.g. 'ui_apps', 'system', 'data').",
+      },
       url: {
         type: "string",
         maxLength: 1024,
-        description: "HTTPS binary URL. Required when kind='app' (for example, a project download_url from projects_get or an ota_prepare_upload artifact URL). Optional when kind='bootloader'.",
+        description: "HTTPS binary URL. Required when kind='app' or kind='partition'. Optional when kind='bootloader'.",
       },
       image_size_bytes: {
         type: "integer",
         minimum: 1,
         maximum: 0xffffffff,
         description: "Byte length of a third-party HTTPS image, if known. EspHub measures its own uploads, bootloaders, and project releases.",
+      },
+      sha256: {
+        type: "string",
+        minLength: 64,
+        maxLength: 64,
+        description: "Optional lowercase hex SHA-256 of the raw partition image when kind='partition'. Filled automatically for EspHub project partitions.",
       },
     },
   ],
@@ -197,6 +226,32 @@ const defs = [
     destructive,
     "Grow or shrink the application slot in Launcher mode. Every size change destroys all LittleFS files. Set erase_littlefs=true only with permission to erase them. Same size is a no-op. A shrink must fit the installed image. Check the command receipt for the verified layout after reboot.",
     { ...id, app_size_bytes: { type: "integer", minimum: appAlignment, maximum: maxFlashBytes, multipleOf: appAlignment }, erase_littlefs: { type: "boolean" } },
+  ],
+  [
+    "ota_set_layout",
+    destructive,
+    "Set the mutable tail partition layout in Launcher mode (entry 0 must be 64 KiB aligned 'app', followed by 0..15 custom data partitions). Preserves the immutable EspHub prefix. Changing the layout erases tail data partitions; set erase_data=true to authorize. Same layout is a no-op. Check commands_get for the verified layout after reboot.",
+    {
+      ...id,
+      partitions: {
+        type: "array",
+        minItems: 1,
+        maxItems: maxTailPartitions,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            label: { type: "string", minLength: 1, maxLength: 15 },
+            type: { description: "0/'app' for entry 0, 1/'data' for subsequent partitions." },
+            subtype: { description: "Integer 0..254, hex string (e.g. '0x41'), or name ('ota_2', 'littlefs', 'spiffs', 'fat', 'nvs')." },
+            size: { type: "integer", minimum: sectorSize, maximum: maxFlashBytes, multipleOf: sectorSize },
+          },
+          required: ["label", "subtype", "size"],
+        },
+      },
+      erase_data: { type: "boolean" },
+    },
+    ["device_id", "partitions"],
   ],
   [
     "logs_set",
@@ -310,8 +365,11 @@ export const tools = defs.map(
               : ![
                   "password",
                   "url",
+                  "label",
+                  "sha256",
                   "query",
                   "erase_littlefs",
+                  "erase_data",
                   "image_size_bytes",
                   "wifi",
                 ].includes(k),
@@ -329,6 +387,7 @@ function queueable(name) {
       "bootloader_exit",
       "ota_install",
       "ota_resize_app",
+      "ota_set_layout",
       "logs_set",
       "firmware_get",
     ].includes(name)
@@ -388,8 +447,52 @@ export function validate(name, a) {
       fail(400, "Invalid " + k);
   if (name === "ota_prepare_upload" && a.kind === "bootloader" && a.size > 4 * 1024 * 1024)
     fail(400, "Bootloader upload exceeds 4 MiB");
-  if (name === "ota_install" && a.kind === "app" && !a.url)
-    fail(400, "url is required when kind is app");
+  if (name === "ota_install") {
+    if (a.kind === "app" && !a.url)
+      fail(400, "url is required when kind is app");
+    if (a.kind === "partition") {
+      if (!a.url) fail(400, "url is required when kind is partition");
+      if (!a.label || !partitionLabelPattern.test(a.label))
+        fail(400, "label is required when kind is partition");
+      if (a.sha256 !== undefined && !sha256Pattern.test(a.sha256))
+        fail(400, "Invalid sha256");
+    } else {
+      if (a.label !== undefined) fail(400, "label is only valid when kind is partition");
+      if (a.sha256 !== undefined) fail(400, "sha256 is only valid when kind is partition");
+    }
+  }
+  if (name === "ota_set_layout") {
+    if (!Array.isArray(a.partitions) || a.partitions.length < 1 || a.partitions.length > maxTailPartitions)
+      fail(400, "Invalid partitions");
+    const seen = new Set();
+    for (let i = 0; i < a.partitions.length; i++) {
+      const p = a.partitions[i];
+      if (!p || typeof p !== "object" || Array.isArray(p))
+        fail(400, `Invalid partitions[${i}]`);
+      for (const k of Object.keys(p))
+        if (!["label", "type", "subtype", "size"].includes(k))
+          fail(400, `Unexpected partitions[${i}].${k}`);
+      if (typeof p.label !== "string" || !partitionLabelPattern.test(p.label))
+        fail(400, `Invalid partitions[${i}].label`);
+      if (seen.has(p.label)) fail(400, `Duplicate partition label ${p.label}`);
+      seen.add(p.label);
+      const type = parsePartitionType(p.type, i === 0 ? 0 : 1);
+      const subtype = parsePartitionSubtype(p.subtype);
+      if (
+        !Number.isSafeInteger(p.size) ||
+        p.size < sectorSize ||
+        p.size > maxFlashBytes ||
+        p.size % sectorSize !== 0
+      )
+        fail(400, `Invalid partitions[${i}].size`);
+      if (i === 0) {
+        if (p.label !== "app" || type !== 0 || subtype !== 0x12 || p.size < appAlignment || p.size % appAlignment !== 0)
+          fail(400, "First partition must be 64 KiB aligned app (ota_2)");
+      } else if (type !== 1 || subtype === null) {
+        fail(400, `Invalid partitions[${i}].type or subtype`);
+      }
+    }
+  }
   if (a.url) {
     let u;
     try {
@@ -572,10 +675,39 @@ export async function operate(c, owner, name, a) {
       transfer_id: key,
     }, d.boot_id);
   }
+  if (name === "ota_set_layout") {
+    if (info?.role !== "bootloader" || !d.boot_id)
+      fail(409, "Enter EspHub Bootloader mode before setting partition layout");
+    if (!validLayout(info.layout) || !Number.isSafeInteger(info.layout.tail_size_bytes))
+      fail(409, "Launcher does not support custom layouts. Update the Launcher using ota_install(kind='bootloader') first.");
+    const { tail_offset, tail_size_bytes, partitions: currentParts } = info.layout;
+    let cursor = tail_offset;
+    const normalized = a.partitions.map((p, i) => {
+      const entry = {
+        label: p.label,
+        type: parsePartitionType(p.type, i === 0 ? 0 : 1),
+        subtype: parsePartitionSubtype(p.subtype),
+        offset: cursor,
+        size: p.size,
+      };
+      cursor += p.size;
+      return entry;
+    });
+    if (cursor > tail_offset + tail_size_bytes)
+      fail(400, `Requested partitions (${cursor - tail_offset} bytes) exceed available tail capacity (${tail_size_bytes} bytes)`);
+    const unchanged = layoutsEqual(currentParts, normalized);
+    if (!unchanged && a.erase_data !== true)
+      fail(400, "Changing the partition layout erases tail data partitions. Set erase_data=true to authorize.");
+    return queue("set_layout", {
+      partitions: normalized,
+      erase_data: a.erase_data === true,
+      transfer_id: key,
+    }, d.boot_id);
+  }
   if (name === "ota_install") {
     if (info?.role !== "bootloader")
       fail(409, "Enter EspHub Bootloader mode first using bootloader_enter");
-    let url = a.url, imageSize = a.image_size_bytes;
+    let url = a.url, imageSize = a.image_size_bytes, sha256 = a.sha256;
     if (url?.startsWith(artifactBase)) {
       ({ size: imageSize } = await internal(c, d.id, "check-upload", { url, kind: a.kind }));
     } else if (a.kind === "app" && url.startsWith(projectAppBase)) {
@@ -594,6 +726,31 @@ export async function operate(c, owner, name, a) {
               boardId: file.board_id,
               version: file.version,
             });
+    } else if (a.kind === "partition" && url.startsWith(projectAppBase)) {
+      const ref = parseProjectPartitionUrl(url);
+      if (ref.boardId !== d.board)
+        fail(400, `Project release is for ${ref.boardId}, not ${d.board}`);
+      if (ref.label !== a.label)
+        fail(400, `Partition URL is for ${ref.label}, not ${a.label}`);
+      const file = await projectPartitionFile(
+        db,
+        ref.projectId,
+        ref.boardId,
+        ref.version,
+        ref.label,
+        { owner },
+      );
+      imageSize = file.image_size;
+      sha256 = file.image_sha256;
+      url =
+        file.visibility === "public"
+          ? projectPartitionUrl(file.project_id, file.board_id, file.version, file.label)
+          : await signProjectPartitionUrl(c.env?.IOT_RELAY_SECRET, {
+              projectId: file.project_id,
+              boardId: file.board_id,
+              version: file.version,
+              label: file.label,
+            });
     } else if (a.kind === "bootloader" && (!url || url.startsWith(bootloaderBase))) {
       const { bootloader: id } = await getBoard(db, d.board);
       const [, version, file] = url ? url.slice(bootloaderBase.length).split("/") : [];
@@ -606,8 +763,22 @@ export async function operate(c, owner, name, a) {
     }
     if (a.kind === "app" && validLayout(info.layout) && imageSize > info.layout.app_size_bytes)
       fail(409, `Image ${imageSize} bytes, app slot ${info.layout.app_size_bytes}, maximum after resize ${maxAppSize(info.layout)}`);
+    if (a.kind === "partition") {
+      if (!validLayout(info.layout) || !Array.isArray(info.layout.partitions))
+        fail(409, "Launcher does not report tail partitions. Update the Launcher using ota_install(kind='bootloader') first.");
+      const target = info.layout.partitions.slice(1).find((p) => p.label === a.label);
+      if (!target)
+        fail(409, `Partition ${a.label} is not present in the active tail layout; run ota_set_layout first.`);
+      if (imageSize && imageSize > target.size)
+        fail(409, `Image ${imageSize} bytes exceeds partition ${a.label} (${target.size} bytes)`);
+    }
     const args = {
-      url, kind: a.kind, transfer_id: key, ...(imageSize ? { image_size: imageSize } : {}),
+      url,
+      kind: a.kind,
+      transfer_id: key,
+      ...(a.kind === "partition" ? { label: a.label } : {}),
+      ...(imageSize ? { image_size: imageSize } : {}),
+      ...(sha256 ? { sha256 } : {}),
     };
     return queue("install", args, d.boot_id);
   }

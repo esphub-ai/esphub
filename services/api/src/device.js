@@ -1,4 +1,4 @@
-import { maxAppSize, validLayout } from "./layout.js";
+import { maxAppSize, normalizeLayout, validLayout } from "./layout.js";
 import { normalizeBleAddress } from "./ble.js";
 import { withDatabase } from "./database.js";
 import { dispatch, enqueue, finishResize, receipt, retryDue, nextRetry } from "./commands.js";
@@ -207,8 +207,9 @@ export class Device extends DurableObject {
       if (d.boot_id !== pid || this.current()?.pid !== pid)
         return Response.json({ error: "Hello required" }, { status: 409 });
       const saveLayout = async (layout) => {
-        if (d.boot_info?.role === "bootloader" && validLayout(layout)) {
-          const value = JSON.stringify({ app_size_bytes: layout.app_size_bytes, data_size_bytes: layout.data_size_bytes });
+        const normalized = d.boot_info?.role === "bootloader" ? normalizeLayout(layout) : null;
+        if (normalized) {
+          const value = JSON.stringify(normalized);
           await db`UPDATE esphub.devices SET boot_info=jsonb_set(boot_info,'{layout}',${value}::text::jsonb)
             WHERE id=${device} AND boot_id=${pid}`;
         }
@@ -284,7 +285,7 @@ export class Device extends DurableObject {
         )
       ) {
         const done = m.name === "install.done";
-        if (m.data.kind === "resize_app") {
+        if (m.data.kind === "resize_app" || m.data.kind === "set_layout") {
           if (d.boot_info?.role !== "bootloader")
             return Response.json({ error: "Launcher required" }, { status: 409 });
           await finishResize(db, device, pid, done, m.data);
