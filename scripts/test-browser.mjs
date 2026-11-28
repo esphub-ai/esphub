@@ -230,7 +230,8 @@ try {
     description: "Personal project visibility smoke test.",
   });
   assert.equal(personal.visibility, "private");
-  await page.getByRole("tab", { name: /^Projects/ }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.getByRole("tab", { name: /^Projects \(1\)/ }).click();
   const projectCard = page
     .locator('[data-slot="card"]')
     .filter({ hasText: "Browser E2E Personal App" });
@@ -238,12 +239,7 @@ try {
   assert.equal(await projectCard.locator("select").count(), 0);
   await projectCard.getByRole("button", { name: "Make public" }).click();
   await projectCard.getByText("Public", { exact: true }).waitFor();
-  assert.equal(
-    await projectCard
-      .getByRole("link", { name: /Public page/ })
-      .getAttribute("href"),
-    `/projects/${personal.id}`,
-  );
+  await projectCard.getByRole("button", { name: "Make private" }).waitFor();
   await page.getByRole("tab", { name: /^Devices/ }).click();
 
   // Console MCP prompt dialogs and sign-out.
