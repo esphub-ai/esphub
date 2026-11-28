@@ -1,4 +1,10 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { BoardPhoto, type Board } from "./board-photo";
 import { manufacturer } from "./landing-brands";
 
@@ -18,6 +24,54 @@ const swatches = [
 ];
 const ratios = [1.36, 1.12, 1.26, 1.39, 1.08, 1.34, 1.17, 1.29];
 
+export function distributeBoards(boards: Board[], maxRows = 8): Board[][] {
+  if (!boards.length) return [[]];
+  const count = Math.min(maxRows, Math.max(1, Math.ceil(boards.length / 11)));
+  // Deal each vendor round-robin across rows so adjacent models from the same
+  // series land in different rows, then interleave vendors within each row.
+  const byVendor = new Map<string, Board[]>();
+  for (const board of boards) {
+    const vendor = board.id.split("/")[0];
+    let list = byVendor.get(vendor);
+    if (!list) {
+      list = [];
+      byVendor.set(vendor, list);
+    }
+    list.push(board);
+  }
+  const rows = Array.from({ length: count }, () => [] as Board[]);
+  let cursor = 0;
+  for (const list of byVendor.values()) {
+    for (const board of list) {
+      rows[cursor % count].push(board);
+      cursor++;
+    }
+  }
+  return rows.map((row, rowIndex) => {
+    const groups = new Map<string, Board[]>();
+    for (const board of row) {
+      const vendor = board.id.split("/")[0];
+      let list = groups.get(vendor);
+      if (!list) {
+        list = [];
+        groups.set(vendor, list);
+      }
+      list.push(board);
+    }
+    const vendors = [...groups.values()];
+    const phase = (rowIndex * 0.37) % 1;
+    return vendors
+      .flatMap((group, v) =>
+        group.map((board, k) => ({
+          board,
+          pos: ((k + (v + 0.5) / vendors.length) / group.length + phase) % 1,
+        })),
+      )
+      .sort((a, b) => a.pos - b.pos)
+      .map((entry) => entry.board);
+  });
+}
+
 type LaneProps = {
   boards: Board[];
   index: number;
@@ -35,26 +89,41 @@ function BoardLane({
 }: LaneProps) {
   const ref = useRef<HTMLDivElement>(null);
   const suppressClick = useRef(false);
+  const pausedRef = useRef(paused);
+  const resumeRef = useRef<() => void>(() => {});
+  pausedRef.current = paused;
+
+  useEffect(() => {
+    resumeRef.current();
+  }, [paused]);
+
   useEffect(() => {
     const lane = ref.current!;
     const cycle = lane.firstElementChild as HTMLElement;
+    const cards = Array.from(cycle.children) as HTMLElement[];
+    cards.forEach((card, i) => {
+      card.style.order = String(i);
+    });
+    let minOrder = 0;
+    let maxOrder = cards.length - 1;
     const motion = matchMedia("(prefers-reduced-motion: reduce)");
-    let width = 0,
+    let seam = 0,
       loop = false,
       visible = false,
       mouseOver = false,
-      touching = false;
+      touching = false,
+      rebalancing = false;
     let frame = 0,
       previous = 0,
       fraction = 0;
     let drag: { x: number; left: number } | null = null;
     const speed = (index % 2 ? -1 : 1) * (18 + (index % 5) * 2);
-    const wrap = (x: number) => ((x % width) + width) % width;
+
     function moving() {
       return (
         loop &&
         visible &&
-        !paused &&
+        !pausedRef.current &&
         !document.hidden &&
         !motion.matches &&
         !mouseOver &&
@@ -62,6 +131,51 @@ function BoardLane({
         !lane.matches(":has(:focus-visible)")
       );
     }
+
+    // Recycle single off-screen cards with CSS order instead of cloning the lane,
+    // so every board exists once in the DOM and can never appear twice on screen.
+    function rebalance() {
+      if (rebalancing || !loop || motion.matches || cards.length < 3) return;
+      const maxScroll = lane.scrollWidth - lane.clientWidth;
+      if (maxScroll <= 0) return;
+      const mid = maxScroll / 2;
+      rebalancing = true;
+      try {
+        let guard = cards.length;
+        while (guard-- > 0) {
+          const first = cards[0];
+          const step = first.offsetWidth + seam;
+          if (lane.scrollLeft > mid + step && lane.scrollLeft >= step) {
+            cards.push(cards.shift()!);
+            first.style.order = String(++maxOrder);
+            lane.scrollLeft -= step;
+            if (drag) drag.left -= step;
+          } else {
+            break;
+          }
+        }
+        guard = cards.length;
+        while (guard-- > 0) {
+          const last = cards[cards.length - 1];
+          const step = last.offsetWidth + seam;
+          if (
+            lane.scrollLeft < mid - step &&
+            lane.scrollLeft + lane.clientWidth <=
+              lane.scrollWidth - last.offsetWidth
+          ) {
+            cards.unshift(cards.pop()!);
+            last.style.order = String(--minOrder);
+            lane.scrollLeft += step;
+            if (drag) drag.left += step;
+          } else {
+            break;
+          }
+        }
+      } finally {
+        rebalancing = false;
+      }
+    }
+
     function tick(time: number) {
       frame = 0;
       if (!moving()) {
@@ -75,33 +189,43 @@ function BoardLane({
       fraction += delta;
       const pixels = Math.trunc(fraction);
       if (pixels) {
-        lane.scrollLeft = wrap(lane.scrollLeft + pixels);
+        lane.scrollLeft += pixels;
         fraction -= pixels;
+        rebalance();
       }
       frame = requestAnimationFrame(tick);
     }
+
     function start() {
       if (!frame && moving()) {
         previous = 0;
         frame = requestAnimationFrame(tick);
       }
     }
+    resumeRef.current = start;
+
     function measure() {
-      const initial = width === 0;
-      width = cycle.offsetWidth;
-      loop = cycle.childElementCount > 1;
+      seam = parseFloat(getComputedStyle(cycle).columnGap) || 0;
+      const maxScroll = lane.scrollWidth - lane.clientWidth;
+      const first = cards[0];
+      const last = cards[cards.length - 1];
+      loop =
+        cards.length > 2 &&
+        !!first &&
+        !!last &&
+        maxScroll >= first.offsetWidth + last.offsetWidth + 2 * seam;
       lane.toggleAttribute("data-loop", loop);
-      if (
-        initial &&
-        !lane.hasAttribute("data-positioned") &&
-        loop &&
-        index % 2
-      ) {
-        lane.scrollLeft = cycle.firstElementChild!.clientWidth / 2;
+      if (loop && !lane.hasAttribute("data-positioned")) {
+        const stagger = index % 2 ? Math.round(first.offsetWidth / 2) : 0;
+        lane.scrollLeft = Math.min(
+          maxScroll,
+          Math.max(0, Math.round(maxScroll / 2) + stagger),
+        );
         lane.setAttribute("data-positioned", "");
       }
       start();
     }
+
     // Native horizontal scrolling handles touch, trackpads, and keyboard focus.
     // Mouse dragging uses the same scroll position as the automatic crossflow.
     function down(event: PointerEvent) {
@@ -117,7 +241,8 @@ function BoardLane({
       if (!suppressClick.current && Math.abs(dx) < 5) return;
       suppressClick.current = true;
       lane.setPointerCapture(event.pointerId);
-      lane.scrollLeft = wrap(drag.left - dx);
+      lane.scrollLeft = drag.left - dx;
+      rebalance();
     }
     function up() {
       drag = null;
@@ -132,6 +257,13 @@ function BoardLane({
       if (!suppressClick.current) up();
       start();
     }
+    function onScroll() {
+      if (!rebalancing && !lane.matches(":has(:focus-visible)")) rebalance();
+    }
+    function onFocusOut() {
+      queueMicrotask(start);
+    }
+
     const resize = new ResizeObserver(measure);
     resize.observe(lane);
     resize.observe(cycle);
@@ -144,16 +276,15 @@ function BoardLane({
     lane.addEventListener("pointermove", move);
     lane.addEventListener("pointerenter", enter);
     lane.addEventListener("pointerleave", leave);
+    lane.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
-    function onFocusOut() {
-      queueMicrotask(start);
-    }
     lane.addEventListener("focusout", onFocusOut);
     document.addEventListener("visibilitychange", start);
     motion.addEventListener("change", start);
     measure();
     return () => {
+      resumeRef.current = () => {};
       resize.disconnect();
       observer.disconnect();
       cancelAnimationFrame(frame);
@@ -161,60 +292,53 @@ function BoardLane({
       lane.removeEventListener("pointermove", move);
       lane.removeEventListener("pointerenter", enter);
       lane.removeEventListener("pointerleave", leave);
+      lane.removeEventListener("scroll", onScroll);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
       lane.removeEventListener("focusout", onFocusOut);
       document.removeEventListener("visibilitychange", start);
       motion.removeEventListener("change", start);
     };
-  }, [index, paused]);
+  }, [index, boards]);
 
   return (
     <div className="board-lane" ref={ref}>
-      {[false, true].map((copy) => (
-        <div
-          key={String(copy)}
-          className={copy ? "lane-cycle lane-copy" : "lane-cycle"}
-          aria-hidden={copy || undefined}
-        >
-          {boards.map((board, col) => (
-            <button
-              type="button"
-              className="lane-card"
-              key={board.id}
-              tabIndex={copy ? -1 : undefined}
-              aria-haspopup="dialog"
-              aria-label={board.model}
-              onClick={(e) => {
-                if (!e.detail || !suppressClick.current) onSelect(board);
-              }}
-              onFocus={(e) => {
-                if (e.target.matches(":focus-visible"))
-                  onTileFocus(e.currentTarget);
-              }}
-              style={
-                {
-                  "--swatch":
-                    swatches[
-                      (col + index * 4 + Math.floor(index / 3)) %
-                        swatches.length
-                    ],
-                  "--ratio": ratios[(col + index * 3) % ratios.length],
-                } as CSSProperties
-              }
-            >
-              <span className="maker">{manufacturer(board.id)}</span>
-              <BoardPhoto
-                imageUrl={board.image_url}
-                size="wall"
-                className="tile-photo"
-              />
-              <span className="model">{board.name}</span>
-              <i className="tile-plus" aria-hidden="true" />
-            </button>
-          ))}
-        </div>
-      ))}
+      <div className="lane-cycle">
+        {boards.map((board, col) => (
+          <button
+            type="button"
+            className="lane-card"
+            key={board.id}
+            aria-haspopup="dialog"
+            aria-label={board.model}
+            onClick={(e) => {
+              if (!e.detail || !suppressClick.current) onSelect(board);
+            }}
+            onFocus={(e) => {
+              if (e.target.matches(":focus-visible"))
+                onTileFocus(e.currentTarget);
+            }}
+            style={
+              {
+                "--swatch":
+                  swatches[
+                    (col + index * 4 + Math.floor(index / 3)) % swatches.length
+                  ],
+                "--ratio": ratios[(col + index * 3) % ratios.length],
+              } as CSSProperties
+            }
+          >
+            <span className="maker">{manufacturer(board.id)}</span>
+            <BoardPhoto
+              imageUrl={board.image_url}
+              size="wall"
+              className="tile-photo"
+            />
+            <span className="model">{board.name}</span>
+            <i className="tile-plus" aria-hidden="true" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -227,10 +351,7 @@ export function BoardWall({
   boards?: Board[];
   hero: ReactNode;
 }) {
-  // Deal the API order across the rows so different manufacturers appear together.
-  const count = Math.max(1, Math.ceil(boards.length / 11));
-  const rows = Array.from({ length: count }, () => [] as Board[]);
-  boards.forEach((board, i) => rows[i % count].push(board));
+  const rows = useMemo(() => distributeBoards(boards), [boards]);
   return (
     <section
       id="boards"

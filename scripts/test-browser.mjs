@@ -113,7 +113,10 @@ try {
   const boards = await (await page.request.get(origin + "/backend/boards/gallery")).json();
   const selected = boards.find(({ id }) => id === "m5stack/stopwatch");
   assert.ok(selected);
-  assert.equal(await gallery.locator(".lane-cycle:not(.lane-copy) button").count(), boards.length);
+  assert.equal(await gallery.locator(".lane-copy").count(), 0);
+  assert.equal(await gallery.locator(".lane-cycle button").count(), boards.length);
+  assert.equal(await page.locator(".hardware-brands .brand-plate").count(), 6);
+  assert.equal(await page.locator(".hardware-brands .brand-plate.adafruit").count(), 1);
   await page.getByRole("link", { name: `Explore ${boards.length} boards` }).click();
   const tile = gallery.getByRole("button", { name: selected.model, exact: true });
   await tile.scrollIntoViewIfNeeded();
