@@ -38,7 +38,9 @@ export function extractClerkProfile(user) {
     .join(" ")
     .trim();
   const display_name = (username || fullName || "").slice(0, 120) || null;
+  const hasCustomAvatar = user.hasImage !== false && user.has_image !== false;
   const avatar_url =
+    hasCustomAvatar &&
     typeof user.imageUrl === "string" &&
     user.imageUrl.startsWith("https://") &&
     user.imageUrl.length <= 512

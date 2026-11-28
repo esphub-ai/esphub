@@ -214,10 +214,10 @@ function AuthorBadge({ author }: { author: ProjectAuthor }) {
 }
 
 function OwnerBadge({ owner }: { owner: ProjectOwner }) {
-  if (!owner.name && !owner.avatar_url) return null;
-  const initial = owner.name?.trim().charAt(0).toUpperCase() || "?";
+  if (!owner.name) return null;
+  const initial = owner.name.trim().charAt(0).toUpperCase() || "?";
   return (
-    <span className="pj-owner-chip" title={owner.name ?? undefined}>
+    <span className="pj-owner-chip" title={owner.name}>
       {owner.avatar_url ? (
         <img
           className="pj-owner-avatar"
@@ -230,7 +230,7 @@ function OwnerBadge({ owner }: { owner: ProjectOwner }) {
           {initial}
         </span>
       )}
-      {owner.name && <span className="pj-owner-name">{owner.name}</span>}
+      <span className="pj-owner-name">{owner.name}</span>
     </span>
   );
 }
@@ -243,7 +243,7 @@ function ProjectAttribution({
   owner?: ProjectOwner | null;
 }) {
   if (author) return <AuthorBadge author={author} />;
-  if (owner && (owner.name || owner.avatar_url)) return <OwnerBadge owner={owner} />;
+  if (owner?.name) return <OwnerBadge owner={owner} />;
   return null;
 }
 
@@ -583,7 +583,7 @@ function ProjectDetailView({
 
       <section className="pj-detail-header" aria-labelledby="project-detail-title">
         <div className="pj-detail-main">
-          {(project.author || project.owner?.name || project.owner?.avatar_url || project.tags?.length) && (
+          {(project.author || project.owner?.name || project.tags?.length) && (
             <div className="pj-detail-meta">
               <ProjectTagBadges tags={project.tags} />
               <ProjectAttribution author={project.author} owner={project.owner} />
@@ -1295,7 +1295,7 @@ export default function ProjectsPage({
                       const firstBoardId = project.boards[0]?.board_id ?? "";
                       return (
                         <article className="pj-card" key={project.id}>
-                          {(project.author || project.owner?.name || project.owner?.avatar_url || project.tags?.length) && (
+                          {(project.author || project.owner?.name || project.tags?.length) && (
                             <div className="pj-card-meta">
                               <ProjectTagBadges tags={project.tags} />
                               <ProjectAttribution

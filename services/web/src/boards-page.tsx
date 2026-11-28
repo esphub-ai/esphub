@@ -491,9 +491,7 @@ function BoardDetailView({
               const isFactory = Boolean(project.tags?.includes("factory"));
               const isExample = Boolean(project.tags?.includes("example"));
               const authorLogo = resolveAuthorLogo(project.author?.logo_url ?? null);
-              const hasOwner = Boolean(
-                !project.author && (project.owner?.name || project.owner?.avatar_url),
-              );
+              const hasOwner = Boolean(!project.author && project.owner?.name);
               return (
                 <article className="bh-proj-card" key={project.id}>
                   {(isFactory || isExample || project.author || hasOwner) && (
@@ -540,19 +538,21 @@ function BoardDetailView({
                             )}
                           </span>
                         )
-                      ) : hasOwner && project.owner ? (
-                        <span className="pj-owner-chip" title={project.owner.name ?? undefined}>
-                          {project.owner.avatar_url && (
+                      ) : hasOwner && project.owner?.name ? (
+                        <span className="pj-owner-chip" title={project.owner.name}>
+                          {project.owner.avatar_url ? (
                             <img
                               className="pj-owner-avatar"
                               src={project.owner.avatar_url}
                               alt=""
                               loading="lazy"
                             />
+                          ) : (
+                            <span className="pj-owner-initial" aria-hidden="true">
+                              {project.owner.name.trim().charAt(0).toUpperCase() || "?"}
+                            </span>
                           )}
-                          {project.owner.name && (
-                            <span className="pj-owner-name">{project.owner.name}</span>
-                          )}
+                          <span className="pj-owner-name">{project.owner.name}</span>
                         </span>
                       ) : null}
                     </div>
