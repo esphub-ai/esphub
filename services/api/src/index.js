@@ -33,6 +33,7 @@ import {
   getPublicProject,
   listOwnedProjects,
   listPublicProjects,
+  listPublicProjectsPage,
   projectAppResponse,
   removeProjectBoard,
   setCurrentProjectBoardRelease,
@@ -160,14 +161,29 @@ api.get("/boards/:vendor/:slug", async (c) => {
   const id = `${c.req.param("vendor")}/${c.req.param("slug")}`;
   return c.json(await getBoardDetail(c.get("sql"), id));
 });
-api.get("/projects", async (c) =>
-  c.json(
+api.get("/projects", async (c) => {
+  const page = c.req.query("page");
+  const limit = c.req.query("limit");
+  if (page !== undefined || limit !== undefined) {
+    return c.json(
+      await listPublicProjectsPage(c.get("sql"), {
+        board: c.req.query("board"),
+        vendor: c.req.query("vendor"),
+        soc: c.req.query("soc"),
+        query: c.req.query("q") ?? "",
+        sort: c.req.query("sort"),
+        page,
+        limit,
+      }),
+    );
+  }
+  return c.json(
     await listPublicProjects(c.get("sql"), {
       board: c.req.query("board"),
       query: c.req.query("q") ?? "",
     }),
-  ),
-);
+  );
+});
 api.get("/projects/:id", async (c) =>
   c.json(await getPublicProject(c.get("sql"), c.req.param("id"))),
 );

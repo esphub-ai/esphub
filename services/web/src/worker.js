@@ -39,6 +39,9 @@ export default {
       (["/", "/devices", "/devices/"].includes(u.pathname) ||
         /^\/boards(?:\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*)?\/?$/.test(
           u.pathname,
+        ) ||
+        /^\/projects(?:\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})?\/?$/i.test(
+          u.pathname,
         ));
     const res = await env.ASSETS.fetch(
       appRoute ? new Request(new URL("/ui/", u), req) : req,

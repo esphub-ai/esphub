@@ -23,6 +23,11 @@ const revisionPattern = /^[0-9a-f]{40}$/;
 const repoPathPattern = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
 const dotSegmentPattern = /(^|\/)\.\.?(\/|$)/;
 const uuidInsensitive = new RegExp(uuidPattern.source, "i");
+const vendorPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const socPattern = /^esp32[a-z0-9]*$/;
+const allowedProjectSorts = new Set(["recent", "name", "boards"]);
+const defaultProjectsLimit = 18;
+const maxProjectsLimit = 100;
 
 export const imageExtensions = {
   "image/webp": "webp",
@@ -364,6 +369,258 @@ export async function getOwnedProject(sql, owner, rawId) {
   if (!project) fail(404, "Project not found");
   const { images, boards } = await fetchProjectDetails(sql, id);
   return formatProjectDetail(project, images, boards, { includeArchived: true });
+}
+
+export function parsePublicProjectsPageParams({
+  board,
+  vendor,
+  soc,
+  query = "",
+  sort = "recent",
+  page,
+  limit,
+} = {}) {
+  let boardFilter = null;
+  if (board !== undefined && board !== "") {
+    if (typeof board !== "string" || !boardIdPattern.test(board))
+      fail(400, "Invalid board");
+    boardFilter = board;
+  }
+  let vendorFilter = null;
+  if (vendor !== undefined && vendor !== "") {
+    if (typeof vendor !== "string" || !vendorPattern.test(vendor))
+      fail(400, "Invalid vendor");
+    vendorFilter = vendor;
+  }
+  let socFilter = null;
+  if (soc !== undefined && soc !== "") {
+    if (typeof soc !== "string" || !socPattern.test(soc))
+      fail(400, "Invalid soc");
+    socFilter = soc;
+  }
+  if (typeof query !== "string" || query.includes("\0")) fail(400, "Invalid query");
+  const needle = query.trim().toLowerCase();
+
+  const sortKey = sort === undefined || sort === "" ? "recent" : sort;
+  if (typeof sortKey !== "string" || !allowedProjectSorts.has(sortKey))
+    fail(400, "Invalid sort");
+
+  const parseIntParam = (raw, fallback, min, max, label) => {
+    if (raw === undefined || raw === "") return fallback;
+    const str = typeof raw === "number" ? String(raw) : raw;
+    if (typeof str !== "string" || !/^\d+$/.test(str)) fail(400, `Invalid ${label}`);
+    const parsed = Number(str);
+    if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max)
+      fail(400, `Invalid ${label}`);
+    return parsed;
+  };
+
+  const pageNum = parseIntParam(page, 1, 1, 100000, "page");
+  const limitNum = parseIntParam(
+    limit,
+    defaultProjectsLimit,
+    1,
+    maxProjectsLimit,
+    "limit",
+  );
+
+  return {
+    boardFilter,
+    vendorFilter,
+    socFilter,
+    needle,
+    sortKey,
+    page: pageNum,
+    limit: limitNum,
+  };
+}
+
+export async function listPublicProjectsPage(sql, rawParams = {}) {
+  const {
+    boardFilter,
+    vendorFilter,
+    socFilter,
+    needle,
+    sortKey,
+    page,
+    limit,
+  } = parsePublicProjectsPageParams(rawParams);
+  const offset = (page - 1) * limit;
+
+  const [[countRow], rows, vendorFacets, socFacets] = await Promise.all([
+    sql`SELECT COUNT(*)::int AS total
+      FROM esphub.projects p
+      WHERE NOT p.archived
+        AND EXISTS (SELECT 1 FROM esphub.project_boards pb WHERE pb.project_id = p.id)
+        AND (${boardFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb
+          WHERE pb.project_id = p.id AND pb.board_id = ${boardFilter}
+        ))
+        AND (${vendorFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb
+          JOIN esphub.boards b ON b.id = pb.board_id
+          WHERE pb.project_id = p.id AND b.vendor = ${vendorFilter}
+        ))
+        AND (${socFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb
+          JOIN esphub.boards b ON b.id = pb.board_id
+          WHERE pb.project_id = p.id AND b.soc = ${socFilter}
+        ))
+        AND (${needle} = ''
+          OR strpos(lower(p.name), ${needle}) > 0
+          OR strpos(lower(p.description), ${needle}) > 0
+          OR strpos(lower(COALESCE(p.repo_path, '')), ${needle}) > 0
+          OR EXISTS (
+            SELECT 1 FROM esphub.project_boards pb
+            JOIN esphub.boards b ON b.id = pb.board_id
+            WHERE pb.project_id = p.id
+              AND (
+                strpos(lower(pb.board_id), ${needle}) > 0
+                OR strpos(lower(b.name), ${needle}) > 0
+                OR strpos(lower(b.model), ${needle}) > 0
+                OR strpos(lower(b.soc), ${needle}) > 0
+              )
+          ))`,
+    sql`SELECT p.id, p.name, p.description, p.repo_url, p.repo_path,
+        p.created_at, p.updated_at,
+        (SELECT jsonb_build_object('sha256', i.sha256, 'content_type', i.content_type)
+         FROM esphub.project_images i
+         WHERE i.project_id = p.id
+         ORDER BY i.is_cover DESC, i.position ASC
+         LIMIT 1) AS cover_image,
+        COALESCE(
+          (SELECT jsonb_agg(
+              jsonb_build_object(
+                'board_id', pb.board_id,
+                'version', pb.latest_version,
+                'sdk_version', r.sdk_version,
+                'updated_at', pb.updated_at
+              ) ORDER BY pb.board_id
+            )
+           FROM esphub.project_boards pb
+           JOIN esphub.project_releases r
+             ON r.project_id = pb.project_id
+            AND r.board_id = pb.board_id
+            AND r.version = pb.latest_version
+           WHERE pb.project_id = p.id),
+          '[]'::jsonb
+        ) AS boards
+      FROM esphub.projects p
+      WHERE NOT p.archived
+        AND EXISTS (SELECT 1 FROM esphub.project_boards pb WHERE pb.project_id = p.id)
+        AND (${boardFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb
+          WHERE pb.project_id = p.id AND pb.board_id = ${boardFilter}
+        ))
+        AND (${vendorFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb
+          JOIN esphub.boards b ON b.id = pb.board_id
+          WHERE pb.project_id = p.id AND b.vendor = ${vendorFilter}
+        ))
+        AND (${socFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb
+          JOIN esphub.boards b ON b.id = pb.board_id
+          WHERE pb.project_id = p.id AND b.soc = ${socFilter}
+        ))
+        AND (${needle} = ''
+          OR strpos(lower(p.name), ${needle}) > 0
+          OR strpos(lower(p.description), ${needle}) > 0
+          OR strpos(lower(COALESCE(p.repo_path, '')), ${needle}) > 0
+          OR EXISTS (
+            SELECT 1 FROM esphub.project_boards pb
+            JOIN esphub.boards b ON b.id = pb.board_id
+            WHERE pb.project_id = p.id
+              AND (
+                strpos(lower(pb.board_id), ${needle}) > 0
+                OR strpos(lower(b.name), ${needle}) > 0
+                OR strpos(lower(b.model), ${needle}) > 0
+                OR strpos(lower(b.soc), ${needle}) > 0
+              )
+          ))
+      ORDER BY
+        CASE WHEN ${sortKey} = 'boards' THEN (SELECT COUNT(*) FROM esphub.project_boards pb WHERE pb.project_id = p.id) END DESC NULLS LAST,
+        CASE WHEN ${sortKey} = 'recent' THEN p.updated_at END DESC NULLS LAST,
+        lower(p.name) ASC,
+        p.id ASC
+      LIMIT ${limit} OFFSET ${offset}`,
+    sql`SELECT b.vendor AS id, COUNT(DISTINCT p.id)::int AS count
+      FROM esphub.projects p
+      JOIN esphub.project_boards pb ON pb.project_id = p.id
+      JOIN esphub.boards b ON b.id = pb.board_id
+      WHERE NOT p.archived
+        AND (${boardFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb2
+          WHERE pb2.project_id = p.id AND pb2.board_id = ${boardFilter}
+        ))
+        AND (${socFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb2
+          JOIN esphub.boards b2 ON b2.id = pb2.board_id
+          WHERE pb2.project_id = p.id AND b2.soc = ${socFilter}
+        ))
+        AND (${needle} = ''
+          OR strpos(lower(p.name), ${needle}) > 0
+          OR strpos(lower(p.description), ${needle}) > 0
+          OR strpos(lower(COALESCE(p.repo_path, '')), ${needle}) > 0
+          OR EXISTS (
+            SELECT 1 FROM esphub.project_boards pb2
+            JOIN esphub.boards b2 ON b2.id = pb2.board_id
+            WHERE pb2.project_id = p.id
+              AND (
+                strpos(lower(pb2.board_id), ${needle}) > 0
+                OR strpos(lower(b2.name), ${needle}) > 0
+                OR strpos(lower(b2.model), ${needle}) > 0
+                OR strpos(lower(b2.soc), ${needle}) > 0
+              )
+          ))
+      GROUP BY b.vendor
+      ORDER BY count DESC, b.vendor ASC`,
+    sql`SELECT b.soc AS id, COUNT(DISTINCT p.id)::int AS count
+      FROM esphub.projects p
+      JOIN esphub.project_boards pb ON pb.project_id = p.id
+      JOIN esphub.boards b ON b.id = pb.board_id
+      WHERE NOT p.archived
+        AND (${boardFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb2
+          WHERE pb2.project_id = p.id AND pb2.board_id = ${boardFilter}
+        ))
+        AND (${vendorFilter}::text IS NULL OR EXISTS (
+          SELECT 1 FROM esphub.project_boards pb2
+          JOIN esphub.boards b2 ON b2.id = pb2.board_id
+          WHERE pb2.project_id = p.id AND b2.vendor = ${vendorFilter}
+        ))
+        AND (${needle} = ''
+          OR strpos(lower(p.name), ${needle}) > 0
+          OR strpos(lower(p.description), ${needle}) > 0
+          OR strpos(lower(COALESCE(p.repo_path, '')), ${needle}) > 0
+          OR EXISTS (
+            SELECT 1 FROM esphub.project_boards pb2
+            JOIN esphub.boards b2 ON b2.id = pb2.board_id
+            WHERE pb2.project_id = p.id
+              AND (
+                strpos(lower(pb2.board_id), ${needle}) > 0
+                OR strpos(lower(b2.name), ${needle}) > 0
+                OR strpos(lower(b2.model), ${needle}) > 0
+                OR strpos(lower(b2.soc), ${needle}) > 0
+              )
+          ))
+      GROUP BY b.soc
+      ORDER BY count DESC, b.soc ASC`,
+  ]);
+
+  const total = Number(countRow?.total ?? 0);
+  const total_pages = total === 0 ? 0 : Math.ceil(total / limit);
+
+  return {
+    items: rows.map((row) => formatProjectSummary(row)),
+    page,
+    limit,
+    total,
+    total_pages,
+    facets: {
+      vendors: vendorFacets.map((r) => ({ id: r.id, count: Number(r.count) })),
+      socs: socFacets.map((r) => ({ id: r.id, count: Number(r.count) })),
+    },
+  };
 }
 
 export async function listPublicProjects(sql, { board, query = "" } = {}) {

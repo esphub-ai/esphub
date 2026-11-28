@@ -1,0 +1,291 @@
+/* Projects Directory & Detail Page (extends boards-page.css tokens & primitives) */
+.bh-proj-title-link {
+  color: inherit;
+  transition: color 140ms ease;
+}
+
+.bh-proj-title-link:hover {
+  color: var(--lime);
+}
+
+.pj-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  transition: opacity 140ms ease;
+}
+
+.pj-grid.is-loading {
+  opacity: 0.55;
+}
+
+.pj-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.pj-card:hover {
+  border-color: var(--lime);
+  transform: translateY(-2px);
+}
+
+.pj-card-link {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px 14px;
+  flex: 1;
+}
+
+.pj-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pj-card-name {
+  font: 620 17px/1.25 var(--sans);
+  letter-spacing: -0.025em;
+  color: var(--paper);
+}
+
+.pj-card-arrow {
+  flex: none;
+  margin-top: 3px;
+  color: var(--text-dim);
+  transition: transform 150ms ease, color 150ms ease;
+}
+
+.pj-card:hover .pj-card-arrow {
+  color: var(--lime);
+  transform: translateX(3px);
+}
+
+.pj-card-desc {
+  color: #b7bfb0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pj-card-boards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 20px 16px;
+}
+
+.pj-board-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: #d6ddd0;
+  font: 500 11px/1.15 var(--mono);
+  transition: border-color 130ms ease, color 130ms ease;
+}
+
+.pj-board-pill:hover {
+  border-color: var(--lime);
+  color: var(--lime);
+}
+
+.pj-board-pill-vendor {
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pj-board-pill:hover .pj-board-pill-vendor {
+  color: #9ab95a;
+}
+
+.pj-board-pill.is-more {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+/* Pagination */
+.pj-pagination {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pj-page-numbers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pj-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 11px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
+  font: 500 12px/1 var(--mono);
+  transition: border-color 130ms ease, color 130ms ease, background 130ms ease;
+}
+
+.pj-page-btn:hover:not(:disabled) {
+  border-color: var(--lime);
+  color: var(--lime);
+}
+
+.pj-page-btn.is-active {
+  background: var(--lime);
+  border-color: var(--lime);
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.pj-page-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.pj-page-ellipsis {
+  padding: 0 4px;
+  color: var(--text-dim);
+  font: 500 12px/1 var(--mono);
+}
+
+/* Project Detail Page */
+.pj-detail-header {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: clamp(24px, 3.2vw, 40px);
+}
+
+.pj-detail-main {
+  max-width: 780px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.pj-detail-desc {
+  color: #cdd5c6;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.pj-detail-source-row a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #9bb083;
+  font: 480 12.5px/1.3 var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.pj-detail-source-row a:hover {
+  color: var(--lime);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.pj-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+}
+
+/* Supported Boards Grid on Project Detail */
+.pj-boards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.pj-board-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  transition: border-color 150ms ease;
+}
+
+.pj-board-card:hover {
+  border-color: var(--lime);
+}
+
+.pj-board-link {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* Target Board Picker in Install Modal */
+.pj-modal-boards {
+  margin-top: 14px;
+}
+
+.pj-modal-boards-label {
+  display: block;
+  margin-bottom: 7px;
+  font: 550 11px/1 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #56604c;
+}
+
+.pj-modal-board-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pj-modal-board-btn {
+  padding: 6px 10px;
+  border: 1px solid #c5ccbc;
+  background: #fcfcf6;
+  color: #1c2219;
+  font: 550 12px/1.1 var(--mono);
+}
+
+.pj-modal-board-btn.is-selected,
+.pj-modal-board-btn:hover {
+  border-color: #6b7d57;
+  background: #eaf1dd;
+}
+
+@media (max-width: 1080px) {
+  .pj-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .pj-grid {
+    grid-template-columns: 1fr;
+  }
+  .pj-pagination {
+    justify-content: center;
+  }
+}
