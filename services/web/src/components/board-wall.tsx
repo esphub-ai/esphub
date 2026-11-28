@@ -70,10 +70,9 @@ type LaneProps = {
   boards: Board[];
   index: number;
   paused: boolean;
-  onSelect: (board: Board) => void;
 };
 
-function BoardLane({ boards, index, paused, onSelect }: LaneProps) {
+function BoardLane({ boards, index, paused }: LaneProps) {
   const ref = useRef<HTMLDivElement>(null);
   const suppressClick = useRef(false);
   const pausedRef = useRef(paused);
@@ -292,14 +291,14 @@ function BoardLane({ boards, index, paused, onSelect }: LaneProps) {
     <div className="board-lane" ref={ref}>
       <div className="lane-cycle">
         {boards.map((board, col) => (
-          <button
-            type="button"
+          <a
             className="lane-card"
             key={board.id}
-            aria-haspopup="dialog"
+            href={`/boards/${board.id}`}
             aria-label={board.model}
+            draggable={false}
             onClick={(e) => {
-              if (!e.detail || !suppressClick.current) onSelect(board);
+              if (e.detail && suppressClick.current) e.preventDefault();
             }}
             style={
               {
@@ -319,7 +318,7 @@ function BoardLane({ boards, index, paused, onSelect }: LaneProps) {
             />
             <span className="model">{board.name}</span>
             <i className="tile-plus" aria-hidden="true" />
-          </button>
+          </a>
         ))}
       </div>
     </div>

@@ -3,7 +3,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type MouseEvent,
 } from "react";
 import {
@@ -61,27 +60,6 @@ type PublicProject = {
   created_at: string;
   updated_at: string;
 };
-
-const SWATCHES = [
-  "#c7d8b7",
-  "#d4c7e1",
-  "#bbd4db",
-  "#efda9e",
-  "#eac1ad",
-  "#dad9ca",
-  "#c7d0e4",
-  "#d2ddc9",
-  "#e5d5c1",
-  "#c0dad2",
-  "#e4c9d2",
-  "#cbd5bc",
-];
-
-function boardSwatch(id: string): string {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  return SWATCHES[hash % SWATCHES.length];
-}
 
 function formatSoc(soc: string): string {
   return soc.toUpperCase().replace(/^ESP32([A-Z])/, "ESP32-$1");
@@ -336,10 +314,7 @@ function BoardDetailView({
 
       {/* Hardware Specimen + Datasheet Split */}
       <section className="bh-detail-hero" aria-labelledby="board-detail-title">
-        <div
-          className="bh-specimen-stage"
-          style={{ "--swatch": boardSwatch(board.id) } as CSSProperties}
-        >
+        <div className="bh-specimen-stage">
           <BoardPhoto
             imageUrl={board.image_url ?? undefined}
             size="detail"
@@ -821,6 +796,7 @@ export default function BoardsPage({
               <a
                 className="bh-nav-link is-active"
                 href="/boards"
+                aria-current="page"
                 onClick={(e) => {
                   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
                     return;
@@ -829,7 +805,6 @@ export default function BoardsPage({
                 }}
               >
                 Boards
-                {boards && <span className="bh-nav-count">{boards.length}</span>}
               </a>
             </nav>
           </div>
@@ -1183,12 +1158,7 @@ export default function BoardsPage({
                           className="bh-card"
                           onClick={(e) => onBoardCardClick(e, board.id)}
                         >
-                          <div
-                            className="bh-card-plate"
-                            style={
-                              { "--swatch": boardSwatch(board.id) } as CSSProperties
-                            }
-                          >
+                          <div className="bh-card-plate">
                             <span className="bh-card-vendor">
                               {manufacturer(board.id)}
                             </span>
@@ -1271,14 +1241,7 @@ export default function BoardsPage({
                             >
                               <td>
                                 <div className="bh-table-board">
-                                  <div
-                                    className="bh-table-thumb"
-                                    style={
-                                      {
-                                        "--swatch": boardSwatch(board.id),
-                                      } as CSSProperties
-                                    }
-                                  >
+                                  <div className="bh-table-thumb">
                                     <BoardPhoto
                                       imageUrl={board.image_url ?? undefined}
                                       size="device"

@@ -545,7 +545,7 @@
   position: relative;
   height: 178px;
   padding: 30px 18px 14px;
-  background: var(--swatch, #d2ddc9);
+  background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -725,7 +725,7 @@
   width: 48px;
   height: 36px;
   padding: 4px;
-  background: var(--swatch, #d2ddc9);
+  background: #ffffff;
   display: grid;
   place-items: center;
 }
@@ -893,7 +893,7 @@
   position: relative;
   min-height: 380px;
   padding: 40px 32px;
-  background: var(--swatch, #e7ebde);
+  background: #ffffff;
   display: grid;
   place-items: center;
   overflow: hidden;
