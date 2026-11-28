@@ -954,18 +954,27 @@ test(
             avatar_url: "https://img.clerk.com/alice.png",
           });
           // Unsigned /app download is 404 while private; signed /app download works
-          const unsignedPrivateRes = await projectAppResponse(env, tx, draft.id, boardA);
-          assert.equal(unsignedPrivateRes.status, 404);
+          await assert.rejects(
+            projectAppResponse(tx, bucket, draft.id, boardA, undefined),
+            (e) => e.status === 404,
+          );
           const signedPrivateUrl = await signProjectAppUrl("test-relay-secret", {
             projectId: draft.id,
             boardId: boardA,
           });
           const signedParams = new URL(signedPrivateUrl).searchParams;
-          const signedPrivateRes = await projectAppResponse(env, tx, draft.id, boardA, {
-            secret: "test-relay-secret",
-            exp: signedParams.get("exp"),
-            sig: signedParams.get("sig"),
-          });
+          const signedPrivateRes = await projectAppResponse(
+            tx,
+            bucket,
+            draft.id,
+            boardA,
+            undefined,
+            {
+              secret: "test-relay-secret",
+              exp: signedParams.get("exp"),
+              sig: signedParams.get("sig"),
+            },
+          );
           assert.equal(signedPrivateRes.status, 200);
           assert.equal(signedPrivateRes.headers.get("Cache-Control"), "private, no-store");
           // Non-staff cannot set official author or reserved tags
