@@ -6,7 +6,6 @@ import {
   type MouseEvent,
 } from "react";
 import {
-  ArrowLeftIcon,
   ArrowRightIcon,
   ArrowUpRightIcon,
   CheckIcon,
@@ -65,13 +64,14 @@ function formatSoc(soc: string): string {
   return soc.toUpperCase().replace(/^ESP32([A-Z])/, "ESP32-$1");
 }
 
-function formatConsole(consoleType: BoardSpec["console"]): string {
-  return consoleType === "usb-serial-jtag" ? "USB-JTAG" : "UART";
-}
-
 function formatPsram(psram: BoardSpec["psram"]): string {
   if (!psram) return "None";
   return psram === "octal" ? "Octal PSRAM" : "Quad PSRAM";
+}
+
+function parseVendorSearch(search: string): string[] {
+  const vendor = new URLSearchParams(search).get("vendor")?.trim().toLowerCase();
+  return vendor ? [vendor] : [];
 }
 
 function projectSourceUrl(project: PublicProject): string | null {
@@ -224,15 +224,16 @@ function AgentPromptModal({
 
 function BoardDetailView({
   board,
-  allBoards,
   boardProjects,
   onNavigate,
   onOpenModal,
 }: {
   board: DirectoryBoard;
-  allBoards: DirectoryBoard[];
   boardProjects: { project: PublicProject; ref: ProjectBoardRef }[];
-  onNavigate: (boardId: string | null) => void;
+  onNavigate: (
+    boardId: string | null,
+    opts?: { vendor?: string; resetFilters?: boolean },
+  ) => void;
   onOpenModal: (modal: PromptModalState) => void;
 }) {
   const [copiedId, setCopiedId] = useState(false);
@@ -242,11 +243,6 @@ function BoardDetailView({
     setProjQuery("");
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [board.id]);
-
-  const idx = allBoards.findIndex((b) => b.id === board.id);
-  const prevBoard =
-    idx >= 0 ? allBoards[(idx - 1 + allBoards.length) % allBoards.length] : null;
-  const nextBoard = idx >= 0 ? allBoards[(idx + 1) % allBoards.length] : null;
 
   const filteredProjects = useMemo(() => {
     const q = projQuery.trim().toLowerCase();
@@ -268,49 +264,41 @@ function BoardDetailView({
     } catch {}
   }
 
-  function handleNavLink(e: MouseEvent<HTMLAnchorElement>, targetId: string | null) {
+  function handleNavLink(
+    e: MouseEvent<HTMLAnchorElement>,
+    targetId: string | null,
+    opts?: { vendor?: string; resetFilters?: boolean },
+  ) {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
     e.preventDefault();
-    onNavigate(targetId);
+    onNavigate(targetId, opts);
   }
-
-  const bl = board.firmware?.bootloader;
 
   return (
     <main className="bh-detail-shell">
-      <div className="bh-breadcrumb-bar">
+      <nav className="bh-breadcrumb-bar" aria-label="Breadcrumb">
         <div className="bh-breadcrumb">
           <a
-            className="bh-back-btn"
+            className="bh-crumb-link"
             href="/boards"
-            onClick={(e) => handleNavLink(e, null)}
+            onClick={(e) => handleNavLink(e, null, { resetFilters: true })}
           >
-            <ArrowLeftIcon size={14} /> All boards
+            Boards
           </a>
-          <span className="bh-crumb-trail">
-            Boards / {manufacturer(board.id)} /{" "}
+          <span className="bh-crumb-sep" aria-hidden="true">/</span>
+          <a
+            className="bh-crumb-link"
+            href={`/boards?vendor=${encodeURIComponent(board.vendor)}`}
+            onClick={(e) => handleNavLink(e, null, { vendor: board.vendor })}
+          >
+            {manufacturer(board.id)}
+          </a>
+          <span className="bh-crumb-sep" aria-hidden="true">/</span>
+          <span className="bh-crumb-current" aria-current="page">
+            {board.name}
           </span>
-          <span className="bh-crumb-trail bh-crumb-current">{board.name}</span>
         </div>
-        {prevBoard && nextBoard && allBoards.length > 1 && (
-          <div className="bh-detail-nav">
-            <a
-              href={`/boards/${prevBoard.id}`}
-              onClick={(e) => handleNavLink(e, prevBoard.id)}
-              title={prevBoard.model}
-            >
-              <ArrowLeftIcon size={13} /> Prev
-            </a>
-            <a
-              href={`/boards/${nextBoard.id}`}
-              onClick={(e) => handleNavLink(e, nextBoard.id)}
-              title={nextBoard.model}
-            >
-              Next <ArrowRightIcon size={13} />
-            </a>
-          </div>
-        )}
-      </div>
+      </nav>
 
       {/* Hardware Specimen + Datasheet Split */}
       <section className="bh-detail-hero" aria-labelledby="board-detail-title">
@@ -354,18 +342,6 @@ function BoardDetailView({
             <div className="bh-spec-cell">
               <dt>PSRAM</dt>
               <dd>{formatPsram(board.spec.psram)}</dd>
-            </div>
-            <div className="bh-spec-cell">
-              <dt>Console</dt>
-              <dd>{formatConsole(board.spec.console)}</dd>
-            </div>
-            <div className="bh-spec-cell">
-              <dt>Bootloader</dt>
-              <dd>{board.bootloader}</dd>
-            </div>
-            <div className="bh-spec-cell">
-              <dt>Launcher</dt>
-              <dd>{bl ? bl.version.slice(0, 10) : "—"}</dd>
             </div>
           </dl>
 
@@ -415,10 +391,9 @@ function BoardDetailView({
             <div>
               <h3>No published projects for {board.name} yet</h3>
               <p>
-                This board is fully supported by EspHub Bootloader (
-                <code>{board.bootloader}</code>). Connect it to your coding agent to
-                compile and wirelessly OTA flash your own ESP-IDF app, or publish the
-                first project via EspHub Projects.
+                This board is fully supported by EspHub. Connect it to your coding
+                agent to compile and wirelessly OTA flash your own ESP-IDF app, or
+                publish the first project via EspHub Projects.
               </p>
             </div>
             <button
@@ -531,7 +506,9 @@ export default function BoardsPage({
   const [failed, setFailed] = useState(false);
 
   const [query, setQuery] = useState("");
-  const [vendors, setVendors] = useState<string[]>([]);
+  const [vendors, setVendors] = useState<string[]>(() =>
+    parseVendorSearch(location.search),
+  );
   const [socs, setSocs] = useState<string[]>([]);
   const [flashes, setFlashes] = useState<number[]>([]);
   const [sortBy, setSortBy] = useState<SortKey>("featured");
@@ -564,7 +541,11 @@ export default function BoardsPage({
   }, []);
 
   useEffect(() => {
-    const onPop = () => setSelectedBoardId(parseBoardsPath(location.pathname));
+    const onPop = () => {
+      const boardId = parseBoardsPath(location.pathname);
+      setSelectedBoardId(boardId);
+      if (!boardId) setVendors(parseVendorSearch(location.search));
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
@@ -632,9 +613,31 @@ export default function BoardsPage({
       : "Boards — EspHub";
   }, [selectedBoard]);
 
-  function navigateBoard(id: string | null) {
-    const nextPath = id ? `/boards/${id}` : "/boards";
-    if (location.pathname !== nextPath) history.pushState(null, "", nextPath);
+  function navigateBoard(
+    id: string | null,
+    opts?: { vendor?: string; resetFilters?: boolean },
+  ) {
+    const nextUrl = id
+      ? `/boards/${id}`
+      : opts?.vendor
+        ? `/boards?vendor=${encodeURIComponent(opts.vendor)}`
+        : "/boards";
+    if (`${location.pathname}${location.search}` !== nextUrl) {
+      history.pushState(null, "", nextUrl);
+    }
+    if (!id) {
+      if (opts?.vendor) {
+        setQuery("");
+        setVendors([opts.vendor]);
+        setSocs([]);
+        setFlashes([]);
+      } else if (opts?.resetFilters) {
+        setQuery("");
+        setVendors([]);
+        setSocs([]);
+        setFlashes([]);
+      }
+    }
     setSelectedBoardId(id);
   }
 
@@ -773,7 +776,7 @@ export default function BoardsPage({
                   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
                     return;
                   e.preventDefault();
-                  navigateBoard(null);
+                  navigateBoard(null, { resetFilters: true });
                 }}
               >
                 Boards
@@ -790,7 +793,6 @@ export default function BoardsPage({
         selectedBoard ? (
           <BoardDetailView
             board={selectedBoard}
-            allBoards={filteredBoards.length ? filteredBoards : boardList}
             boardProjects={projectsByBoard.get(selectedBoard.id) ?? []}
             onNavigate={navigateBoard}
             onOpenModal={setModal}
@@ -1127,9 +1129,6 @@ export default function BoardsPage({
                                     : "QPI PSRAM"}
                                 </span>
                               )}
-                              <span className="bh-spec-pill">
-                                {formatConsole(board.spec.console)}
-                              </span>
                             </div>
                             <span className="bh-card-id">{board.id}</span>
                           </div>
@@ -1147,8 +1146,6 @@ export default function BoardsPage({
                           <th>SoC</th>
                           <th>Flash</th>
                           <th>PSRAM</th>
-                          <th>Console</th>
-                          <th>Bootloader</th>
                           <th>Projects</th>
                         </tr>
                       </thead>
@@ -1193,10 +1190,6 @@ export default function BoardsPage({
                               <td className="bh-table-mono">
                                 {formatPsram(board.spec.psram)}
                               </td>
-                              <td className="bh-table-mono">
-                                {formatConsole(board.spec.console)}
-                              </td>
-                              <td className="bh-table-mono">{board.bootloader}</td>
                               <td className="bh-table-mono">
                                 {projCount > 0 ? (
                                   <span
